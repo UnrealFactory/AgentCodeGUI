@@ -866,3 +866,58 @@ fn a_dead_hold_never_announces_that_it_is_waiting() {
         assert_eq!(n, 0, "★ [{name}] 표가 없는데 「사용 한도에 걸려 대기합니다」가 나왔다");
     }
 }
+
+// ── ★Codex 축(2026-09-01) — GPT 채팅의 자동 전환은 **엔진 축의 codex_account**를 간다 ──
+//
+// 과금 축(클로드 구독 계정)은 그대로 두고 codex_account만 바뀌어야 한다. 셸의 계정
+// 우주 분리는 acct_switch가 잡고, 여기는 엔진의 패치 축·배너·표 걷기를 잡는다.
+struct CodexScripted {
+    to: String,
+}
+impl AccountSwitcher for CodexScripted {
+    fn pick(&self, req: &SwitchRequest) -> Option<SwitchPick> {
+        // 셸 규약의 재현: Codex 축 물음에만 답하고, 이미 거쳐 온 계정은 후보가 아니다.
+        if !req.codex || req.codex_account == Some(self.to.as_str()) || req.tried.contains(&self.to) {
+            return None;
+        }
+        Some(SwitchPick { account: self.to.clone(), soonest_reset: Some(1_755_150_000) })
+    }
+    fn confirm(&self, _chat_id: &str, _account: &str) {}
+}
+
+#[test]
+fn a_codex_chat_switches_its_codex_account_axis_not_billing() {
+    let clock = VirtualClock::new();
+    clock.advance_to(1_000 * SEC);
+    clock.set_epoch_base((1_755_150_000 - 5 * 3600) * 1_000 - 1_000 * SEC);
+    let mut r = raw("claude@x");
+    r.engine.kind = EngineKind::Codex;
+    r.engine.model = "gpt-5.1-codex".into();
+    r.engine.codex_account = Some("a@cx".into());
+    let defaults = IdentityDefaults {
+        known_accounts: ["claude@x".to_string()].into_iter().collect(),
+        known_codex_accounts: ["a@cx".to_string(), "b@cx".to_string()].into_iter().collect(),
+        ..Default::default()
+    };
+    let mut rt = ChatRuntime::new("c-cx", r, defaults, clock.clone(), AcctCli::default())
+        .expect("정규화")
+        .with_account_switcher(Arc::new(CodexScripted { to: "b@cx".into() }));
+    rt.set_auto_resume(true);
+    rt.dispatch(Cmd::Send { text: "긴 작업".into() });
+    // 한도 프레임이 표를 세우고, 다음 tick의 check_hold가 전환을 성사시킨다.
+    rt.on_frame(&json!({ "type": "rate_limit_event",
+        "rate_limit_info": { "status": "blocked", "resetsAt": 1_755_150_000 } }));
+    for _ in 0..5 {
+        clock.advance_by(SEC);
+        rt.tick();
+        if rt.identity().codex_account() == Some("b@cx") {
+            break;
+        }
+    }
+    assert_eq!(rt.identity().codex_account(), Some("b@cx"), "엔진 축이 갈아탔다");
+    assert_eq!(rt.identity().account(), Some("claude@x"), "과금 축(클로드 계정)은 그대로다");
+    assert!(rt.hold().is_none(), "전환이 표를 걷었다");
+    let switched = rt.events().iter().any(|e| matches!(e,
+        Event::AccountSwitched { from, to, .. } if from == "a@cx" && to == "b@cx"));
+    assert!(switched, "배너 이벤트가 codex 계정 쌍으로 나갔다");
+}

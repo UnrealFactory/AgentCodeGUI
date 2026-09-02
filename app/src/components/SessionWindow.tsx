@@ -52,6 +52,8 @@ import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'
 import { IconChevDown } from './icons'
+import { diffsOf, openInViewerWindow, setViewerWindowMode, viewerWindowMode } from '../lib/viewerWindow'
+import type { ViewerOpenPayload } from '@shared/protocol'
 
 // ── 추가 채팅 (세션 창) ────────────────────────────────────────
 // A standalone conversation in its OWN native OS window (freely resizable, movable to a
@@ -113,6 +115,8 @@ export function SessionWindow(): React.ReactElement {
   const [max, setMax] = useState(false)
   // 이 창의 작업 폴더('' = 바탕화면 기본). 폴더를 지정하면 실행·@멘션이 모두 그 폴더 기준.
   const [cwd, setCwd] = useState('')
+  // 독립 뷰어 창에서 「창 안으로」로 되돌아온 파일 — 페이로드째 카드로(본채팅과 같은 규칙)
+  const [docked, setDocked] = useState<ViewerOpenPayload | null>(null)
   // 참조 폴더(--add-dir) — 작업 폴더 외 추가 작업 루트 (본채팅과 같은 팝오버 관리, 창별 영속)
   const [refDirs, setRefDirs] = useState<string[]>([])
   const [user, setUser] = useState<AppUser>(FALLBACK_USER)
@@ -506,8 +510,23 @@ export function SessionWindow(): React.ReactElement {
   const openViewer = useCallback((imgs: string[], index: number): void => setViewer({ images: imgs, index }), [])
 
   // 툴 로그/WorkBar에서 연 파일 — 뷰어로
-  const onOpenToolFile = useCallback((path: string): void => setOpenWorkFile(path), [])
-  const openChangedFile = useCallback((f: ChangedFile): void => setOpenWorkFile(f.path), [])
+  // 끈적한 창 모드면 독립 뷰어 창으로(본채팅과 같은 규칙). 콜백은 안정적으로 두고(메모된 자식에
+  // 내려간다) 그 순간의 cwd·diffs는 ref로 읽는다.
+  const viewerCtxRef = useRef({ cwd: '', diffs: state.diffs })
+  viewerCtxRef.current = { cwd: state.session?.cwd ?? cwd, diffs: state.diffs }
+  const openWorkFileRouted = useCallback((path: string): void => {
+    setDocked(null)
+    if (viewerWindowMode()) {
+      const c = viewerCtxRef.current
+      void openInViewerWindow({ path, cwd: c.cwd, diffs: c.diffs, askable: true }).then((took) => {
+        if (!took) setOpenWorkFile(path)
+      })
+      return
+    }
+    setOpenWorkFile(path)
+  }, [])
+  const onOpenToolFile = useCallback((path: string): void => openWorkFileRouted(path), [openWorkFileRouted])
+  const openChangedFile = useCallback((f: ChangedFile): void => openWorkFileRouted(f.path), [openWorkFileRouted])
   const openSubagentCard = useCallback((a: SubAgentInfo): void => setOpenSubagentId(a.id), [])
 
   // /clear — reset this window's conversation (client command, same as 본채팅).
@@ -518,6 +537,7 @@ export function SessionWindow(): React.ReactElement {
     if (busy) return
     window.api.session?.cancel().catch(() => {})
     load(initialSessionState)
+    follow.reset() // 점프 버튼·래치 잔상 방지 — 본채팅 clearConversation과 동일
     setInput('')
     setImages([])
     setQueue([])
@@ -688,12 +708,46 @@ export function SessionWindow(): React.ReactElement {
     const lines = p.from != null && p.to != null ? ` lines="${Math.min(p.from, p.to)}-${Math.max(p.from, p.to)}"` : ''
     const prompt = `<selection file="${p.path}"${lines}>\n${p.text}\n</selection>\n\n${p.question}`
     setOpenWorkFile(null)
+    setDocked(null)
     if (busy) {
       const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
       setQueue((q) => [...q, { id, text: prompt, images: [], picker }])
     } else {
       runPrompt(prompt, { images: [], keepDraft: true })
     }
+  }
+  // 뷰어 창 → 이 창(원래 창): 「창 안으로」로 되돌아온 파일 · 질문 패널의 질문(최신 핸들러를 ref로)
+  const askRef = useRef(onAskSelection)
+  askRef.current = onAskSelection
+  useEffect(() => {
+    const v = window.api.viewer
+    if (!v) return
+    const offDock = v.onDocked((p) => {
+      setOpenWorkFile(null)
+      setDocked(p)
+    })
+    const offAsk = v.onAskSelection((p) => askRef.current(p))
+    return () => {
+      offDock()
+      offAsk()
+    }
+  }, [])
+  // 「별도 창으로」 — 끈적한 모드를 켜고 지금 파일을 독립 창으로. 창을 못 세우면 모드를 되돌린다.
+  const onPopoutFile = (p: string): void => {
+    setViewerWindowMode(true)
+    const src = docked
+    void openInViewerWindow({
+      path: p,
+      cwd: src ? src.cwd : (state.session?.cwd ?? cwd),
+      diffs: src ? diffsOf(src) : state.diffs,
+      override: src && p === src.path ? src.override : null,
+      askable: true
+    }).then((took) => {
+      if (took) {
+        setOpenWorkFile(null)
+        setDocked(null)
+      } else setViewerWindowMode(false)
+    })
   }
 
   const onPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
@@ -879,14 +933,19 @@ export function SessionWindow(): React.ReactElement {
       )}
 
       {/* 작업 바/툴 로그에서 연 파일 뷰어 — cwd는 엔진이 실제로 쓴 폴더(세션 보고값) */}
-      {openWorkFile && (
+      {(openWorkFile || docked) && (
         <Suspense fallback={null}>
           <FileModal
-            path={openWorkFile}
-            cwd={state.session?.cwd ?? cwd}
-            diffs={state.diffs}
-            onClose={() => setOpenWorkFile(null)}
+            path={docked ? docked.path : openWorkFile}
+            cwd={docked ? docked.cwd : (state.session?.cwd ?? cwd)}
+            diffs={docked ? diffsOf(docked) : state.diffs}
+            override={docked ? docked.override : null}
+            onClose={() => {
+              setOpenWorkFile(null)
+              setDocked(null)
+            }}
             onAskSelection={onAskSelection}
+            onPopout={onPopoutFile}
           />
         </Suspense>
       )}

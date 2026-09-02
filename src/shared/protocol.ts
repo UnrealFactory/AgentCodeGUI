@@ -651,6 +651,29 @@ export interface PanelPopStates {
   leftovers: PanelPopState[]
 }
 
+// ── 파일 뷰어 독립 창 (3.0) ───────────────────────────────────
+/** 어느 창 → main → 뷰어 창: 파일 하나를 별도 OS 창의 뷰어로. "창은 자리, 파일은 페이로드" —
+ *  그 파일 하나에 필요한 것만 싣는다(세션 전체 diffs가 아니라 그 파일의 diff 하나). */
+export interface ViewerOpenPayload {
+  path: string // 호출 창의 cwd 기준 상대 경로(또는 절대 경로) — 카드 뷰어의 path prop 그대로
+  cwd: string
+  diff: FileDiff | null // 이 파일의 누적 diff(있으면 변경 마킹) — 카드 뷰어의 diffs[path]
+  override: { content: string | null; diff: FileDiff | null; label: string | null } | null // Git 카드 스냅샷
+  askable: boolean // 호출 창에 채팅이 있어 질문 패널(드래그 선택 → 질문)을 쓸 수 있는가
+}
+/** 뷰어 창 → main → 원래 창: 질문 패널에서 보낸 질문(카드 뷰어의 onAskSelection 인자와 같다) */
+export interface ViewerAskPayload {
+  path: string
+  text: string
+  from: number | null
+  to: number | null
+  question: string
+}
+/** main → 전 창: 끈적한 모드(파일 열기가 전부 독립 창으로 가는가) */
+export interface ViewerMode {
+  window: boolean
+}
+
 export interface PermissionResponse {
   requestId: string
   // 'allow_always' = allow now AND stop asking for this tool for the rest of the session
@@ -1111,6 +1134,17 @@ export const IPC = {
   maPanelClose: 'ma:panel-close', // 메인 창 → 팝아웃 창 닫기 (closed가 복귀 통지를 담당)
   maPanelStates: 'ma:panel-states', // 메인 창 마운트 → 이 세션의 열린 팝아웃 + 미회수 복귀분 조회(소비)
   maPanelLeftoverClear: 'ma:panel-leftover-clear', // 메인 창 → 라이브로 회수한 복귀분의 잔여 사본 폐기
+  // 파일 뷰어 독립 창 — 코드 뷰어 카드를 별도 OS 창으로(듀얼 모니터: 한쪽은 IDE, 한쪽은 코드).
+  // 끈적한 모드: 「별도 창으로」 한 번이면 이후 모든 파일 열기가 그 창으로, 「창 안으로」까지.
+  // 파일을 닫으면 창은 숨김(부수지 않음) — 다음 파일이 같은 자리에 창 생성 비용 없이 뜬다.
+  viewerState: 'viewer:state', // 어느 창 → main: 끈적한 모드 조회(부팅 페이로드에도 실린다)
+  viewerSetMode: 'viewer:set-mode', // 어느 창 → main: 모드 전환 → viewerMode 브로드캐스트
+  viewerOpen: 'viewer:open', // 어느 창 → main: 파일 하나를 뷰어 창으로(창이 없으면 생성) · main → 뷰어 창: 그 페이로드
+  viewerHydrate: 'viewer:hydrate', // 뷰어 창 → main: 마운트/재로드 복원분(닫은 뒤면 null)
+  viewerShown: 'viewer:shown', // 뷰어 창 → main: 파일을 그렸다 — 이제 창을 보여도 된다(빈 창 번쩍임 방지)
+  viewerHide: 'viewer:hide', // 뷰어 창 → main: 파일을 닫았다 — 창은 숨긴다
+  viewerDock: 'viewer:dock', // 뷰어 창 → main: 「창 안으로」 — 모드 해제 + 원래 창의 카드 뷰어로 되돌림
+  viewerAsk: 'viewer:ask-selection', // 뷰어 창 → main → 원래 창: 질문 패널 전송(원래 창의 채팅으로)
   // 채팅 — a pure-conversation workspace on its OWN engine instance, with its own
   // conversation list. No project folder, explorer, or tools UI.
   talkRun: 'talk:run',
@@ -1279,6 +1313,8 @@ export const IPC = {
   engineInstallProgress: 'engine:install-progress',
   lspInstallProgress: 'lsp:install-progress', // streamed progress while downloading a language server
   winState: 'win:state',
+  viewerMode: 'viewer:mode', // main→전 창: 뷰어 끈적한 모드 변경(어느 창이 바꿨든 다음 클릭이 같은 답)
+  viewerDocked: 'viewer:docked', // main→원래 창: 「창 안으로」로 되돌아온 파일(카드 뷰어로 연다)
   // 포커스 밖 알림 (토스트 창) — 렌더러가 전이를 알리고, 메인이 비포커스 판정·표시·라우팅
   notifyEvent: 'notify:event', // 렌더러→main: 턴 종료/승인 대기/질문 발생
   notifyOpen: 'notify:open', // 토스트→main: 항목 클릭 — 해당 창 포커스 + 점프

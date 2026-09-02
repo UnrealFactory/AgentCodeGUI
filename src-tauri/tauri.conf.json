@@ -36,7 +36,7 @@
       "lsp-modules/node_modules/typescript/package.json": "node_modules/typescript/package.json",
       "lsp-modules/node_modules/pyright": "node_modules/pyright"
     },
-    "icon": ["../build/icon3.ico"],
+    "icon": ["../build/icon.ico"],
     "publisher": "AgentCodeGUI",
     "homepage": "https://github.com/UnrealFactory/AgentCodeGUI",
     "copyright": "Copyright (c) 2026 AgentCodeGUI",
@@ -47,7 +47,7 @@
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "nsis": {
         "installMode": "currentUser",
-        "installerIcon": "../build/icon3.ico",
+        "installerIcon": "../build/icon.ico",
         "headerImage": "../build/installerHeader.bmp",
         "sidebarImage": "../build/installerSidebar.bmp",
         "languages": ["Korean", "English"],

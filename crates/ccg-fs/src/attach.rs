@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn the_folder_is_under_the_app_home() {
         let home = ccg_store::app_home();
-        assert!(home.ends_with(".agentcodegui") || std::env::var("CCG_HOME").is_ok());
+        assert!(home.ends_with(".agentcodegui3") || std::env::var("CCG_HOME").is_ok());
         assert_eq!(home.join("attachments").file_name().unwrap(), "attachments");
     }
 }

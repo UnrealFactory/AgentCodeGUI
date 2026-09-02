@@ -11,6 +11,8 @@ pub mod ma;
 pub mod prefs;
 pub mod talk;
 pub mod window_state;
+/// 파일 뷰어 독립 창의 자리·모드 기억(viewer-window.json) — `window_state`와 같은 규약.
+pub mod viewer_state;
 
 // ── 3.0 통합 스토어(chats-v3) — CCG_UNIFIED_STORE=1 에서만 배선된다 ──────────
 pub mod boards;
@@ -104,10 +106,16 @@ fn home_dir() -> PathBuf {
 /// 2.6.2는 이 오버라이드를 dev(!isPackaged)에서만 존중했다 — 패키징본을 격리 홈으로
 /// 띄울 수 없어 벤치가 사용자 실홈을 건드릴 위험이 있었다. 3.0은 릴리즈에서도 존중한다
 /// (ARCHITECTURE-3.0 "개발·벤치는 항상 CCG_HOME 격리 — dev/release 불문").
+///
+/// ★ 기본 홈은 **`.agentcodegui3`** — 2.6.2의 `.agentcodegui`와 공유하지 않는다
+/// (2026-09-01 사용자 결정). 같은 홈을 쓰며 제자리 마이그레이션하던 초안은 락 우회·
+/// 백업·오염 가드가 줄줄이 따라붙었다 — 갈라서면 그 전부가 필요 없고, 2.6.2 데이터는
+/// 손도 안 댄 채 남는다. 대가: 기존 사용자의 대화·로그인이 3.0으로 넘어오지 않는다
+/// (2.6.2를 열면 그대로 있다). 부팅 마이그레이션 코드는 무해한 no-op이 되므로 남긴다.
 pub fn app_home() -> PathBuf {
     match std::env::var("CCG_HOME") {
         Ok(v) if !v.is_empty() => absolutize(Path::new(&v)),
-        _ => home_dir().join(".agentcodegui"),
+        _ => home_dir().join(".agentcodegui3"),
     }
 }
 

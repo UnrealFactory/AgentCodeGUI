@@ -72,8 +72,9 @@ export type ThreadItem =
   // ★ M-UI §5-5 — 압축/재개 **경계**(rule · neutral · split). "이 위로는 원문이 없다"는
   // 구조적 사건이라 카드(84px)가 아니라 선(18.8px)이다. 긴 대화에서 여러 번 일어난다.
   | { kind: 'boundary'; id: string; glyph: 'compact' | 'resume'; label: string; num: string | null; time: string }
-  // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
-  | { kind: 'worked'; id: string; ms: number }
+  // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다.
+  // time — 끝난 시각(★R4 사용자 요청: 중단 마커의 「오후 2:59」와 같은 문법). 옛 스냅샷엔 없다.
+  | { kind: 'worked'; id: string; ms: number; time?: string }
   // 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
   // 끊긴 턴의 흔적(말풍선·부분 답변·도구 로그)은 그대로 위에 남는다.
   // ms/tools/time — M-UI §5-4. 현행은 남는 폭을 통째로 헤어라인으로 채웠다. 그 오른쪽 끝에
@@ -1335,7 +1336,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 이미 그 자리를 차지했으므로(우아한 interrupt의 늦은 result) 붙이지 않는다.
       if (!e.isError && !state.interrupted && e.durationMs != null && e.durationMs >= 1000) {
         seq += 1
-        extra.push({ kind: 'worked', id: `w${seq}`, ms: e.durationMs })
+        extra.push({ kind: 'worked', id: `w${seq}`, ms: e.durationMs, time: nowTime() })
       }
       if (extra.length) return { ...base, seq, messages: capThread([...without, ...extra]) }
       return base

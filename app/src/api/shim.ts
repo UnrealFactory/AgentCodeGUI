@@ -15,6 +15,7 @@
  * 그때 심은 채널당 1회만 console.warn 하고 **시그니처에 맞는 안전값**을 돌려준다 —
  * 어떤 화면도 크래시하지 않는 게 M1의 계약이다(빈 목록·null·false·no-op).
  * ============================================================ */
+import type { ViewerOpenPayload, ViewerAskPayload, ViewerMode } from '@shared/protocol'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -637,7 +638,22 @@ const api: WindowApi = {
     onShow: (cb) => subscribe(IPC.trayMenuShow, cb)
   },
   onEngineEvent: (cb: (e: EngineEvent) => void) => subscribe(IPC.engineEvent, cb),
-  onWinState: (cb: (s: WindowState) => void) => subscribe(IPC.winState, cb)
+  onWinState: (cb: (s: WindowState) => void) => subscribe(IPC.winState, cb),
+  // 파일 뷰어 독립 창 — `viewer:state`는 부팅 페이로드에 실려 첫 호출이 왕복 없이 끝난다.
+  viewer: {
+    state: () => call<ViewerMode>(IPC.viewerState, [], { window: false }),
+    setMode: (on: boolean) => callVoid(IPC.viewerSetMode, [on]),
+    open: (p: ViewerOpenPayload) => call<boolean>(IPC.viewerOpen, [p], false),
+    hydrate: () => call<ViewerOpenPayload | null>(IPC.viewerHydrate, [], null),
+    shown: () => callVoid(IPC.viewerShown),
+    hide: () => callVoid(IPC.viewerHide),
+    dock: (p: ViewerOpenPayload) => callVoid(IPC.viewerDock, [p]),
+    askSelection: (p: ViewerAskPayload) => callVoid(IPC.viewerAsk, [p]),
+    onOpen: (cb: (p: ViewerOpenPayload) => void) => subscribe(IPC.viewerOpen, cb),
+    onMode: (cb: (m: ViewerMode) => void) => subscribe(IPC.viewerMode, cb),
+    onDocked: (cb: (p: ViewerOpenPayload) => void) => subscribe(IPC.viewerDocked, cb),
+    onAskSelection: (cb: (p: ViewerAskPayload) => void) => subscribe(IPC.viewerAsk, cb)
+  }
 }
 
 // 드래그로 들어온 파일의 OS 경로 — Tauri에는 webUtils.getPathForFile 대응물이 없다.

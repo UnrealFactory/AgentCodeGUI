@@ -90,7 +90,7 @@ function repoName(root: string): string {
 
 // AI 커밋 메시지 카드의 선택지 — 컴포저 picker와 같은 축(모델·effort)
 const AI_MODELS: { id: ModelId; label: string }[] = [
-  { id: 'fable', label: 'Fable 5' },
+  { id: 'fable', label: 'Fable 5.1' },
   { id: 'opus', label: 'Opus' },
   { id: 'sonnet', label: 'Sonnet' },
   { id: 'haiku', label: 'Haiku' }

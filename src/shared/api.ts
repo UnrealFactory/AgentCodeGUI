@@ -13,6 +13,9 @@ import type {
   EngineEvent,
   ChatTooling,
   WindowState,
+  ViewerOpenPayload,
+  ViewerAskPayload,
+  ViewerMode,
   UsageInfo,
   ApiConfigStatus,
   AuthStatus,
@@ -495,4 +498,33 @@ export interface WindowApi {
   /** Subscribe to streaming engine events. Returns an unsubscribe fn. */
   onEngineEvent(cb: (event: EngineEvent) => void): () => void
   onWinState(cb: (state: WindowState) => void): () => void
+  /** 파일 뷰어 독립 창(3.0) — 코드 뷰어 카드를 별도 OS 창으로. **선택 블록인 이유**는
+   *  `multi.toolingGet`과 같다: 이 계약면은 동결된 2.6.2 preload도 만족해야 하므로 3.0
+   *  전용 채널은 필수로 선언하지 않는다(호출부는 `?.`로 부른다). */
+  viewer?: {
+    /** 끈적한 모드 조회 — 부팅 페이로드에 실려 첫 호출은 왕복이 없다 */
+    state(): Promise<ViewerMode>
+    /** 모드 전환 — main이 전 창에 `onMode`로 브로드캐스트한다 */
+    setMode(on: boolean): Promise<void>
+    /** 파일 하나를 뷰어 창으로(창이 없으면 생성). false = 창을 못 세웠다 → 호출 창이 카드 뷰어로 */
+    open(p: ViewerOpenPayload): Promise<boolean>
+    /** 뷰어 창 → 마운트/재로드 복원분(닫은 뒤면 null) */
+    hydrate(): Promise<ViewerOpenPayload | null>
+    /** 뷰어 창 → 파일을 그렸다(이제 창을 보여도 된다) */
+    shown(): Promise<void>
+    /** 뷰어 창 → 파일을 닫았다(창은 숨긴다) */
+    hide(): Promise<void>
+    /** 뷰어 창 → 「창 안으로」: 모드 해제 + 이 파일을 원래 창의 카드 뷰어로 */
+    dock(p: ViewerOpenPayload): Promise<void>
+    /** 뷰어 창 → 질문 패널 전송(원래 창의 채팅으로) */
+    askSelection(p: ViewerAskPayload): Promise<void>
+    /** main → 뷰어 창: 다음 파일 */
+    onOpen(cb: (p: ViewerOpenPayload) => void): () => void
+    /** main → 전 창: 모드 변경 */
+    onMode(cb: (m: ViewerMode) => void): () => void
+    /** main → 원래 창: 「창 안으로」로 되돌아온 파일 */
+    onDocked(cb: (p: ViewerOpenPayload) => void): () => void
+    /** main → 원래 창: 뷰어 창에서 보낸 질문 */
+    onAskSelection(cb: (p: ViewerAskPayload) => void): () => void
+  }
 }

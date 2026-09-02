@@ -43,6 +43,9 @@ pub mod notify;
 /// 시스템 트레이 + 우클릭 메뉴 창(`tray.html`) — `traymenu:*`.
 #[path = "tray.rs"]
 pub mod tray;
+/// 파일 뷰어 독립 창(`#viewer`) — `viewer:*`. 같은 규약(`shared_env`)이라 같은 자리.
+#[path = "viewer.rs"]
+pub mod viewer;
 
 pub const MAIN: &str = "main";
 
@@ -72,6 +75,8 @@ fn boot_payload_script() -> String {
         // 소비자는 app/src/api/glassFallback.ts — `call()`이 없는 채널이라 shim의
         // takeBoot와 충돌하지 않는다(그쪽은 채널당 1회 소비, 이쪽은 읽기만).
         glass::UI_GLASS_STATE: glass::boot_state(),
+        // 파일 뷰어 창 모드(끈적한 모드) — 첫 파일 클릭이 "어디로 열지"를 왕복 없이 안다.
+        crate::ipc::windows::VIEWER_STATE: viewer::state_json(),
     });
     // JSON은 그대로 JS 리터럴로 유효하다(U+2028/2029도 ES2019+에서 문자열 안에 허용).
     format!("window.__CCG_BOOT={payload};")
@@ -196,6 +201,40 @@ fn shared_env<'a, R: tauri::Runtime, M: Manager<R>>(
         .disable_drag_drop_handler()
 }
 
+/// 창 아이콘을 exe 리소스(id 32512 = 멀티 프레임 `build/icon.ico`)에서 **크기별로** 다시 단다.
+///
+/// tauri는 컨텍스트에 박아 둔 RGBA **한 장**으로 작은/큰 아이콘을 만들어 붙이므로,
+/// 제목줄(16px)·작업 표시줄(24px)이 그 한 장을 늘이거나 줄여 그린다 — 2.6.2(Electron)는
+/// 윈도우 클래스 아이콘이 리소스에서 크기별 프레임을 골라 그려서, 나란히 두면 같은
+/// 마크인데 3.0만 뭉개져 보였다. `LoadImageW`가 요청 픽셀에 맞는 ico 프레임을 고르고,
+/// `LR_SHARED`라 핸들 해제 의무도 없다(프로세스 수명 공유 캐시).
+pub(crate) fn apply_resource_icon(win: &WebviewWindow) {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_SHARED,
+        SM_CXICON, SM_CXSMICON, WM_SETICON,
+    };
+    let Ok(hwnd) = win.hwnd() else { return };
+    unsafe {
+        let Ok(module) = GetModuleHandleW(PCWSTR::null()) else { return };
+        // resource.rc(tauri-build 생성)가 아이콘을 `32512 ICON "…icon.ico"`로 박는다.
+        let res = PCWSTR(32512usize as *const u16);
+        for (kind, metric) in [(ICON_SMALL, SM_CXSMICON), (ICON_BIG, SM_CXICON)] {
+            let px = GetSystemMetrics(metric);
+            if let Ok(icon) = LoadImageW(Some(module.into()), res, IMAGE_ICON, px, px, LR_SHARED) {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(kind as usize)),
+                    Some(LPARAM(icon.0 as isize)),
+                );
+            }
+        }
+    }
+}
+
 pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let st = ccg_store::window_state::load();
     *NORMAL.lock().unwrap() = Some(st.clone());
@@ -269,6 +308,7 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     });
 
     let win = b.build()?;
+    apply_resource_icon(&win);
 
     // 렌더러/브라우저 사망 감지 — 유령 창을 남기지 않기 위한 자리(crash.rs).
     crate::crash::arm(app, &win);
@@ -443,6 +483,7 @@ pub fn open_session_window_for(app: &AppHandle, chat: Option<&str>) -> tauri::Re
         win
     }
     .build()?;
+    apply_resource_icon(&win);
 
     // 추가 채팅 창도 같은 복구 경로를 탄다 — `--process-per-site`로 렌더러를 공유하므로
     // 렌더러가 한 번 죽으면 이 창들도 같이 유령이 된다.
@@ -808,6 +849,8 @@ pub fn reset_shown() {
     // 재생성의 재료라 남긴다). 토스트/트레이 메뉴는 오버레이라 다시 세우지 않고 치운다 —
     // 부서진 창의 라벨이 남으면 `notify::push`가 없는 창에 emit_to를 계속 던진다.
     popout::clear_windows();
+    // 뷰어 창도 레지스트리만 비운다 — 되세우지 않는다(다음 파일 클릭이 곧 복구, 자리는 디스크에).
+    viewer::clear_windows();
     notify::drop_toast();
 }
 

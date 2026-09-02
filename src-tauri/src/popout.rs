@@ -181,6 +181,7 @@ pub fn open(app: &AppHandle, state: &Value) -> Result<String, String> {
     };
 
     let win = b.build().map_err(|e| e.to_string())?;
+    crate::win::apply_resource_icon(&win);
 
     // 계약: 모든 앱 크롬 창은 shared_env + 크래시 방어 + 유리 유지.
     crate::crash::arm(app, &win);

@@ -57,7 +57,8 @@
   ; `shared_env` — 기본값 %LOCALAPPDATA%\<identifier>는 CCG_HOME 격리를 벗어나고 벤치의
   ; 콜드 스타트도 유리하게 왜곡한다). 그 대가로 제거 후 잔여물이 앱 홈에 남는다.
   ;
-  ; **앱 홈 자체(`$PROFILE\.agentcodegui`)는 2.6.2와 공유한다 — 절대 지우지 않는다.**
+  ; 앱 홈은 3.0 전용 `$PROFILE\.agentcodegui3`다(2026-09-01 — 2.6.2의 `.agentcodegui`와
+  ; 분리, 그쪽은 이 설치기가 아예 모른다). 홈 자체는 지우지 않는다 — 대화·계정이 산다.
   ; `webview2\` 폴더를 통째로도 지우지 않는다: 그 안 `Local Storage`에 **사용자가 쓴
   ; 프롬프트 라이브러리**(app/src/lib/prompts.ts의 `prompt.library` — 다른 저장소가 없다)와
   ; 최근 작업 폴더·창별 picker 기본값·언어 미러가 산다. 통째로 지우면 그게 같이 죽는다.
@@ -67,7 +68,7 @@
   ;   ⇒ 캐시 ~10.7M(89%)를 걷고 Local Storage 9K는 남는다.
   ; 없는 경로에 대한 RMDir는 무해한 no-op이라 WebView2 판이 바뀌어도 조용히 실패한다.
   Push $R0
-  StrCpy $R0 "$PROFILE\.agentcodegui\webview2\EBWebView"
+  StrCpy $R0 "$PROFILE\.agentcodegui3\webview2\EBWebView"
   ${If} ${FileExists} "$R0\*.*"
     DetailPrint "WebView2 캐시 정리: $R0 (사용자 데이터는 남긴다)"
     RMDir /r "$R0\Default\Cache"

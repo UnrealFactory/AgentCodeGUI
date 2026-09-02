@@ -260,7 +260,8 @@ mod tests {
         for p in [
             user.join(".claude"),
             user.join(".codex"),
-            user.join(".agentcodegui"),
+            user.join(".agentcodegui"),  // 2.6.2 홈 — 남의 집이 됐지만 여전히 금지다
+            user.join(".agentcodegui3"), // 3.0 실홈 자기 자신
             user.clone(),
             h.dir.clone(),
             h.path("accounts/..").join("..").join(".claude"),

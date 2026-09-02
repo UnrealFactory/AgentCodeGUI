@@ -401,6 +401,12 @@ pub struct SwitchRequest<'a> {
     pub current: &'a BillingAxis,
     /// 지금 정체성의 모델 — Fable 창을 소비하는지 가르는 재료.
     pub model: &'a str,
+    /// ★Codex 축(2026-09-01) — 이 채팅의 엔진이 Codex인가. 셸은 이 값으로 계정
+    /// 우주를 가른다(Claude 구독 계정 ↔ OpenAI 계정 — 같은 이메일이라도 다른 세계다).
+    pub codex: bool,
+    /// Codex 축의 현재 계정(raw). `None` = 기본 계정 — 기본의 실제 이메일은 계정
+    /// 스토어를 아는 셸이 해석한다(엔진에는 스토어가 없다).
+    pub codex_account: Option<&'a str>,
     /// 이 한도 에피소드에서 **이미 거쳐 온** 계정(A→B→A 핑퐁 금지).
     pub tried: &'a std::collections::BTreeSet<String>,
     pub now_epoch_ms: u64,

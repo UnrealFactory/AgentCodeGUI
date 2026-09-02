@@ -66,6 +66,11 @@ pub fn real_home() -> Option<PathBuf> {
     let p = std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()).map(PathBuf::from).or_else(|| {
         std::env::var("HOME").ok().filter(|s| !s.is_empty()).map(PathBuf::from)
     })?;
+    // 3.0 실홈 우선, 없으면 2.6.2 홈 — 개발 기계엔 실자격증명이 아직 2.6.2 홈에 있다
+    let h3 = p.join(".agentcodegui3");
+    if h3.is_dir() {
+        return Some(h3);
+    }
     let h = p.join(".agentcodegui");
     h.is_dir().then_some(h)
 }

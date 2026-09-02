@@ -35,11 +35,11 @@ import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
-import { relTime } from './Sidebar'
 import { Markdown } from './Markdown'
 import { FileBadge } from './fileType'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { Todos, FileRow, SubAgent } from './AgentPanel'
+import { McpSkillView } from './McpSkillView'
 import { WinControls } from './TitleBar'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
 import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
@@ -59,13 +59,11 @@ import {
   IconSend,
   IconClose,
   IconAlert,
-  IconShieldChk,
   IconExpand,
   IconBolt,
   IconX2,
   IconPlug,
   IconWrench,
-  IconFileText,
   IconCompress,
   IconRefresh,
   IconBook,
@@ -109,7 +107,7 @@ interface ModeOpt {
 // 언어로 박제된다(렌더 때 평가해야 언어 전환이 즉시 따라온다)
 function modelOpts(): ModelOpt[] {
   return [
-    { v: 'Fable 5', id: 'fable', d: t('최상위 지능 · 가장 어려운 작업', 'Top intelligence · hardest work'), ctx: 1000 },
+    { v: 'Fable 5.1', id: 'fable', d: t('최상위 지능 · 가장 어려운 작업', 'Top intelligence · hardest work'), ctx: 1000 },
     { v: 'Opus 5', id: 'opus', d: t('고성능 · 복잡한 작업', 'High performance · complex work'), ctx: 1000 },
     { v: 'Sonnet 5', id: 'sonnet', d: t('균형 · 일상 작업', 'Balanced · everyday work'), ctx: 1000 },
     { v: 'Haiku 4.5', id: 'haiku', d: t('빠른 응답 · 가벼운 작업', 'Fast · light work'), ctx: 200 }
@@ -269,12 +267,12 @@ export interface SlashCmd {
   icon: ComponentType<IconProps>
 }
 export function slashCommands(): SlashCmd[] {
+  // ★R4(2026-09-01 사용자 결정) — 팔레트는 clear·compact(+btw)만. init·review·
+  // security-review는 목록에서 뺐다(타이핑하면 엔진 내장 명령으로 여전히 돈다 —
+  // 카드 추적(session.ts CMD_NAMES)도 그대로라 손으로 친 /init은 카드가 선다).
   return [
-    { name: 'init', desc: t('코드베이스를 분석해 CLAUDE.md 생성', 'Analyze the codebase and create CLAUDE.md'), icon: IconFileText },
     { name: 'clear', desc: t('대화 기록과 컨텍스트 초기화', 'Clear the conversation and context'), icon: IconRefresh },
-    { name: 'compact', desc: t('대화를 요약해 컨텍스트 절약', 'Summarize the conversation to save context'), icon: IconCompress },
-    { name: 'review', desc: t('변경 사항 코드 리뷰', 'Code-review the changes'), icon: IconEye },
-    { name: 'security-review', desc: t('변경 사항의 보안 취약점 검토', 'Check the changes for security issues'), icon: IconShieldChk }
+    { name: 'compact', desc: t('대화를 요약해 컨텍스트 절약', 'Summarize the conversation to save context'), icon: IconCompress }
   ]
 }
 /** /btw 팔레트 항목 — tryBtw 인터셉트가 배선된 표면만 commands에 끼워 넣는다(현재
@@ -288,10 +286,10 @@ export function btwSlashCmd(): SlashCmd {
     icon: IconPopout
   }
 }
-/** 표면별 "/" 팔레트 조립 — 기본 명령 사이(clear 다음)에 /btw를 끼운다 */
+/** 표면별 "/" 팔레트 조립 — clear 다음에 /btw를 끼운다 (clear · btw · compact) */
 export function slashCommandsWithBtw(): SlashCmd[] {
   const all = slashCommands()
-  all.splice(2, 0, btwSlashCmd())
+  all.splice(1, 0, btwSlashCmd())
   return all
 }
 
@@ -364,6 +362,13 @@ function fmtElapsedKo(s: number): string {
 // line counts for edits (colored), or the tool's text summary otherwise.
 // Bash는 '✓' 대신 실행 시간 · 출력 줄수 — 다른 도구의 '10줄'과 같은 문법.
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+// Skill/Workflow 정착 행 — 요약 문장(「Launching skill: …」 등)이 대상 자리(동사 옆)로
+// 온다(2026-09-01 사용자 결정: 오른쪽 끝 정렬 기각·원문 유지). 이름 대상(t-target)은
+// 요약이 이름을 이미 품고 있어 겹치므로, 이때는 실행 중에만 보인다.
+function resultBesideVerb(tl: ToolLogItem): boolean {
+  return (tl.verb === 'Skill' || tl.verb === 'Workflow') && tl.status === 'done' && !!tl.result
+}
+
 function ToolResult({ t: tl }: { t: ToolLogItem }) {
   // ★ 3.0 M-UX R2 — 이 도구가 **사유와 함께 정착**했나(`chat:run-state.settled[]`).
   // 스트림이 밖에서 죽으면 합성 result가 busy만 내리고 도구 행은 안 건드린다 →
@@ -388,6 +393,9 @@ function ToolResult({ t: tl }: { t: ToolLogItem }) {
     ].filter(Boolean)
     if (parts.length) return <span className="t-res">{parts.join(' · ')}</span>
   }
+  // Skill/Workflow 정착 — 요약 원문이 오른쪽 끝이 아니라 **동사 옆**에 앉는다
+  // (2026-09-01 사용자 결정: 원문은 그대로, 정렬만 왼쪽으로)
+  if (resultBesideVerb(tl)) return <span className="t-res near">{tl.result}</span>
   const diff = (tl.result ?? '').match(/^\+(\d+) -(\d+)$/)
   if (diff)
     return (
@@ -663,13 +671,16 @@ function ToolGroup({
             >
               <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
               <span className="t-verb">{tl.verb}</span>
-              {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다 */}
-              <span
-                className={'t-target' + (openable ? ' has-tip' : '')}
-                data-tip={openable ? t('파일 보기', 'View file') : undefined}
-              >
-                <span className="t-txt">{tl.target}</span>
-              </span>
+              {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다.
+                  Skill/Workflow 정착 행은 요약 문장이 이 자리로 오므로 이름 대상은 접는다 */}
+              {!resultBesideVerb(tl) && (
+                <span
+                  className={'t-target' + (openable ? ' has-tip' : '')}
+                  data-tip={openable ? t('파일 보기', 'View file') : undefined}
+                >
+                  <span className="t-txt">{tl.target}</span>
+                </span>
+              )}
               <ToolResult t={tl} />
             </div>
           </Fragment>
@@ -907,8 +918,15 @@ export const MessageView = memo(function MessageView({
   useLang() // 언어 전환 재렌더 구독 (memo 컴포넌트라 루트 재렌더가 여기까지 오지 않는다)
   if (item.kind === 'toolgroup') return <ToolGroup item={item} onOpenFile={onOpenFile} />
   if (item.kind === 'cmdresult') return <CmdResultCard item={item} />
-  // 턴 마무리 줄 — 답변 바로 위의 'N초 동안 작업함' (PoC .worked)
-  if (item.kind === 'worked') return <div className="worked">{fmtWorked(item.ms)}</div>
+  // 턴 마무리 줄 — 답변 바로 위의 'N초 동안 작업함' (PoC .worked).
+  // ★R4 — 끝난 시각을 잇는다(사용자 요청: 중단 마커의 「오후 2:59」와 같은 문법).
+  if (item.kind === 'worked')
+    return (
+      <div className="worked">
+        {fmtWorked(item.ms)}
+        {item.time && <span className="tm"> · {item.time}</span>}
+      </div>
+    )
   // 중단 마커 — Esc/중지로 턴을 끊은 자리. 흔적(말풍선·부분 답변·도구 로그)은 그대로
   // 위에 남는다 (클로드 코드의 'Interrupted' 문법)
   if (item.kind === 'interrupted') {
@@ -945,37 +963,26 @@ export const MessageView = memo(function MessageView({
       </div>
     )
   }
-  // 문답 흔적 — 형태 = card · **face=off**(맨몸). 상태가 변하지 않는 기록엔 면이 없다.
-  // 왼쪽 15px 마커 칸이 다른 6종과 정렬선을 맞춘다(2.6.2는 AI 발화와 같은 자리였다).
+  // 문답 흔적 — ★R4에서 2.6.2의 `.qa` 디자인으로 되돌림(사용자 지적: `?` 타일이
+  // 별로고 옛 AgentCode 쪽이 낫다). 마커 칸 없이 Q/✓만, 시각은 아래 오른쪽 끝.
   if (item.kind === 'qa') {
     return (
-      <div className={'ntf-card ntf-bare ' + tone('positive')}>
-        <span className="ntf-tile">?</span>
-        <div className="ntf-bd">
-          <div className="ntf-qa">
-            {item.pairs.map((p, i) => (
-              <div key={i}>
-                <div className="ntf-q">
-                  <span className="ntf-qm">Q{i + 1}</span>
-                  <span className="ntf-qt">{p.q}</span>
-                </div>
-                {p.a.map((a, k) => (
-                  <div className="ntf-a" key={k}>
-                    <IconCheck size={12} />
-                    <span>{a}</span>
-                  </div>
-                ))}
+      <div className="qa">
+        {item.pairs.map((p, i) => (
+          <div key={i}>
+            <div className="qq2">
+              <span className="qm">Q{i + 1}</span>
+              <span className="qt2">{p.q}</span>
+            </div>
+            {p.a.map((a, k) => (
+              <div className="qa2" key={k}>
+                <IconCheck size={14} />
+                <span>{a}</span>
               </div>
             ))}
           </div>
-        </div>
-        {item.time && (
-          <div className="ntf-tray">
-            <span className="ntf-tm" style={{ color: 'var(--text-4)' }}>
-              {item.time}
-            </span>
-          </div>
-        )}
+        ))}
+        {item.time && <div className="qa-tm">{item.time}</div>}
       </div>
     )
   }
@@ -1047,12 +1054,22 @@ export const MessageView = memo(function MessageView({
           )}
           {item.text &&
             (isUser ? (
-              <p>{item.animate ? <Typewriter text={item.text} /> : item.text}</p>
+              // ★R4 — 보낸 시각을 본문 끝에 **플로트**로 잇는다(사용자 결정: 필 안으로
+              // 합치되, 마지막 줄에 자리가 있으면 같은 줄 오른쪽 끝 · 없으면 저절로
+              // 다음 줄 — 텔레그램 문법). AI 발화는 그대로 맨몸(아바타·메타 없음).
+              <p>
+                {item.animate ? <Typewriter text={item.text} /> : item.text}
+                {item.time && <span className="msg-tm">{item.time}</span>}
+              </p>
             ) : live ? (
               <SmoothMarkdown text={item.text} running={!!running} />
             ) : (
               <Markdown text={item.text} />
             ))}
+          {/* 첨부만 있는 메시지 — 흘러들 본문 줄이 없으니 오른쪽 정렬 한 줄로 */}
+          {isUser && item.kind === 'msg' && !item.text && item.time && (
+            <div className="msg-tm block">{item.time}</div>
+          )}
         </div>
       </div>
     </div>
@@ -1267,7 +1284,9 @@ function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
             </button>
             <span className="ntf-tm">{item.time}</span>
           </div>
-          <span className="ntf-b">{head}</span>
+          {/* ★R4 — 요약 줄은 굵기 없이 색만 올린다(사용자 지적: 문장 통째 600은 판 위에서
+              글자가 뭉개져 보임). `.ntf-b`(굵게)는 문장 속 강조 낱말 몫으로 남긴다. */}
+          <span className="ntf-eh">{head}</span>
         </div>
         {raw && <div className={'ntf-raw' + (lines > 8 && !full ? ' clip' : '')}>{raw}</div>}
         {/* 규약: 원문 면은 최대 8줄, 넘으면 접고 [전체 보기] */}
@@ -1602,12 +1621,11 @@ export function FolderPop({
           {baseOf(f.path)}
           <span className="sub">{f.path}</span>
         </span>
-        {(f.current || f.t > 0) && <span className="end">{f.current ? t('지금', 'Now') : relTime(f.t)}</span>}
-        {f.current && (
-          <span className="pcheck">
-            <IconCheck size={12} stroke={2.4} />
-          </span>
-        )}
+        {/* ★R4 — 상대 시간 라벨(「10분」·「1시간」·「지금」)은 제거(2026-09-01 사용자 결정:
+            필요 없음 — 목록 정렬이 이미 최근순이고 현재 폴더는 ✓가 말한다). 꼬리 칸은
+            행마다 **같은 수로 예약**한다 — ✓·별·참조·✕가 있는 행/없는 행이 섞이면 그 폭만큼
+            내용 기준선이 밀리므로, 없는 칸도 .hold(투명·클릭 불가)로 자리만 채운다. */}
+        <span className="pcheck">{f.current && <IconCheck size={12} stroke={2.4} />}</span>
         {/* 즐겨찾기 별 — 켜지면 항상 표시, 꺼진 행은 호버에만. 최근에서 밀려나도
             즐겨찾기 섹션에 남는다 (버튼 안 span이라 role만 — 행 클릭과 분리) */}
         <span
@@ -1620,25 +1638,28 @@ export function FolderPop({
         </span>
         {/* 참조 토글 — 행 클릭(작업 폴더로)과 별개로, 이 폴더를 참조 폴더로 얹고 뺀다.
             현재 폴더는 이미 루트라 참조가 될 수 없어 숨긴다. 켜지면 ✓(액센트) 상시 표시 */}
-        {onAddRefPath && !f.current && (
-          <span
-            className={'hstar htg' + (ref ? ' on' : '')}
-            role="button"
-            aria-label={
-              ref ? t('참조 폴더에서 제거', 'Remove from reference folders') : t('참조 폴더로 추가', 'Add as reference folder')
-            }
-            onClick={(e) => {
-              e.stopPropagation()
-              if (ref) onRemoveRef?.(f.path)
-              else onAddRefPath(f.path)
-            }}
-          >
-            {ref ? <IconCheck size={12} stroke={2.4} /> : <IconPlus size={12} />}
-          </span>
-        )}
+        {onAddRefPath &&
+          (!f.current ? (
+            <span
+              className={'hstar htg' + (ref ? ' on' : '')}
+              role="button"
+              aria-label={
+                ref ? t('참조 폴더에서 제거', 'Remove from reference folders') : t('참조 폴더로 추가', 'Add as reference folder')
+              }
+              onClick={(e) => {
+                e.stopPropagation()
+                if (ref) onRemoveRef?.(f.path)
+                else onAddRefPath(f.path)
+              }}
+            >
+              {ref ? <IconCheck size={12} stroke={2.4} /> : <IconPlus size={12} />}
+            </span>
+          ) : (
+            <span className="hstar hold" aria-hidden />
+          ))}
         {/* 최근에서 제거 ✕ — 최근 섹션 행에만 (즐겨찾기는 별 해제, 현재 폴더는 대상 아님).
             다시 그 폴더를 사용하면 최근에 재등장한다 */}
-        {f.rec && (
+        {f.rec ? (
           <span
             className="hstar hx"
             role="button"
@@ -1651,6 +1672,8 @@ export function FolderPop({
           >
             <IconClose size={11} />
           </span>
+        ) : (
+          <span className="hstar hold" aria-hidden />
         )}
       </button>
     )
@@ -1731,6 +1754,7 @@ export function FolderPop({
 export function ChatHeader({
   title,
   cwd,
+  chatId,
   placeholder = t('폴더 선택', 'Select folder'),
   onSelectFolder,
   onBrowseFolder,
@@ -1744,6 +1768,9 @@ export function ChatHeader({
 }: {
   title: string
   cwd?: string
+  // ★R3 — 넘기면 폴더 칩 오른쪽에 「MCP & Skill」 칩(McpSkillView)이 선다. 설정 ▸
+  // MCP/Skill 탭 제거(2026-09-01)로 본채팅에도 이 칩이 유일한 창구다.
+  chatId?: string
   placeholder?: string // 폴더 미지정일 때 칩 라벨 — 추가 채팅은 기본 폴더가 '바탕화면'
   onSelectFolder?: (path: string) => void // 목록에서 선택 — App의 requestFolder(확인 카드 흐름)
   onBrowseFolder?: () => void // 찾아보기 — OS 폴더 선택
@@ -1804,6 +1831,10 @@ export function ChatHeader({
           )}
         </span>
       )}
+      {/* ★R3 — 도구 환경 칩(폴더 칩 오른쪽 — 읽는 순서 「어느 폴더 → 무엇이 붙어 있나」).
+          onOpen이 폴더 팝오버를 접는다(멀티 헤더와 같은 배타 규약 — .hfold끼리는
+          stopPropagation 때문에 바깥닫힘이 서로 안 울린다). */}
+      {onBrowseFolder && chatId && <McpSkillView chatId={chatId} cwd={cwd || ''} onOpen={() => setFpop(false)} />}
       <span className="spacer" />
       {dial}
       <button
@@ -1878,7 +1909,7 @@ export function SelectionToolbar({
     const onContextMenu = (e: MouseEvent): void => {
       if (barRef.current?.contains(e.target as Node)) return
       const text = readSel()
-      if (!text) return // 선택이 없으면 기본 메뉴를 막지 않는다
+      if (!text) return // 선택이 없으면 여기선 무동작 (기본 메뉴 억제는 main.tsx 전역이 맡는다)
       e.preventDefault()
       setPos({ x: e.clientX, y: e.clientY, text })
       setCopied(false)
@@ -2297,9 +2328,12 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
     }
   }, [busy, scrollEl])
 
-  // 전송 = 따라가기 재개 (스냅은 메시지 추가 effect가 수행)
+  // 전송 = 따라가기 재개 (스냅은 메시지 추가 effect가 수행). 점프 버튼도 여기서 내린다 —
+  // showJump 재계산은 scroll 이벤트에 걸려 있어, 내용이 스크롤이 안 될 만큼 짧으면(초기화
+  // 직후 등) 이벤트가 영영 안 와 낡은 true가 남는다(2026-09-01 사용자 보고: 버튼 잔상)
   const pin = useCallback(() => {
     stickRef.current = true
+    setShowJump(false)
   }, [])
   // ★ 3.0 M-UX R3 — 따라가기만 푼다(위치는 안 건드린다). 앵커 복원이 쓴다: 마운트
   // 직후의 래치는 true라, 풀지 않으면 `snapIfStuck`과 스트리밍 rAF가 복원한 위치를
@@ -2321,9 +2355,11 @@ export function useThreadFollow(scrollEl: HTMLElement | null, busy: boolean) {
   const snapIfStuck = useCallback(() => {
     if (scrollEl && stickRef.current) scrollEl.scrollTop = scrollEl.scrollHeight
   }, [scrollEl])
-  // "맨 아래로" 버튼·↓ 제스처 — 다시 고정하고 부드럽게 내려간다
+  // "맨 아래로" 버튼·↓ 제스처 — 다시 고정하고 부드럽게 내려간다. 스크롤이 안 되는
+  // 짧은 내용에선 scroll 이벤트가 안 와 버튼이 안 꺼지므로 여기서도 직접 내린다
   const jumpBottom = useCallback(() => {
     stickRef.current = true
+    setShowJump(false)
     scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' })
   }, [scrollEl])
   // ↑ 제스처 — 스트리밍 rAF가 도로 끌어내리지 않게 고정을 풀고(재고정 가드 무장) 맨 위로
@@ -2910,9 +2946,9 @@ function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: Eff
  *
  * ★R28 ACCT §3-b — `now`(현재)와 §3의 `warn`(사용 중)은 **다른 시각층**이다.
  * 선택은 파랑 계열(`.cur` — 체크 + 강조 + 「현재」 라벨), 사용 중은 주황 계열
- * (`.pp-warn`). 사용자 요청 그대로다: *"3번의 「다른 자리 사용 중」 칩과는 다른
- * 시각층으로 헷갈리지 않게."* 두 표식이 한 줄에 같이 설 수 있어(내가 쓰는 계정을
- * 다른 자리도 쓰는 판) 자리를 나눠 둔다 — 라벨은 왼쪽 끝, 칩은 오른쪽.
+ * (`.pp-warn`). 자리는 **둘 다 이름 바로 뒤**다 — 처음엔 warn만 오른쪽 끝이었는데
+ * 「현재」 필과 배치가 갈려 이물로 보였다(2026-09-01 사용자: 통일성 요청). 색이 다른
+ * 시각층이라 한 줄에 나란히 서도 안 헷갈린다.
  */
 function PPRow({
   sel,
@@ -2934,11 +2970,15 @@ function PPRow({
   return (
     <button className={'pp-row' + (sel ? ' sel' : '') + (cur ? ' cur' : '')} onClick={onClick}>
       <span className="pp-grow">
-        {main}
-        {cur && <span className="pp-now">{t('현재', 'Current')}</span>}
+        {/* 이름 줄은 플렉스 — 필(현재·사용 중)을 글줄 세로 중앙에 앉힌다
+            (인라인 baseline 배치는 필 키가 글자보다 커서 떠 보였다 — 2026-09-01 사용자) */}
+        <span className="pp-main">
+          {main}
+          {cur && <span className="pp-now">{t('현재', 'Current')}</span>}
+          {warn && <span className="pp-warn">{warn}</span>}
+        </span>
         {sub && <span className="pp-sub">{sub}</span>}
       </span>
-      {warn && <span className="pp-warn">{warn}</span>}
       {sel && (
         <span className="pp-check">
           <IconCheck size={12} stroke={2.4} />
@@ -3034,42 +3074,36 @@ export function PickerChip({
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
   const cxEffective = picker.codexAccount ?? cxDefaultEmail
 
-  // ── ★§3-b 실수 전환 복구 ──────────────────────────────────────────────────
+  // ── ★§3-b 계정 전환 확인 ─────────────────────────────────────────────────
   //
-  // 계정 전환은 프롬프트 캐시가 식는 비용이 커서 **실수의 대가가 크다**. 그런데 지금까지
-  // 화면 어디에도 "방금 무엇에서 무엇으로 갔는지"가 없어, 잘못 누르면 원래 계정이
-  // 뭐였는지 모른 채 그대로 이어 갔다(사용자 보고). 그래서 전환 직후 되돌릴 줄 하나.
-  //
-  // `pickerRef` — 되돌리기는 **나중에** 눌린다. 그때의 최신 picker 위에 계정만 되돌려야
-  // 그 사이에 바꾼 모델·모드가 함께 되감기지 않는다(클로저에 박힌 옛 값을 쓰면 그렇게 된다).
+  // `pickerRef` — 확인은 **나중에** 눌린다. 그때의 최신 picker 위에 계정만 바꿔야
+  // 그 사이에 바꾼 모델·모드가 함께 덮이지 않는다(클로저에 박힌 옛 값을 쓰면 그렇게 된다).
   const pickerRef = useRef(picker)
   pickerRef.current = picker
-  const [undo, setUndo] = useState<{ from?: string; to?: string; prev?: string; key: 'account' | 'codexAccount' } | null>(null)
-  // 수명은 **보이기 시작한 때부터** 센다 — 팝오버를 열어 둔 채 12초가 지나면 줄이
-  // 한 번도 안 뜨고 사라진다(그러면 복구 동선이 없는 것과 같다).
+  // 「한도 소진 시 ▸ 다른 계정으로 이어서」 — limitSwitch.on(셸이 3초 TTL로 읽는 전역
+  // 프리프)의 픽커 얼굴. 열 때 되읽어 설정 ▸ API 카드에서 바꾼 값을 따라잡는다.
+  const [acctSwitchOn, setAcctSwitchOn] = useState<boolean>(() => getPref<boolean>('limitSwitch.on', false))
   useEffect(() => {
-    if (!undo || open) return
-    const id = setTimeout(() => setUndo(null), 12_000)
-    return () => clearTimeout(id)
-  }, [undo, open])
+    if (open) setAcctSwitchOn(getPref<boolean>('limitSwitch.on', false))
+  }, [open])
+  // ★계정 전환 확인 카드(2026-09-01 사용자 결정) — 즉시 전환+되돌리기 토스트를 기각하고
+  // 다른 곳들과 같은 .set-dialog 카드로 묻는다. 전환은 프롬프트 캐시가 식는 비용이 커서
+  // "실수 후 복구"보다 "실행 전 확인"이 맞는 무게라는 판단.
+  const [acctConfirm, setAcctConfirm] = useState<{
+    key: 'account' | 'codexAccount'
+    next: string | undefined
+    from?: string
+    to?: string
+  } | null>(null)
   const shortOf = (e?: string): string => (e ? e.split('@')[0] : t('기본', 'default'))
-  /** 계정 전환 한 번 — 값을 바꾸고 되돌릴 줄을 세운다. */
+  /** 계정 행 클릭 — 다른 계정이면 확인 카드부터, 같은 계정은 바인딩만 조용히 갱신. */
   const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
-    const prev = pickerRef.current[key]
-    setPicker({ ...pickerRef.current, [key]: next })
-    if (fromEmail === toEmail) return // 같은 계정을 다시 고른 것 — 되돌릴 게 없다
-    // 연속으로 눌렀으면(A→B→C) 되돌릴 곳은 B가 아니라 **원래 계정 A**다 — 사용자가
-    // 찾는 것은 "이 채팅이 원래 쓰던 계정"이지 직전 한 칸이 아니다. 스스로 A로 돌아온
-    // 경우엔 줄을 걷는다(「A → A 전환됨」은 거짓말이고 되돌릴 것도 없다).
-    setUndo((cur) => {
-      if (!cur || cur.key !== key) return { from: fromEmail, to: toEmail, prev, key }
-      return cur.from === toEmail ? null : { ...cur, to: toEmail }
-    })
-  }
-  const doUndo = (): void => {
-    if (!undo) return
-    setPicker({ ...pickerRef.current, [undo.key]: undo.prev })
-    setUndo(null)
+    if (fromEmail === toEmail) {
+      // 같은 계정을 다시 고른 것(기본 바인딩 해제/고정 전환) — 전환이 아니라 확인 불요
+      setPicker({ ...pickerRef.current, [key]: next })
+      return
+    }
+    setAcctConfirm({ key, next, from: fromEmail, to: toEmail })
   }
 
   /** ★§3 — 이 계정을 **다른 자리**가 물고 있나(주황 칩 문구). 자기 자리는 빠진다. */
@@ -3175,24 +3209,7 @@ export function PickerChip({
           {onApiModeChange && (
             <>
               <div className="pp-sep" />
-              {/* 과금 헤더 오른쪽의 '자동 이어서' 미니 필 — 한도 자동 이어서 토글. 행으로
-                  그리면 라디오(구독/API) 사이의 이물이라는 실측 피드백 2회로 헤더 승격:
-                  켜짐=액센트 필(패널 수 탭 문법), 설명은 툴팁. 구독 과금일 때만 보인다 */}
-              <div className="pp-h4 row">
-                {t('과금', 'Billing')}
-                <span className="sp" />
-                {!apiMode && onAutoResumeChange && (
-                  <button
-                    className={'pp-flag has-tip' + (autoResume ? ' on' : '')}
-                    data-tip={t('한도가 풀리면 중단한 곳부터 자동으로 계속', 'Auto-continue where you left off when the limit resets')}
-                    role="switch"
-                    aria-checked={autoResume}
-                    onClick={() => onAutoResumeChange(!autoResume)}
-                  >
-                    {t('자동 이어서', 'Auto-continue')}
-                  </button>
-                )}
-              </div>
+              <div className="pp-h4">{t('과금', 'Billing')}</div>
               <PPRow
                 sel={!apiMode}
                 main={t('구독', 'Subscription')}
@@ -3212,6 +3229,41 @@ export function PickerChip({
                 }
                 onClick={() => onApiModeChange(true, engine)}
               />
+              {/* ── 한도 소진 시 — 이어서 갈 길을 **둘 다 체크**할 수 있는 체크 행
+                  (2026-09-01 사용자 요청: 헤더 「자동 이어서」 단일 필을 대체).
+                  · 다른 계정으로 이어서 = limitSwitch.on (셸 acct_switch가 노는 계정 중
+                    한도 남은 곳을 초기화 임박순으로 고른다 — Claude 구독 전용)
+                  · 현재 계정으로 이어서 = limitResume.on (리셋 대기 후 자동 재개)
+                  둘 다 켜면 전환을 먼저 해보고, 갈아탈 곳이 없으면 리셋을 기다린다.
+                  설정 ▸ API 「한도가 다 되면」 카드와 같은 프리프의 다른 얼굴이다. */}
+              {!apiMode && onAutoResumeChange && (
+                <>
+                  <div className="pp-sep" />
+                  <div className="pp-h4">{t('한도 소진 시', 'When the limit runs out')}</div>
+                  {/* Codex도 같은 스위치 — 셸이 축(계정 우주)을 가른다(2026-09-01 Codex 축 확장) */}
+                  <PPRow
+                    sel={acctSwitchOn}
+                    main={t('다른 계정으로 이어서', 'Continue on another account')}
+                    sub={
+                      (engine === 'codex' ? cxUsableAccounts : usableAccounts).length > 1
+                        ? t('남은 한도가 있는 노는 계정으로 갈아타 바로 계속해요', 'Moves to an idle account with headroom and keeps going')
+                        : t('계정이 2개 이상일 때 동작해요 — 지금은 건너뜁니다', 'Needs two or more accounts — skipped for now')
+                    }
+                    onClick={() => {
+                      const next = !acctSwitchOn
+                      setAcctSwitchOn(next)
+                      setPref('limitSwitch.on', next)
+                      window.dispatchEvent(new CustomEvent('ccg:limit-policy'))
+                    }}
+                  />
+                  <PPRow
+                    sel={autoResume}
+                    main={t('현재 계정으로 이어서', 'Continue on this account')}
+                    sub={t('한도가 풀리면 중단한 곳부터 자동으로 계속해요', 'Waits for the reset, then auto-continues where you left off')}
+                    onClick={() => onAutoResumeChange(!autoResume)}
+                  />
+                </>
+              )}
             </>
           )}
           {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미).
@@ -3284,20 +3336,36 @@ export function PickerChip({
           )}
         </div>
       )}
-      {/* ★§3-b — 「A → B 전환됨 · 되돌리기」. **팝오버가 닫힌 뒤에** 뜬다: 실수를
-          알아채는 건 보통 닫은 뒤이고, 열려 있는 동안은 「현재」 강조가 이미 같은 말을
-          한다(그리고 같은 자리에 그리면 팝오버 아래를 가린다). 12초 뒤 스스로 사라진다. */}
-      {undo && !open && (
-        <div className="acct-undo" role="status">
-          <span className="au-txt">
-            {t(`${shortOf(undo.from)} → ${shortOf(undo.to)} 전환됨`, `Switched ${shortOf(undo.from)} → ${shortOf(undo.to)}`)}
-          </span>
-          <button className="au-go" onClick={doUndo}>
-            {t('되돌리기', 'Undo')}
-          </button>
-          <button className="au-x" aria-label={t('닫기', 'Dismiss')} onClick={() => setUndo(null)}>
-            <IconX2 size={11} />
-          </button>
+      {/* ★계정 전환 확인 카드 — 확인이면 전환, 취소/베일 클릭이면 무동작(2026-09-01 사용자 결정) */}
+      {acctConfirm && (
+        <div className="set-dialog-overlay" onMouseDown={() => setAcctConfirm(null)}>
+          <div className="set-dialog" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="sd-ic">
+              <IconAlert size={22} />
+            </div>
+            <div className="sd-title">{t('계정 전환', 'Switch account')}</div>
+            <div className="sd-msg">
+              {t(
+                `이 채팅을 ${shortOf(acctConfirm.from)} → ${shortOf(acctConfirm.to)} 계정으로 전환할까요? 새 계정에는 이 대화의 프롬프트 캐시가 없어 다음 턴이 대화 전체를 캐시 없이 다시 읽어요 — 토큰 소모(한도 차감)가 늘고 시작도 잠깐 느려질 수 있어요.`,
+                `Switch this chat from ${shortOf(acctConfirm.from)} to ${shortOf(acctConfirm.to)}? The new account has no prompt cache for this conversation, so the next turn re-reads the whole thread uncached — token usage (limit burn) goes up and it may start a bit slower.`
+              )}
+            </div>
+            <div className="sd-btns">
+              <button className="sd-cancel" onClick={() => setAcctConfirm(null)}>
+                {t('취소', 'Cancel')}
+              </button>
+              <button
+                className="sd-go"
+                onClick={() => {
+                  const c = acctConfirm
+                  setAcctConfirm(null)
+                  setPicker({ ...pickerRef.current, [c.key]: c.next })
+                }}
+              >
+                {t('전환', 'Switch')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </span>
@@ -4770,8 +4838,8 @@ function QuestionDialog({
         <IconMascot size={15} />
         <span className="qmt">
           {multi
-            ? t(`질문 ${questions.length}개 대기 중 — 클릭해서 답하기`, `${questions.length} questions waiting — click to answer`)
-            : t('질문 대기 중 — 클릭해서 답하기', 'A question is waiting — click to answer')}
+            ? t(`질문 ${questions.length}개 대기 중`, `${questions.length} questions waiting`)
+            : t('질문 대기 중', 'A question is waiting')}
         </span>
         <button
           className="qmx has-tip"
@@ -5426,7 +5494,36 @@ export function Composer({
     })
   }
 
+  // ★R4 — **왼쪽 방향키(←)**로 멘션 폴더 한 단계 위로(사용자 요청 — 마우스 뒤로가기·
+  // `<` 안은 둘 다 정정으로 롤백). 토큰 꼬리 세그먼트를 벗긴다: "src/components/"→"src/"
+  // · "src/"→루트. 폴더를 막 드릴한 상태(쿼리가 `/`로 끝남)에서만 가로챈다 — 검색어를
+  // 치던 중의 ←는 평소처럼 캐럿 이동이어야 한다(입력 편집을 뺏으면 안 된다).
+  const mentionBack = (): void => {
+    const tok = mentionAtCaret(value, caret)
+    if (!tok || tok.query === '') return
+    const trimmed = tok.query.endsWith('/') ? tok.query.slice(0, -1) : tok.query
+    const cut = trimmed.lastIndexOf('/')
+    const next = cut === -1 ? '' : trimmed.slice(0, cut + 1)
+    const before = value.slice(0, tok.start)
+    const pos = before.length + 1 + next.length
+    onChange(before + '@' + next + value.slice(tok.end))
+    setCaret(pos)
+    requestAnimationFrame(() => {
+      const el = inputRef?.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(pos, pos)
+      grow(el)
+    })
+  }
+
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    // 팔레트가 닫혀 있어도(빈 폴더 등) 드릴 상태의 ←는 위로 가기다
+    if (mentionActive && e.key === 'ArrowLeft' && mentionTok?.query.endsWith('/')) {
+      e.preventDefault()
+      mentionBack()
+      return
+    }
     if (mentionOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -5510,16 +5607,62 @@ export function Composer({
   }
 
   // ── attachment drag-and-drop + paste (images + readable text files) ─────────
-  const dragHasFile = (e: React.DragEvent): boolean =>
-    Array.from(e.dataTransfer.items || []).some((it) => it.kind === 'file')
+  // ★R4 — 드롭 과녁을 컴포저에서 **채팅 표면 전체**로 넓힌다(사용자 요청: 입력칸까지
+  // 끌고 가야 하는 게 불편). 표면 루트(.ma-panel=멀티 패널 · .chat=본채팅/추가 채팅)에
+  // 네이티브 리스너를 걸고 컴포저의 React 핸들러는 없앤다 — 루트가 컴포저를 포함하므로
+  // 한 경로면 충분하고, 둘 다 두면 같은 드롭이 두 번 잡혀 첨부가 이중으로 붙는다.
+  // 콜백은 ref로 부른다 — 마운트 1회 effect의 클로저가 낡은 prop을 물지 않게.
+  const onAddPathsRef = useRef(onAddImagePaths)
+  onAddPathsRef.current = onAddImagePaths
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const root = wrapRef.current?.closest<HTMLElement>('.ma-panel, .chat') ?? wrapRef.current
+    if (!root) return
+    const hasFile = (e: DragEvent): boolean =>
+      Array.from(e.dataTransfer?.items ?? []).some((it) => it.kind === 'file')
+    const enter = (e: DragEvent): void => {
+      if (!hasFile(e)) return
+      dragDepth.current += 1
+      setDragOver(true)
+    }
+    const over = (e: DragEvent): void => {
+      if (!hasFile(e)) return
+      e.preventDefault() // 유효한 드롭 과녁 표시 — 이게 없으면 drop 자체가 안 온다
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const leave = (): void => {
+      dragDepth.current = Math.max(0, dragDepth.current - 1)
+      if (dragDepth.current === 0) setDragOver(false)
+    }
+    const drop = (e: DragEvent): void => {
+      dragDepth.current = 0
+      setDragOver(false)
+      if (!e.dataTransfer?.files?.length) return
+      e.preventDefault()
+      void filesToAttachmentPaths(e.dataTransfer.files).then((paths) => {
+        if (paths.length) onAddPathsRef.current(paths)
+      })
+    }
+    root.addEventListener('dragenter', enter)
+    root.addEventListener('dragover', over)
+    root.addEventListener('dragleave', leave)
+    root.addEventListener('drop', drop)
+    return () => {
+      root.removeEventListener('dragenter', enter)
+      root.removeEventListener('dragover', over)
+      root.removeEventListener('dragleave', leave)
+      root.removeEventListener('drop', drop)
+    }
+  }, [])
 
-  const onDrop = async (e: React.DragEvent): Promise<void> => {
-    dragDepth.current = 0
-    setDragOver(false)
-    if (!e.dataTransfer.files?.length) return
-    e.preventDefault()
-    const paths = await filesToAttachmentPaths(e.dataTransfer.files)
-    if (paths.length) onAddImagePaths(paths)
+  // ★R4 — 예약 메시지 수정(사용자 요청): 큐에서 빼서 **초안으로 되불러온다**(글·첨부째).
+  // 초안이 이미 있으면 줄바꿈으로 잇는다 — 어느 쪽도 잃지 않는 가장 단순한 병합.
+  // 고친 뒤 다시 예약하는 것은 기존 흐름(Enter=예약) 그대로다.
+  const editQueued = (m: ScheduledMsg): void => {
+    onRemoveQueued(m.id)
+    if (m.text.trim()) onChange(value.trim() ? value.replace(/\n+$/, '') + '\n' + m.text : m.text)
+    if (m.images.length) onAddImagePaths(m.images)
+    inputRef?.current?.focus()
   }
 
   const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>): Promise<void> => {
@@ -5535,7 +5678,7 @@ export function Composer({
   }
 
   return (
-    <div className="composer-wrap">
+    <div className="composer-wrap" ref={wrapRef}>
       <div className="composer-inner">
         {queued.length > 0 && (
           <div className="sched">
@@ -5554,11 +5697,43 @@ export function Composer({
                   <span className="sched-text">
                     {m.text.trim() || (m.images.length ? t(`첨부 ${m.images.length}개`, `${m.images.length} attachments`) : '')}
                   </span>
+                  {/* ★R4 — 클립 아이콘+개수 대신 **첨부 실물**(사용자 요청: 뭐가 붙었는지
+                      보여야 한다). 이미지는 미니 썸네일(클릭=뷰어), 문서는 배지+경로 툴팁.
+                      개별 제거는 연필(수정)로 초안에 되불러와서 한다 — 큐 항목을 제자리에서
+                      쪼개기 시작하면 "예약된 그대로 나간다"는 큐의 약속이 흐려진다. */}
                   {m.images.length > 0 && (
-                    <span className="sched-img has-tip" data-tip={t(`첨부 ${m.images.length}개`, `${m.images.length} attachments`)}>
-                      <IconPaperclip size={13} />
+                    <span className="sched-atts">
+                      {m.images.map((p, k) =>
+                        isImagePath(p) ? (
+                          <button
+                            type="button"
+                            className="sched-att has-tip"
+                            data-tip={imageName(p)}
+                            aria-label={imageName(p)}
+                            key={p + k}
+                            onClick={() => {
+                              const imgs = m.images.filter(isImagePath)
+                              onOpenImage?.(imgs, imgs.indexOf(p))
+                            }}
+                          >
+                            <img src={imageSrc(p)} alt={imageName(p)} draggable={false} loading="lazy" />
+                          </button>
+                        ) : (
+                          <span className="sched-att doc has-tip tip-path" data-tip={p} key={p + k}>
+                            <FileBadge path={p} size={13} />
+                          </span>
+                        )
+                      )}
                     </span>
                   )}
+                  <button
+                    className="sched-ed has-tip"
+                    aria-label={t('수정 — 입력칸으로 되불러오기', 'Edit — pull back into the composer')}
+                    data-tip={t('수정 — 입력칸으로 되불러오기', 'Edit — pull back into the composer')}
+                    onClick={() => editQueued(m)}
+                  >
+                    <IconPencil size={12} />
+                  </button>
                   <button
                     className="sched-x has-tip"
                     aria-label={t('예약 취소', 'Remove from queue')}
@@ -5573,24 +5748,8 @@ export function Composer({
           </div>
         )}
 
-        <div
-          className={'composer' + (focus ? ' focus' : '') + (dragOver ? ' drag' : '') + (busy ? ' scheduling' : '')}
-          onDragEnter={(e) => {
-            if (!dragHasFile(e)) return
-            dragDepth.current += 1
-            setDragOver(true)
-          }}
-          onDragOver={(e) => {
-            if (!dragHasFile(e)) return
-            e.preventDefault() // mark the composer a valid drop target (enables the drop)
-            e.dataTransfer.dropEffect = 'copy'
-          }}
-          onDragLeave={() => {
-            dragDepth.current = Math.max(0, dragDepth.current - 1)
-            if (dragDepth.current === 0) setDragOver(false)
-          }}
-          onDrop={onDrop}
-        >
+        {/* 드래그 핸들러 없음 — 표면 루트의 네이티브 리스너(위 effect)가 컴포저까지 덮는다 */}
+        <div className={'composer' + (focus ? ' focus' : '') + (dragOver ? ' drag' : '') + (busy ? ' scheduling' : '')}>
           {dragOver && (
             <div className="drop-hint">
               <IconPaperclip size={15} />

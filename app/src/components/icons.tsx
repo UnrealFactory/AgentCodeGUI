@@ -464,6 +464,15 @@ export const IconPopout = (p: IconProps) => (
     <path d="M20 4 11 13" />
   </Icon>
 )
+// 창 안으로 — 독립 창의 파일 뷰어를 메인 창 카드로 되돌린다 (IconPopout의 안쪽 화살 짝:
+// 같은 창 사각형, 화살이 밖→안으로 들어온다)
+export const IconPopin = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M13 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-7" />
+    <path d="M17 13h-6V7" />
+    <path d="M20 4 11 13" />
+  </Icon>
+)
 // collapse the full-screen modal back into its panel (IconExpand의 안쪽 화살 짝)
 export const IconCollapse = (p: IconProps) => (
   <Icon {...p}>

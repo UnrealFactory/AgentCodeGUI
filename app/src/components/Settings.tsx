@@ -2,9 +2,6 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import type {
   EngineVersionEntry,
   EngineVersionState,
-  SkillInfo,
-  SkillScope,
-  McpServerInfo,
   LspServerInfo,
   ApiConfigStatus,
   AccountUsage,
@@ -15,7 +12,6 @@ import { FileBadge } from './fileType'
 import {
   ensureAccounts,
   ensureCodexAccounts,
-  inUseLabel,
   invalidateAccounts,
   primeUsageFromDisk,
   putAccounts,
@@ -40,8 +36,6 @@ import {
 } from '../lib/sidebarAutohide'
 import {
   IconClose,
-  IconServer,
-  IconBook,
   IconRefresh,
   IconBot,
   LogoClaude,
@@ -79,7 +73,9 @@ import {
   setHideFiles
 } from '../lib/hideDirs'
 
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'mcp' | 'skill' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language'
+// ★3.0 R3 — 'mcp'·'skill' 탭 제거(2026-09-01 사용자 결정): 목록·토글이 패널 헤더의
+// 「MCP & Skill」 칩(McpSkillView)으로 옮겨 갔다 — 설정에 남기면 같은 일이 두 곳이 된다.
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -98,13 +94,6 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
       items: [
         { id: 'version', label: 'Engine', Icon: IconBot, keys: '엔진 claude code codex cli 버전 업데이트 설치 engine version update install' },
         { id: 'api', label: 'API', Icon: IconKey, keys: 'api 키 예산 과금 비용 key budget billing cost' }
-      ]
-    },
-    {
-      label: t('확장', 'Extensions'),
-      items: [
-        { id: 'mcp', label: 'MCP', Icon: IconServer, keys: 'mcp 서버 도구 server tool' },
-        { id: 'skill', label: 'Skill', Icon: IconBook, keys: '스킬 명령 슬래시 skill command slash' }
       ]
     },
     {
@@ -340,59 +329,7 @@ function sortAccounts<T>(list: T[], sort: AcctSort, keys: (a: T) => AcctSortKeys
     .map((x) => x.a)
 }
 
-// ── ★M11 한도 소진 시 계정 자동 전환 (설정 옵션 · 기본 꺼짐) ────────────────────
-//
-// 이 자리에 두는 이유: 값이 사는 곳이 여기다. 바로 위 정렬 버튼에 이미
-// 「초기화 임박순」이 있고, 그게 이 기능의 판정식과 **같은 규칙**이다 — 곧 리셋될 창의
-// 잔량은 버려질 잔량이라 먼저 태우는 쪽이 총량에서 이득이다. 토글을 한도 화면이 아니라
-// 계정 목록 바로 위에 두면 "무엇들 사이에서 고르는가"가 문장 없이 보인다.
-//
-// **전달은 `ui-prefs.json`으로** 한다(IPC 채널을 늘리지 않는다 — §6.1 32채널).
-// 셸의 `engine/acct_switch.rs`가 같은 키를 3초 TTL로 읽고, 꺼져 있으면 후보 탐색
-// 워커를 깨우지도 않는다 = 꺼짐이면 계정 조회 HTTP 0건.
-//
-// 계정이 2개 미만이면 **행 자체를 안 그린다**: 갈아탈 데가 없는데 스위치를 보여 주면
-// 켜 놓고 "왜 안 되지"를 묻게 된다(계정 picker가 구독+계정≥2일 때만 뜨는 것과 같은 규약).
-//
-// ★R2(C5) — 여기서 세는 것은 **Claude(Anthropic) 구독 계정뿐**이다. R1은 Codex 계정까지
-// 더해서(`accounts + cxAccounts`) 셌는데, 판정식(`ccg-auth::switch::plan`)은 Claude
-// 구독 축만 본다. 클로드 1 + Codex 1이면 **켤 수 있는데 영원히 안 되는 스위치**가
-// 그려졌고, 켜는 순간 워커가 도는 것은 덤이었다.
-const AUTO_SWITCH_KEY = 'limitSwitch.on'
-function AutoAccountSwitchRow({ count }: { count: number }): React.ReactElement | null {
-  const [on, setOn] = useState<boolean>(() => getPref<boolean>(AUTO_SWITCH_KEY, false))
-  if (count < 2) return null
-  return (
-    <div className="sc2 tgl" style={{ marginBottom: 14 }}>
-      <div>
-        <div className="em">{t('한도 소진 시 계정 자동 전환', 'Switch accounts when the limit runs out')}</div>
-        <div className="meta">
-          {on
-            ? t(
-                '한도에 걸리면 기다리지 않고 노는 계정으로 갈아타 이어가요 — 초기화가 임박한 계정부터 씁니다(곧 사라질 잔량이니까요). 지금 다른 대화가 쓰고 있는 계정과 여유가 거의 없는 계정은 건너뛰고, 갈아탈 곳이 없으면 평소처럼 기다려요.',
-                'On hitting the limit this chat moves to an idle account instead of waiting — soonest-to-reset first, since that headroom is about to be thrown away. Accounts another chat is burning, and accounts with almost nothing left, are skipped; with no candidate it waits as before.'
-              )
-            : t(
-                '한도에 걸리면 풀릴 때까지 기다려요(지금 동작). 켜면 노는 계정으로 갈아타 바로 이어갑니다.',
-                'The chat waits for the limit to lift (current behavior). Turn this on to move to an idle account and keep going.'
-              )}
-        </div>
-      </div>
-      <span className="sp" />
-      <button
-        className={'sw2' + (on ? ' on' : '')}
-        role="switch"
-        aria-checked={on}
-        aria-label={on ? t('자동 전환 끄기', 'Turn off auto-switch') : t('자동 전환 켜기', 'Turn on auto-switch')}
-        onClick={() => {
-          const next = !on
-          setOn(next)
-          setPref(AUTO_SWITCH_KEY, next)
-        }}
-      />
-    </div>
-  )
-}
+// (한도 우선순위 카드(LimitPolicySection)는 픽커 「한도 소진 시」 체크 행으로 이전·제거 — 2026-09-01 사용자)
 
 // ── Account (구독 로그인 Anthropic·OpenAI — 앱 등록 계정만, 전환 개념 없음) ───────
 // 로그인/로그아웃 전부 격리 CONFIG_DIR(main/auth.ts) — 전역 ~/.claude 불가침.
@@ -401,6 +338,9 @@ function AccountView(): React.ReactElement {
   // 'login' | 'codex-login' | <email>(삭제 중) | 'codex'(OpenAI 삭제 중) | null
   const [busy, setBusy] = useState<string | null>(null)
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
+  // 로그인 폴백 링크의 「복사」 피드백 — 새 로그인 시도마다 리셋
+  const [linkCopied, setLinkCopied] = useState(false)
+  useEffect(() => setLinkCopied(false), [loginUrl])
   const [note, setNote] = useState<string | null>(null)
 
   // ★R28 ACCT §1 — 목록·한도의 주인은 **단일 스토어**다(`lib/accounts.ts`).
@@ -488,26 +428,10 @@ function AccountView(): React.ReactElement {
     setBusy(null)
     reload()
   }
-  // ★R28 ACCT §4 — 「기본으로」가 **「맨 위로」**가 됐다.
-  //
-  // 사용자 요청: *"계정의 「기본」 개념을 삭제하고, 항상 정렬 기준 맨 위 계정이 선택되게.
-  // 괜히 복잡하다."* 그래서 기본은 저장된 상태가 아니라 **이 목록의 0번**이고, 이 버튼은
-  // 순서를 바꾸는 일만 한다(셸에서도 `auth:set-default-account` = 「맨 위로 이동」).
-  // 낙관 갱신도 배지 이동이 아니라 **배열 이동**이다 — 그래야 화면과 판정이 같은 규칙을 쓴다.
-  const doMoveTop = async (email: string): Promise<void> => {
-    setNote(null)
-    updateAccounts((prev) => {
-      const i = prev?.findIndex((a) => a.email === email) ?? -1
-      return prev && i > 0 ? arrMove(prev, i, 0) : prev
-    })
-    try {
-      setAccounts(await window.api.auth.setDefaultAccount(email))
-    } catch {
-      setNote(t('순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the order — restart the app and try again'))
-      reload()
-    }
-  }
-  // OpenAI(Codex) — Anthropic과 같은 동작 3종 (추가/삭제/맨 위로)
+  // ★R28 ACCT §4의 「맨 위로」 버튼은 2026-09-01 사용자 결정으로 제거 — "기본 = 목록 0번"
+  // 규칙은 그대로고, 순서 변경은 꾹-드래그(drop → reorderAccounts)가 유일한 문이다.
+  // (셸 채널 `auth:set-default-account`는 남아 있다 — 되살릴 일이 있으면 그 채널이 「맨 위로 이동」이다.)
+  // OpenAI(Codex) — Anthropic과 같은 동작 2종 (추가/삭제)
   const doCodexLogin = async (): Promise<void> => {
     setBusy('codex-login')
     setLoginUrl(null)
@@ -531,26 +455,7 @@ function AccountView(): React.ReactElement {
     }
     setBusy(null)
   }
-  // ★R28 ACCT §4 — Codex 축의 「맨 위로」.
-  //
-  // ★R28f SHIPBLOCK N1 — 이 자리가 R1까지 `reorderAccounts`를 부른 이유는 *"셸에 이
-  // 채널의 핸들러가 없으므로"*였고, 그래서 주석의 *"실제로 저장된다"*는 **거짓이었다**
-  // (재정렬 채널에도 핸들러가 없었다 — 두 채널 다 `{__unimplemented}`). 이제 다섯 채널이
-  // 전부 셸에 있고, Anthropic 축의 `doMoveTop`과 **같은 채널**을 쓴다(`setDefaultAccount`
-  // = 「맨 위로 이동」 — `ipc/accounts.rs`·장부 §6.5).
-  const doCodexMoveTop = async (email: string): Promise<void> => {
-    setNote(null)
-    updateCodexAccounts((prev) => {
-      const i = prev?.findIndex((a) => a.email === email) ?? -1
-      return prev && i > 0 ? arrMove(prev, i, 0) : prev
-    })
-    try {
-      setCxAccounts(await window.api.codexAuth.setDefaultAccount(email))
-    } catch {
-      setNote(t('순서를 바꾸지 못했어요 — 앱을 재시작한 뒤 다시 시도해 주세요', 'Could not change the order — restart the app and try again'))
-      reload()
-    }
-  }
+  // (Codex 축 「맨 위로」도 같은 결정으로 제거 — 셸 채널 `codexAuth.setDefaultAccount`는 남아 있다)
   const planLabel = (ty?: string): string =>
     ty ? ty.charAt(0).toUpperCase() + ty.slice(1) + t(' 플랜', ' plan') : t('구독', 'Subscription')
 
@@ -636,8 +541,6 @@ function AccountView(): React.ReactElement {
         ))}
       </div>
 
-      <AutoAccountSwitchRow count={accounts?.length ?? 0} />
-
       <div className="set-sec">Anthropic</div>
       {accounts == null ? (
         <div className="sc2 acct">
@@ -662,10 +565,11 @@ function AccountView(): React.ReactElement {
                   <span className="emt">{a.email}</span>
                   {/* ★R28 ACCT §4 — 배지는 **인덱스 0의 파생 표시**다(저장된 상태가 아니다).
                       셸도 같은 규칙으로 `isDefault`를 싣는다 — 진실이 두 곳이 되지 않게 그 값을 쓴다. */}
-                  {a.isDefault && <span className="set-badge">{t('기본 · 맨 위', 'Default · top')}</span>}
+                  {/* 「기본 · 맨 위」 배지는 뗐다 — 맨 위 행이라는 사실 자체가 이미 보인다(2026-09-01 사용자) */}
                   {/* ★R28 ACCT §3 — 다른 자리가 이 계정으로 **지금 돌고 있다**(주황).
                       선택을 막지 않는다 — 사용자가 알고 쓰는 건 존중하고, 모르고 겹치는 것만 막는다. */}
-                  {inUseLabel(a.email) && <span className="set-badge warn">{inUseLabel(a.email)}</span>}
+                  {/* 「사용 중 · N번 자리」 배지 제거(2026-09-01 사용자) — 어디서 쓰는지는
+                      계정 picker(팝오버)의 경고가 이미 말한다; 설정 행에선 소음이었다 */}
                   {/* ★M11 R3(F2) — 토큰 교환이 실패한 계정. R2까지 이 사실은 stderr 한 줄로만
                       남았고, 사용자는 갈아탄 자리에서 로그인 창을 보고서야 알았다. 자동 전환은
                       이미 이 계정을 후보에서 뺐다(격리) — 그 판정을 여기서도 말한다.
@@ -692,11 +596,7 @@ function AccountView(): React.ReactElement {
                 onRetry={() => void refreshUsage({ priority: a.email, force: true })}
               />
               <div className="acts">
-                {!a.isDefault && (
-                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doMoveTop(a.email)}>
-                    {t('맨 위로', 'Move to top')}
-                  </button>
-                )}
+                {/* 「맨 위로」 버튼 제거(2026-09-01 사용자) — 순서 변경은 카드 길게 눌러 드래그가 담당 */}
                 <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doDelete(a.email)}>
                   {busy === a.email ? t('삭제 중…', 'Deleting…') : t('삭제', 'Delete')}
                 </button>
@@ -748,18 +648,14 @@ function AccountView(): React.ReactElement {
                 <div className="em">
                   <span className="emt">{a.email}</span>
                   {/* ★R28 ACCT §4 — Anthropic과 같은 규칙(맨 위 = 기본, 파생값) */}
-                  {a.isDefault && <span className="set-badge">{t('기본 · 맨 위', 'Default · top')}</span>}
+                  {/* 「기본 · 맨 위」 배지는 뗐다 — 맨 위 행이라는 사실 자체가 이미 보인다(2026-09-01 사용자) */}
                 </div>
                 {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
                 <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
               </div>
               <CodexLimits u={cxUsage[a.email]} />
               <div className="acts">
-                {!a.isDefault && (
-                  <button className="set-chipbtn" disabled={busy != null} onClick={() => void doCodexMoveTop(a.email)}>
-                    {t('맨 위로', 'Move to top')}
-                  </button>
-                )}
+                {/* 「맨 위로」 버튼 제거(2026-09-01 사용자) — 순서 변경은 카드 길게 눌러 드래그가 담당 */}
                 <button className="set-chipbtn danger" disabled={busy != null} onClick={() => void doCodexDelete(a.email)}>
                   {busy === 'cx:' + a.email ? t('삭제 중…', 'Deleting…') : t('삭제', 'Delete')}
                 </button>
@@ -790,23 +686,36 @@ function AccountView(): React.ReactElement {
 
       {note && <div className="set-note2">{note}</div>}
       {(busy === 'login' || busy === 'codex-login') && loginUrl && (
-        <div className="set-note2">
+        // 각주(.set-note2 10.5px)가 아니라 행동 줄 — 브라우저 기본 파랑 링크는 다크 배경에서
+        // 안 보였다(2026-09-01 사용자 보고). 앱 공통 링크 톤 + 복사 칩(브라우저 직접 붙여넣기용).
+        <div className="set-loginlink">
           {t('브라우저가 안 열렸나요?', 'Browser didn’t open?')}{' '}
           <a href={loginUrl} target="_blank" rel="noreferrer">
             {t('이 링크로 로그인', 'Sign in with this link')}
           </a>
+          <button
+            className="set-chipbtn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(loginUrl).then(
+                () => setLinkCopied(true),
+                () => {}
+              )
+            }}
+          >
+            {linkCopied ? t('복사됨', 'Copied') : t('링크 복사', 'Copy link')}
+          </button>
         </div>
       )}
       <div className="set-note2">
         {isEn() ? (
           <>
-            All account credentials are stored <b>encrypted (DPAPI)</b> in <code>~/.agentcodegui</code>. They are
+            All account credentials are stored <b>encrypted (DPAPI)</b> in <code>~/.agentcodegui3</code>. They are
             fully separate from your terminal Claude Code (<code>~/.claude</code>) and codex (<code>~/.codex</code>)
             logins — neither affects the other.
           </>
         ) : (
           <>
-            계정 크리덴셜은 모두 <code>~/.agentcodegui</code>에 <b>암호화(DPAPI)</b>되어 저장돼요. 터미널 Claude Code(
+            계정 크리덴셜은 모두 <code>~/.agentcodegui3</code>에 <b>암호화(DPAPI)</b>되어 저장돼요. 터미널 Claude Code(
             <code>~/.claude</code>)·codex(<code>~/.codex</code>)의 로그인과는 완전히 분리돼 서로 영향을 주지 않아요.
           </>
         )}
@@ -950,7 +859,8 @@ function AccountLimits({
       {rows.map((r) => (
         <LimRow key={r.label} label={r.label} left={r.left} resetsAt={r.resetsAt} />
       ))}
-      {u?.stale && <div className="lim-stale">{t('마지막으로 확인한 값', 'Last known value')}</div>}
+      {/* 「마지막으로 확인한 값」 stale 캡션은 뺐다(2026-09-01 사용자) — 게이지가 항상
+          마지막 조회값인 건 당연해서 줄 하나의 값어치가 없다 */}
     </div>
   )
 }
@@ -1065,7 +975,7 @@ function EngineView(): React.ReactElement {
         <button className={'sw2' + (auto ? ' on' : '')} aria-label={t('자동 업데이트', 'Auto-update')} disabled={auto == null} onClick={toggleAuto} />
       </div>
       <div className="set-note2">
-        {t('설치 위치', 'Install location')}: <code>~/.agentcodegui/engines</code> · <code>~/.agentcodegui/codex-engines</code>
+        {t('설치 위치', 'Install location')}: <code>~/.agentcodegui3/engines</code> · <code>~/.agentcodegui3/codex-engines</code>
       </div>
     </>
   )
@@ -1652,6 +1562,7 @@ function ApiView() {
           </>
         )}
       </div>
+
     </>
   )
 }
@@ -1843,269 +1754,8 @@ function ProviderApiCard({
   )
 }
 
-// 라벨이 언어를 따라가야 해서 상수가 아닌 함수 — 렌더 때 t()가 평가된다
-function scopeTabs(): { id: 'all' | SkillScope; label: string }[] {
-  return [
-    { id: 'all', label: t('전체', 'All') },
-    { id: 'global', label: t('전역', 'Global') },
-    { id: 'local', label: t('로컬', 'Local') }
-  ]
-}
-
-function SkillView({ cwd }: { cwd: string }) {
-  const [skills, setSkills] = useState<SkillInfo[] | null>(null)
-  const [scope, setScope] = useState<'all' | SkillScope>('all')
-  const [busy, setBusy] = useState<string | null>(null) // skill name currently toggling
-
-  const refresh = (): void => {
-    window.api.skill
-      .list(cwd)
-      .then(setSkills)
-      .catch(() => setSkills([]))
-  }
-  useEffect(refresh, [cwd])
-
-  const toggle = async (s: SkillInfo): Promise<void> => {
-    const next = !s.enabled
-    setBusy(s.name)
-    // optimistic — a name can appear in both scopes, so flip every matching row
-    setSkills((cur) => cur?.map((x) => (x.name === s.name ? { ...x, enabled: next } : x)) ?? cur)
-    try {
-      await window.api.skill.setEnabled(s.name, next)
-    } catch {
-      refresh() // revert to the persisted truth on failure
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const counts = {
-    all: skills?.length ?? 0,
-    global: skills?.filter((s) => s.scope === 'global').length ?? 0,
-    local: skills?.filter((s) => s.scope === 'local').length ?? 0
-  }
-  const rows = (skills ?? []).filter((s) => scope === 'all' || s.scope === scope)
-
-  return (
-    <>
-      <div className="set-h1">Skill</div>
-      <div className="set-h1-sub">
-        {t(
-          '에이전트가 쓸 수 있는 Skill을 범위별로 보고, 여기서 바로 켜고 끌 수 있습니다.',
-          'See the Skills the agent can use by scope, and turn them on or off right here.'
-        )}
-      </div>
-
-      <div className="set-sec">{t('스킬', 'Skills')}</div>
-      <div className="set-tabs">
-        {/* tab — 지역변수 t는 i18n t()를 가리므로 이름을 피한다 */}
-        {scopeTabs().map((tab) => (
-          <button
-            key={tab.id}
-            className={'set-tab' + (scope === tab.id ? ' on' : '')}
-            onClick={() => setScope(tab.id)}
-          >
-            {tab.label}
-            <span className="n">{counts[tab.id]}</span>
-          </button>
-        ))}
-        <button className="set-iconbtn" onClick={refresh} aria-label={t('새로고침', 'Refresh')}>
-          <IconRefresh size={13} />
-        </button>
-      </div>
-
-      {skills == null ? (
-        <div className="sc2 hint">
-          <span className="set-spin" /> {t('불러오는 중…', 'Loading…')}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="sc2 hint">
-          {scope === 'local'
-            ? cwd
-              ? t('이 프로젝트의 .claude/skills 에 Skill이 없습니다.', 'No Skills in this project’s .claude/skills.')
-              : t(
-                  '연결된 프로젝트가 없어 로컬 Skill을 찾을 수 없습니다.',
-                  'No project is open, so local Skills can’t be found.'
-                )
-            : scope === 'global'
-              ? t('~/.claude/skills 에 Skill이 없습니다.', 'No Skills in ~/.claude/skills.')
-              : t('설치된 Skill이 없습니다.', 'No Skills installed.')}
-        </div>
-      ) : (
-        rows.map((s) => (
-          <div className={'sc2 row2' + (s.enabled ? '' : ' off')} key={s.scope + ':' + s.name}>
-            <div className="set-tile">/</div>
-            <div className="rmain has-tip tip-wrap" data-tip={s.description || t('설명이 없습니다.', 'No description.')}>
-              <div className="em">
-                {s.name}
-                <span className="set-badge off">
-                  {s.scope === 'global' ? t('전역', 'Global') : t('로컬', 'Local')}
-                </span>
-              </div>
-              <div className="meta">{s.description || t('설명이 없습니다.', 'No description.')}</div>
-            </div>
-            <button
-              className={'sw2' + (s.enabled ? ' on' : '')}
-              role="switch"
-              aria-checked={s.enabled}
-              aria-label={t(
-                s.name + (s.enabled ? ' 끄기' : ' 켜기'),
-                (s.enabled ? 'Turn off ' : 'Turn on ') + s.name
-              )}
-              disabled={busy === s.name}
-              onClick={() => void toggle(s)}
-            />
-          </div>
-        ))
-      )}
-
-      <div className="set-note2">
-        {isEn() ? (
-          <>
-            Global: <code>~/.claude/skills</code> · Local: <code>&lt;project&gt;/.claude/skills</code> · Turning one
-            off keeps the agent from using that Skill on later runs.
-          </>
-        ) : (
-          <>
-            전역: <code>~/.claude/skills</code> · 로컬: <code>&lt;프로젝트&gt;/.claude/skills</code> · 끄면 이후 실행부터
-            에이전트가 그 Skill을 사용하지 않습니다.
-          </>
-        )}
-      </div>
-    </>
-  )
-}
-
-function McpView({ cwd }: { cwd: string }) {
-  const [servers, setServers] = useState<McpServerInfo[] | null>(null)
-  const [scope, setScope] = useState<'all' | 'global' | 'local'>('all')
-  const [busy, setBusy] = useState<string | null>(null)
-
-  const refresh = (): void => {
-    window.api.mcp
-      .list(cwd)
-      .then(setServers)
-      .catch(() => setServers([]))
-  }
-  useEffect(refresh, [cwd])
-
-  const toggle = async (s: McpServerInfo): Promise<void> => {
-    const next = !s.enabled
-    setBusy(s.name)
-    setServers((cur) => cur?.map((x) => (x.name === s.name ? { ...x, enabled: next } : x)) ?? cur)
-    try {
-      await window.api.mcp.setEnabled(s.name, next)
-    } catch {
-      refresh()
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const counts = {
-    all: servers?.length ?? 0,
-    global: servers?.filter((s) => s.scope === 'global').length ?? 0,
-    local: servers?.filter((s) => s.scope === 'local').length ?? 0
-  }
-  const rows = (servers ?? []).filter((s) => scope === 'all' || s.scope === scope)
-  // 카드 타일 이니셜 — PoC 문법(context7 → C7): 영숫자만 남겨 앞 두 글자
-  const tileTxt = (name: string): string => name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?'
-
-  return (
-    <>
-      <div className="set-h1">MCP</div>
-      <div className="set-h1-sub">
-        {t(
-          '에이전트가 쓸 수 있는 MCP 서버를 범위별로 보고, 여기서 바로 켜고 끌 수 있습니다.',
-          'See the MCP servers the agent can use by scope, and turn them on or off right here.'
-        )}
-      </div>
-
-      <div className="set-sec">{t('서버', 'Servers')}</div>
-      <div className="set-tabs">
-        {/* tab — 지역변수 t는 i18n t()를 가리므로 이름을 피한다 */}
-        {scopeTabs().map((tab) => (
-          <button
-            key={tab.id}
-            className={'set-tab' + (scope === tab.id ? ' on' : '')}
-            onClick={() => setScope(tab.id)}
-          >
-            {tab.label}
-            <span className="n">{counts[tab.id]}</span>
-          </button>
-        ))}
-        <button className="set-iconbtn" onClick={refresh} aria-label={t('새로고침', 'Refresh')}>
-          <IconRefresh size={13} />
-        </button>
-      </div>
-
-      {servers == null ? (
-        <div className="sc2 hint">
-          <span className="set-spin" /> {t('불러오는 중…', 'Loading…')}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="sc2 hint">
-          {scope === 'local'
-            ? cwd
-              ? t(
-                  '이 프로젝트(.mcp.json·로컬)에 등록된 MCP 서버가 없습니다.',
-                  'No MCP servers registered in this project (.mcp.json or local).'
-                )
-              : t(
-                  '연결된 프로젝트가 없어 로컬 MCP 서버를 찾을 수 없습니다.',
-                  'No project is open, so local MCP servers can’t be found.'
-                )
-            : scope === 'global'
-              ? t('~/.claude.json 에 등록된 전역 MCP 서버가 없습니다.', 'No global MCP servers in ~/.claude.json.')
-              : t('등록된 MCP 서버가 없습니다.', 'No MCP servers registered.')}
-        </div>
-      ) : (
-        rows.map((s) => (
-          <div className={'sc2 row2' + (s.enabled ? '' : ' off')} key={s.origin + ':' + s.name}>
-            <div className="set-tile">{tileTxt(s.name)}</div>
-            <div className="rmain has-tip tip-wrap" data-tip={s.detail || t('연결 정보가 없습니다.', 'No connection details.')}>
-              <div className="em">
-                {s.name}
-                <span className="set-badge off">
-                  {s.scope === 'global' ? t('전역', 'Global') : t('로컬', 'Local')}
-                </span>
-              </div>
-              <div className="meta mono">
-                {(s.transport !== 'unknown' ? s.transport + ' · ' : '') +
-                  (s.detail || t('연결 정보가 없습니다.', 'No connection details.'))}
-              </div>
-            </div>
-            <button
-              className={'sw2' + (s.enabled ? ' on' : '')}
-              role="switch"
-              aria-checked={s.enabled}
-              aria-label={t(
-                s.name + (s.enabled ? ' 끄기' : ' 켜기'),
-                (s.enabled ? 'Turn off ' : 'Turn on ') + s.name
-              )}
-              disabled={busy === s.name}
-              onClick={() => void toggle(s)}
-            />
-          </div>
-        ))
-      )}
-
-      <div className="set-note2">
-        {isEn() ? (
-          <>
-            Global: <code>~/.claude.json</code> · Project: <code>&lt;project&gt;/.mcp.json</code> · Turning one off
-            keeps the agent from using that server on later runs.
-          </>
-        ) : (
-          <>
-            전역: <code>~/.claude.json</code> · 프로젝트: <code>&lt;프로젝트&gt;/.mcp.json</code> · 끄면 이후 실행부터
-            에이전트가 그 서버를 사용하지 않습니다.
-          </>
-        )}
-      </div>
-    </>
-  )
-}
+// ★3.0 R3 — SkillView·McpView 제거: 패널 헤더의 「MCP & Skill」 칩(McpSkillView)이
+// 같은 채널(`mcp:list`·`skill:list`·`*:set-enabled`)로 목록·토글을 넘겨받았다.
 
 // a representative filename per server id → the same FileBadge the rest of the app
 // uses, so the languages are recognizable at a glance
@@ -3318,11 +2968,9 @@ function HideListSection({
 }
 
 export function SettingsModal({
-  cwd,
   onClose,
   initialView
 }: {
-  cwd: string
   onClose: () => void
   initialView?: SettingsView // 특정 탭으로 바로 열기 (예: 컴포저 API 토글 → 'api')
 }) {
@@ -3388,8 +3036,6 @@ export function SettingsModal({
               {view === 'account' && <AccountView />}
               {view === 'version' && <EngineView />}
               {view === 'api' && <ApiView />}
-              {view === 'mcp' && <McpView cwd={cwd} />}
-              {view === 'skill' && <SkillView cwd={cwd} />}
               {view === 'display' && <DisplayView />}
               {view === 'language' && <LanguageView />}
               {view === 'lsp' && <LspView />}

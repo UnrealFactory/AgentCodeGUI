@@ -79,6 +79,9 @@ ccg-lsp = { path = "../crates/ccg-lsp" }
 webview2-com = "0.38"
 windows = { version = "0.61", features = [
   "Win32_Foundation",
+  # GetModuleHandleW — 창 아이콘을 exe 리소스에서 크기별로 다시 다는 자리(win.rs
+  # apply_resource_icon). tao가 이미 켜 둔 feature라 추가 컴파일 비용이 없다.
+  "Win32_System_LibraryLoader",
   "Win32_System_Threading",
   "Win32_System_Com",
   "Win32_UI_WindowsAndMessaging",

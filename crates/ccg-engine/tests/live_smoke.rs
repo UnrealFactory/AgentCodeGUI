@@ -25,8 +25,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn home() -> PathBuf {
-    PathBuf::from(std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap())
-        .join(".agentcodegui")
+    // 3.0 실홈(.agentcodegui3) 우선 — 없으면 2.6.2 홈(개발 기계의 실자격증명 소재지)
+    let base = PathBuf::from(std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap());
+    let h3 = base.join(".agentcodegui3");
+    if h3.is_dir() { h3 } else { base.join(".agentcodegui") }
 }
 
 fn cli_path() -> PathBuf {

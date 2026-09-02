@@ -11,7 +11,7 @@
  * ============================================================ */
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { ChatStatusLite, EngineEvent, RunRequest } from '@shared/protocol'
+import type { ChatStatusLite, ChatTooling, EngineEvent, RunRequest } from '@shared/protocol'
 
 const CHATS_SET_ACTIVE = 'chats:set-active'
 const CHAT_EVENT = 'chat:event'
@@ -20,6 +20,7 @@ const CHAT_RUN_STATE = 'chat:run-state'
 const CHAT_STATUS = 'chat:status'
 const CHAT_RESPOND_DIALOG = 'chat:respond-dialog'
 const CHAT_QUEUE_MUTATE = 'chat:queue-mutate'
+const CHAT_TOOLING_GET = 'chat:tooling-get'
 const CHAT_VERDICT = 'chat:verdict'
 const CHAT_IDENTITY = 'chat:identity'
 const CHAT_IDENTITY_REVERT = 'chat:identity-revert'
@@ -91,6 +92,26 @@ export function onChatEvent(cb: (chatId: string, event: EngineEvent) => void): (
     if (!dbg.ids.includes(p.chatId)) dbg.ids.push(p.chatId)
     cb(p.chatId, p.event)
   })
+}
+
+/**
+ * ★R3 — 본채팅 헤더 칩(McpSkillView)의 도구 환경 재조회. 멀티 칩은 shim의
+ * `multi.toolingGet(panelId)`를 쓰지만 본채팅이 아는 주소는 `chatId`뿐이다 —
+ * 채널(`chat:tooling-get`)은 두 주소를 다 받는다(engine/mod.rs가 번역).
+ * `null` = "아직 모름"(런타임 없음 · `system/init` 전) — 칩은 그때 디스크 폴백을 그린다.
+ */
+export async function getChatTooling(chatId: string): Promise<ChatTooling | null> {
+  if (!chatId) return null
+  try {
+    const v = (await invoke('ipc_call', {
+      channel: CHAT_TOOLING_GET,
+      payload: [{ chatId }]
+    })) as { tooling?: ChatTooling; __unimplemented?: boolean } | null
+    if (!v || v.__unimplemented) return null
+    return v.tooling ?? null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -181,15 +202,18 @@ export interface VerdictWire {
   cmd?: string
   reason?: string | null
 }
-export function onChatVerdict(cb: (chatId: string, verdict: VerdictWire) => void): () => void {
+// `panelId` — 이 대화가 보드 자리에 앉아 있을 때의 자리 별칭(셸 hub `panel_alias`).
+// 렌더러의 자리 화면(ActiveSession 착지·App 토스트 가드)은 chatId 배선이 없어 이 키로만
+// 판별할 수 있다. 없으면(자리 밖 대화) undefined.
+export function onChatVerdict(cb: (chatId: string, verdict: VerdictWire, panelId?: string) => void): () => void {
   // 진단 — `window.__ccgChatEv`와 같은 규약. "사유가 안 보인다"의 원인이 채널인지
   // 화면인지 가르는 유일한 창구다(구독자 0이던 시절엔 이 값 자체가 없었다).
   const dbg = ((window as unknown as { __ccgVerdicts?: { n: number; rows: unknown[] } }).__ccgVerdicts ??= { n: 0, rows: [] })
-  return sub<{ chatId?: string; verdict?: VerdictWire }>(CHAT_VERDICT, (p) => {
+  return sub<{ chatId?: string; panelId?: string | null; verdict?: VerdictWire }>(CHAT_VERDICT, (p) => {
     if (!p || typeof p.chatId !== 'string' || !p.verdict) return
     dbg.n += 1
-    if (dbg.rows.length < 200) dbg.rows.push({ chatId: p.chatId, ...p.verdict })
-    cb(p.chatId, p.verdict)
+    if (dbg.rows.length < 200) dbg.rows.push({ chatId: p.chatId, panelId: p.panelId, ...p.verdict })
+    cb(p.chatId, p.verdict, typeof p.panelId === 'string' ? p.panelId : undefined)
   })
 }
 

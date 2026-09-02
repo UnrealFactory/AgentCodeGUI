@@ -34,7 +34,6 @@ import {
   type WindowSlot
 } from './api/unified'
 import { noteSettled } from './lib/settled'
-import { NewChatModal } from './components/NewChatModal'
 import { getPref, setPref, delPref } from './lib/prefs'
 import { t, useLang } from './lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 한도 선행 워밍 + 「계정 → 살아 있는 자리」 역인덱스의 재료 공급.
@@ -73,6 +72,8 @@ import { PatchNotes } from './components/PatchNotes'
 import { useZoom, ZoomBadge, mergeRefs } from './components/zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './components/mouseGesture'
 import { IconChevDown, IconMascot } from './components/icons'
+import { diffsOf, openInViewerWindow, setViewerWindowMode, viewerWindowMode } from './lib/viewerWindow'
+import type { ViewerOpenPayload } from '@shared/protocol'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -304,6 +305,13 @@ function MainApp({ user }: { user: AppUser }) {
     setPref('limitResume.on', on)
     setAutoResume(on)
   })
+  // 설정 ▸ API 「한도가 다 되면」 우선순위 카드가 같은 키를 고쳐 쓴다 — 같은 창이라
+  // 프리프 캐시는 이미 하나이므로 재렌더 신호만 받으면 된다 (컴포저 토글 양방향 동기)
+  useEffect(() => {
+    const sync = (): void => setAutoResume(getPref<boolean>('limitResume.on', false))
+    window.addEventListener('ccg:limit-policy', sync)
+    return () => window.removeEventListener('ccg:limit-policy', sync)
+  }, [])
   // API 모드 — 켜면 실행이 구독(OAuth) 대신 저장된 API 키로 과금된다. 앱 단위 설정
   // (채팅별 picker와 달리 과금 수단이라 전역이 자연스럽다) — uiPrefs에 영속.
   const [apiMode, setApiMode] = useState<boolean>(() => getPref<boolean>('api.mode', false))
@@ -317,6 +325,9 @@ function MainApp({ user }: { user: AppUser }) {
   // gitViewer(커밋 스냅샷·일회성 diff·해시 칩) — 일반 경로로 연 파일은 null이라 뷰어가 평소처럼 돈다.
   const [gitOpen, setGitOpen] = useState<{ root?: string } | null>(null)
   const [gitViewer, setGitViewer] = useState<GitViewerOverride | null>(null)
+  // 독립 뷰어 창에서 「창 안으로」로 되돌아온 파일 — 페이로드째 들고 카드로 그린다(그 파일의
+  // cwd·diff·Git 스냅샷이 실려 오므로 멀티 모드의 패널 파일도 이 자리 하나로 받는다)
+  const [docked, setDocked] = useState<ViewerOpenPayload | null>(null)
   // 탐색기 우클릭 '변경된 파일 보기' 카드 — 스코프 폴더(rel '' = 프로젝트 전체)와 표시 이름
   const [chgScope, setChgScope] = useState<{ rel: string; label: string } | null>(null)
   // a working-folder change that would reset the current conversation, parked here
@@ -338,6 +349,9 @@ function MainApp({ user }: { user: AppUser }) {
   const [mode, setMode] = useState<'single' | 'multi'>(() =>
     getPref<string>('workspace.mode', 'single') === 'multi' ? 'multi' : 'single'
   )
+  // deps 없는 구독 effect(chat:verdict)에서 현재 모드를 읽기 위한 미러
+  const modeRef = useRef(mode)
+  modeRef.current = mode
   const switchMode = (m: 'single' | 'multi'): void => {
     setMode(m)
     setPref('workspace.mode', m)
@@ -350,6 +364,11 @@ function MainApp({ user }: { user: AppUser }) {
   // 보드 크롬을 떠나도(일반 채팅으로 전환) 비우지 않는다 — 다시 들어가면 새 마운트가
   // 곧바로 덮어쓴다(multiExp와 같은 규약). 비우면 사이드바에서 대화가 사라져 보인다.
   const [panelInfos, setPanelInfos] = useState<PanelSummary[]>([])
+  // chat:verdict 라우팅용 스냅샷 — 그 effect는 deps 없이 한 번 구독한다(아래 주석).
+  // panelInfos는 보드를 떠나도 남으므로(위 주석) mode까지 같이 봐야 "보이는 자리"다 —
+  // 보드 밖에서는 ActiveSession이 언마운트라 패널 착지가 없고, 토스트가 말해야 한다.
+  const panelInfosRef = useRef(panelInfos)
+  panelInfosRef.current = panelInfos
   // 열린 세션 창(추가 채팅) 목록 — 메인 프로세스 레지스트리 구독
   const [sessionWins, setSessionWins] = useState<SessionWindowInfo[]>([])
   useEffect(() => {
@@ -390,8 +409,6 @@ function MainApp({ user }: { user: AppUser }) {
   // 그 호출이 구독 effect보다 위에 있어 TDZ에 걸린다.
   const [chatStatus, setChatStatus] = useState<Record<string, ChatStatusLite>>({})
   const [winSlots, setWinSlots] = useState<WindowSlot[]>([])
-  // 새 채팅 선택 모달 (일반/멀티 → 패널 수) — Ctrl+N·사이드바 새 채팅이 연다
-  const [newChatOpen, setNewChatOpen] = useState(false)
   // 파일 탐색기 — 2.0: 왼쪽 칼럼을 채팅 사이드바와 '전환'해 쓴다 (헤더 돋보기 옆 버튼).
   // 기본은 채팅 목록. 전환 상태는 앱 단위로 기억.
   const [explorerOpen, setExplorerOpen] = useState<boolean>(() => getPref<boolean>('explorer.swap', false))
@@ -1343,18 +1360,26 @@ function MainApp({ user }: { user: AppUser }) {
     landOnFreshChat(fresh.id)
   }
 
-  // ⌘N / Ctrl+N — 새 채팅 선택 모달(일반/멀티)을 연다 (PoC: 버튼도 같은 모달)
+  // 새 채팅 — 곧장 일반 채팅을 만든다. 일반/멀티 선택 모달은 채팅·보드 통합(M-UX) 뒤
+  // 군더더기라 걷어냈다(2026-09-01 사용자 결정) — 자리 수는 채팅 크롬의 다이얼이 담당.
+  // busy 가드도 안 건다: createChat이 도는 대화를 bgTrack으로 자리 밖에 살려 둔다(§위).
+  const startNewChat = useEvent(() => {
+    if (mode !== 'single') switchMode('single')
+    createChat()
+  })
+
+  // ⌘N / Ctrl+N — 새 채팅
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // Shift+Ctrl+N is a separate shortcut (new session window) — don't also make a chat
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
-        setNewChatOpen(true)
+        startNewChat()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [startNewChat])
 
   // Ctrl/⌘+Shift+N — open a new independent session window (works in any mode)
   useEffect(() => {
@@ -1450,6 +1475,9 @@ function MainApp({ user }: { user: AppUser }) {
     if (busy) return
     window.api.cancel()
     load(initialSessionState)
+    // 따라가기·점프 버튼도 백지로 — 위를 읽다가 지우면 래치 OFF + showJump true가
+    // 남는데, 빈 스레드는 scroll 이벤트가 없어 버튼이 저절로 안 꺼진다(잔상 보고)
+    follow.reset()
     setInput('')
     setImages([])
     // 이 채팅의 한도 대기표도 함께 — 백지가 된 대화 위에 옛 프롬프트가 자동
@@ -1659,6 +1687,7 @@ function MainApp({ user }: { user: AppUser }) {
       const lines = p.from != null && p.to != null ? ` lines="${Math.min(p.from, p.to)}-${Math.max(p.from, p.to)}"` : ''
       const prompt = `<selection file="${p.path}"${lines}>\n${p.text}\n</selection>\n\n${p.question}`
       setOpenFilePath(null)
+      setDocked(null)
       if (busy) {
         const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
         const item: ScheduledMsg = { id, text: prompt, images: [], picker }
@@ -1873,17 +1902,70 @@ function MainApp({ user }: { user: AppUser }) {
   // 모든 파일은 코드 뷰어 카드 하나로 연다 — 변경된 파일이면 뷰어가 diff 마킹
   // (추가 틴트·삭제 헤어라인·룰러)을 얹으므로 LSP 심볼 탐색과 변경 표시가 공존한다.
   // 일반 경로 열기는 Git 오버라이드를 지운다 — 직전에 커밋 스냅샷을 봤어도 새 파일은 평소대로.
+  // 끈적한 창 모드면 독립 뷰어 창으로 보낸다 — 판정은 동기라 카드 경로는 예전처럼 클릭 즉시다.
+  // 창을 못 세우면(false) 카드로 물러난다(모드는 그대로 — 다음 클릭이 다시 창을 노린다).
   const openPath = (path: string): void => {
     setGitViewer(null)
+    setDocked(null)
+    if (viewerWindowMode()) {
+      void openInViewerWindow({ path, cwd, diffs: state.diffs, askable: true }).then((took) => {
+        if (!took) setOpenFilePath(path)
+      })
+      return
+    }
     setOpenFilePath(path)
   }
   // Git 카드 — 탐색기 하단 상태 스트립이 연다(줄이 가리킨 저장소 root 전달). 카드에서
   // 연 파일은 override로 뷰어에.
   const onOpenGit = useEvent((root?: string) => setGitOpen({ root }))
   const onOpenGitFile = useEvent((path: string, ov: GitViewerOverride) => {
+    setDocked(null)
+    if (viewerWindowMode()) {
+      void openInViewerWindow({ path, cwd, diffs: state.diffs, override: ov, askable: true }).then((took) => {
+        if (!took) {
+          setGitViewer(ov)
+          setOpenFilePath(path)
+        }
+      })
+      return
+    }
     setGitViewer(ov)
     setOpenFilePath(path)
   })
+  // 「별도 창으로」 — 끈적한 모드를 켜고 지금 보는 파일을 독립 창으로. 창을 못 세우면 모드를 되돌린다.
+  const onPopoutFile = useEvent((p: string) => {
+    setViewerWindowMode(true)
+    const src = docked
+    void openInViewerWindow({
+      path: p,
+      cwd: src ? src.cwd : cwd,
+      diffs: src ? diffsOf(src) : state.diffs,
+      // 정의 점프로 다른 파일에 들어가 있으면 Git 스냅샷은 원래 파일의 것 — 넘기지 않는다
+      override: p === (src ? src.path : openFilePath) ? (src ? src.override : gitViewer) : null,
+      askable: true
+    }).then((took) => {
+      if (took) {
+        setOpenFilePath(null)
+        setGitViewer(null)
+        setDocked(null)
+      } else setViewerWindowMode(false)
+    })
+  })
+  // 뷰어 창 → 이 창(원래 창): 「창 안으로」로 되돌아온 파일 · 질문 패널의 질문
+  useEffect(() => {
+    const v = window.api.viewer
+    if (!v) return
+    const offDock = v.onDocked((p) => {
+      setOpenFilePath(null)
+      setGitViewer(null)
+      setDocked(p)
+    })
+    const offAsk = v.onAskSelection((p) => onAskSelection(p))
+    return () => {
+      offDock()
+      offAsk()
+    }
+  }, [onAskSelection])
   // 폴더·뷰 전환(멀티의 패널 전환 포함)이면 카드를 접는다 — 스코프 폴더가 달라졌다
   useEffect(() => setGitOpen(null), [gitCwd, mode])
   const onOpenFile = useEvent((f: { path: string }) => openPath(f.path))
@@ -1902,15 +1984,11 @@ function MainApp({ user }: { user: AppUser }) {
   const onRenameChat = useEvent(renameChat)
   const onDeleteChat = useEvent(deleteChat)
   const onDeleteAllChats = useEvent(deleteAllChats)
-  const onOpenNewChat = useEvent(() => setNewChatOpen(true))
+  const onOpenNewChat = startNewChat
   // 사이드바 항목 선택 — 섹션이 곧 뷰: 일반=코드 뷰, 멀티=멀티 뷰, 추가=그 창 포커스
   const onSelectGeneral = useEvent((id: string) => {
     if (mode !== 'single') switchMode('single')
     selectChat(id)
-  })
-  const onSelectMulti = useEvent((id: string) => {
-    if (mode !== 'multi') switchMode('multi')
-    multi.selectSession(id)
   })
   // ★ 3.0 M-UX — 일반 채팅(IDE 크롬)의 다이얼. 1은 지금 화면이므로 아무 일도 안 하고,
   // 2‥6은 활성 보드를 그 자리 수로 연다. 대화는 어느 쪽에서도 사라지지 않는다 —
@@ -1975,45 +2053,29 @@ function MainApp({ user }: { user: AppUser }) {
       })),
     [sessionWins, openWinIds, lang]
   )
-  // ── ★ 3.0 M-UX — 활성 보드의 자리들을 「채팅」 목록 항목으로 ────────────────────
-  // 항목 키는 panelId(`${sessionId}::${slot}`) — 별칭 계층이 chatId로 번역하는 그 키다.
-  // 보이는 자리(1‥N) → 접힌 자리(⌄N) 순서. 빈 자리는 대화가 아니라 안 보인다(§2.4).
-  const boardSummaries = useMemo<ChatSummary[]>(
+  // ── 보드 = 「채팅」 목록의 **한 줄** (2026-09-01 사용자 결정) ────────────────────
+  // M-UX 초안은 자리(패널)마다 한 줄이었는데("안녕?" 6줄), 묶음 하나가 자리 6개를 품는
+  // 2.6.2 방식이 목록에서 덜 시끄럽다는 판단으로 되돌렸다. 클릭=보드 크롬 진입.
+  // 자리별 이동은 보드 안(다이얼·접힘 배지)이 담당한다. 「보드」 구분 칩도 뺐다(같은 날
+  // 사용자 — 일반 채팅 줄과 굳이 갈라 보일 필요 없다).
+  const boardRows = useMemo<ChatSummary[]>(
     () =>
-      panelInfos
-        .filter((p) => !p.empty)
-        .slice()
-        .sort((a, b) => (a.pos ?? 100 + (a.fold ?? 0)) - (b.pos ?? 100 + (b.fold ?? 0)))
-        .map((p) => ({
-          id: p.panelId,
-          title: p.title || t('새 채팅', 'New chat'),
-          status: p.status,
-          ask: p.ask,
-          running: p.status === 'working' || p.status === 'analyzing',
-          // ★ R2 — 칩의 뜻은 *"이 대화가 지금 어느 자리에서 **보이는가**"* 다(Sidebar.tsx:27).
-          // 보드 크롬을 떠나 있으면 그 자리들은 **화면에 없다** — 그때도 「1」을 달아 두면
-          // 일반 채팅과 보드 1번 자리가 같은 자리를 동시에 주장한다(크리틱 M-UX R1 §2-⑤
-          // `side.dup-slot1`/`side.stale-live`, 스펙 §2.6 불변식 위반). 칩을 떼면 "어느
-          // 자리에도 안 얹힌 대화"라는 기존 어휘 그대로다 — 대화는 목록에 그대로 남는다.
-          slot: p.popped
-            ? { text: t('창', 'win'), kind: 'win' as const }
-            : p.pos != null
-              ? mode === 'multi'
-                ? { text: String(p.pos), kind: 'live' as const, tag: p.color }
-                : undefined
-              : { text: String(p.fold ?? ''), kind: 'folded' as const, tag: p.color }
-        })),
-    [panelInfos, mode, lang]
+      multi.summaries.map((s) => ({
+        ...s,
+        running: s.status === 'working' || s.status === 'analyzing'
+      })),
+    [multi.summaries]
   )
-  // 「채팅」 = 보드 자리 ∪ 창 ∪ 일반 채팅. 한 목록 안에서 자리 칩만 다르다(§8-①(a)).
+  // 「채팅」 = 보드(한 줄) ∪ 일반 채팅.
+  // 창 대화(sessionWins)는 2026-09-01 사용자 결정으로 「추가 채팅」 섹션으로 다시 갈랐다 —
+  // 통합 목록에 자리 칩으로 섞는 것보다 2.6.2식 두 섹션이 깔끔하다는 판단.
   //
   // ★ R3 — 두 사실이 더 붙는다: **창이 떠 있는가**(`chat:windows` → 우클릭 「창 닫기」)와
   // **엔진이 든 대기표가 ready인가**(`chat:status.hold.ready` → 「이어가기」 알약).
   // 둘 다 화면 밖 대화에 대한 사실이라 목록 말고는 말할 자리가 없다.
   const unifiedChats = useMemo<ChatSummary[]>(
     () => [
-      ...boardSummaries,
-      ...extraSummaries.map((c) => ({ ...c, winOpen: openWinIds.has(c.id), resumeReady: canPressResume(chatStatus[c.id]) })),
+      ...boardRows,
       ...chatSummaries.map((c) => ({
         ...c,
         // 창이 떠 있으면 그게 이 대화가 「지금 있는 자리」다(추가 채팅이 아니어도 —
@@ -2032,12 +2094,24 @@ function MainApp({ user }: { user: AppUser }) {
       }))
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [boardSummaries, extraSummaries, chatSummaries, mode, activeChatId, busy, wfAlive, bgIds, openWinIds, chatStatus, lang]
+    [boardRows, chatSummaries, mode, activeChatId, busy, wfAlive, bgIds, openWinIds, chatStatus, lang]
+  )
+  // 「추가 채팅」 섹션 목록 — 창 대화 + 창/이어가기 칩 사실
+  const extraSectionChats = useMemo<ChatSummary[]>(
+    () => extraSummaries.map((c) => ({ ...c, winOpen: openWinIds.has(c.id), resumeReady: canPressResume(chatStatus[c.id]) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [extraSummaries, openWinIds, chatStatus]
   )
   // 접힌 자리 수 — 사이드바 안내 줄("이 배치의 N개 자리가 접혔어요")
   const foldedCount = useMemo(() => panelInfos.filter((p) => !p.empty && p.pos == null && !p.popped).length, [panelInfos])
-  // 통합 목록의 클릭 라우팅 — 항목 종류를 id로 판별한다(세 id 공간이 겹치지 않는다)
+  // 통합 목록의 클릭 라우팅 — 항목 종류를 id로 판별한다(네 id 공간이 겹치지 않는다)
   const onSelectUnified = useEvent((id: string) => {
+    // 보드 줄 — 그 보드의 크롬으로 (자리별 이동은 보드 안 소관)
+    if (multi.summaries.some((s) => s.id === id)) {
+      if (mode !== 'multi') switchMode('multi')
+      multi.selectSession(id)
+      return
+    }
     const panel = panelInfos.find((p) => p.panelId === id)
     if (panel) {
       if (mode !== 'multi') switchMode('multi')
@@ -2054,6 +2128,10 @@ function MainApp({ user }: { user: AppUser }) {
     onSelectGeneral(id)
   })
   const onRenameUnified = useEvent((id: string, name: string) => {
+    if (multi.summaries.some((s) => s.id === id)) {
+      multi.renameSession(id, name)
+      return
+    }
     if (panelInfos.some((p) => p.panelId === id)) return // 패널 제목은 자리 안에서(F2·연필)
     if (sessionWins.some((w) => w.id === id)) {
       onRenameSessionWin(id, name)
@@ -2061,12 +2139,11 @@ function MainApp({ user }: { user: AppUser }) {
     }
     onRenameChat(id, name)
   })
-  // 「채팅」 전체 삭제 — 일반 채팅 전부 + 창 대화 전부. 보드 자리는 「배치」 소관이라 남는다
-  const onDeleteAllUnified = useEvent(() => {
-    onDeleteAllChats()
-    onCloseAllSessionWins()
-  })
   const onDeleteUnified = useEvent((id: string) => {
+    if (multi.summaries.some((s) => s.id === id)) {
+      multi.deleteSession(id)
+      return
+    }
     if (panelInfos.some((p) => p.panelId === id)) return // 자리 비우기는 2단계(창 자리 채널 미배선)
     if (sessionWins.some((w) => w.id === id)) {
       onCloseSessionWin(id)
@@ -2088,22 +2165,22 @@ function MainApp({ user }: { user: AppUser }) {
   const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === activeChatId), [sessionWins, activeChatId])
   // "/" 팔레트 — /btw 포함 (배선된 표면 공통 조립: 본채팅·추가 채팅·멀티 패널·팝아웃)
   const composerCommands = useMemo(() => slashCommandsWithBtw(), [lang])
-  // ── ★ 3.0 M-UX — 사이드바 **2섹션** (§8-①(a), 목업 chat-unify-collapse) ────────
+  // ── 사이드바 2섹션: 「채팅」/「추가 채팅」 (2026-09-01 사용자 결정) ────────────
   //
-  // 2.6.2의 3섹션(일반/멀티/추가)은 "대화를 담는 그릇이 네 벌"이라는 사실이 화면에
-  // 새어 나온 것이었다. 통합 모델에서 대화는 하나의 풀이고 자리는 뷰다 →
-  //   「채팅」 = 대화 전부(보드 자리 · 창 · 일반). 어디에 있는지는 **자리 칩**이 말한다.
-  //   「배치」 = 보드 목록(2.6.2 멀티 세션의 후신 — "그때 그 조합" 복원을 잃지 않는다).
-  // 추가 채팅 섹션은 사라졌다 — 목록에서 창 칩으로만 구분된다(§3.3).
+  // M-UX 초안은 「채팅」(전부 통합)/「배치」(보드 목록)였는데, 실사용에서 「배치」가
+  // 별 쓸모 없이 헷갈린다는 판단으로 2.6.2식 구분으로 되돌렸다:
+  //   「채팅」 = 일반 채팅 + 보드 자리 대화(자리 칩으로 구분). 보드 진입은 다이얼(2‥6)이 담당.
+  //   「추가 채팅」 = 별도 OS 창 대화(Ctrl+Shift+N). 클릭=창 포커스(닫혔으면 되만듦).
+  // 보드 목록 UI는 없다 — 다이얼이 여는 활성 보드 하나로 충분하다(새 보드 생성 경로도
+  // 새 채팅 모달 제거와 함께 걷혔다).
   const sections: SidebarSection[] = useMemo(
     () => [
       {
         key: 'general' as const,
         label: t('채팅', 'Chats'),
         chats: unifiedChats,
-        // 활성 항목 — 보드 크롬이면 포커스된 자리, 아니면 지금 보는 일반 채팅
-        // 보드 크롬이면 1번 자리(= 지금 대화), 아니면 지금 보는 일반 채팅
-        activeId: mode === 'multi' ? panelInfos.find((p) => p.pos === 1 && !p.empty)?.panelId : activeChatId,
+        // 활성 항목 — 보드 크롬이면 그 보드 줄, 아니면 지금 보는 일반 채팅
+        activeId: mode === 'multi' ? multi.activeId : activeChatId,
         currentId: activeChatId,
         // 접힘 안내는 **보드를 보고 있을 때만** — 화면에 없는 배치의 접힘을 계속 말하면
         // 일반 채팅 화면에서 "지금 뭔가 접혀 있다"는 거짓 신호가 된다(§2-⑤와 같은 뿌리)
@@ -2118,10 +2195,10 @@ function MainApp({ user }: { user: AppUser }) {
         onSelect: onSelectUnified,
         onRename: onRenameUnified,
         onDelete: onDeleteUnified,
-        // 전체 삭제 = 일반 채팅 + 창 대화. **보드 자리는 안 지운다**(그건 「배치」 소관)
-        // 이라 목록 길이와 실제 개수가 다르다 → 확인 카드에 실제 개수를 준다
-        onDeleteAll: onDeleteAllUnified,
-        deleteAllCount: chatSummaries.length + extraSummaries.length,
+        // 전체 삭제 = 일반 채팅만. 보드 자리는 안 지우고(자리는 뷰), 창 대화는
+        // 「추가 채팅」 섹션 소관 → 목록 길이와 실제 개수가 달라 확인 카드에 실제 개수를 준다
+        onDeleteAll: onDeleteAllChats,
+        deleteAllCount: chatSummaries.length,
         // ★ R2 — 도는 대화가 하나라도 있으면 「전체 삭제」는 이유를 말하며 잠긴다
         deleteAllLock: deleteAllLock() || undefined,
         // ★ R3 — 창만 닫기(`win:chat-close`) · ready 대기표 이어가기(`op:'resume'`)
@@ -2129,15 +2206,18 @@ function MainApp({ user }: { user: AppUser }) {
         onResume: onResumeUnified
       },
       {
-        key: 'multi' as const,
-        label: t('배치', 'Boards'),
-        emptyText: t('배치가 없어요', 'No boards yet'),
-        chats: multi.summaries,
-        activeId: mode === 'multi' ? multi.activeId : undefined,
-        onSelect: onSelectMulti,
-        onRename: multi.renameSession,
-        onDelete: multi.deleteSession,
-        onDeleteAll: multi.deleteAllSessions
+        key: 'extra' as const,
+        label: t('추가 채팅', 'Chat windows'),
+        emptyText: t('추가 채팅이 없어요', 'No chat windows yet'),
+        chats: extraSectionChats,
+        // 창 대화는 이 창의 화면을 차지하지 않는다 — 활성 표시 없음
+        activeId: undefined,
+        onSelect: onFocusSessionWin,
+        onRename: onRenameSessionWin,
+        onDelete: onCloseSessionWin, // X = 대화 삭제(창도 닫힘) — 2.6.2 계약 그대로
+        onDeleteAll: onCloseAllSessionWins,
+        onCloseWindow: onCloseWindowUnified, // 「창」 칩 ✕ = 창만 닫기(대화 유지)
+        onResume: onResumeUnified
       }
     ],
     // useEvent 핸들러·multi CRUD는 stable — 데이터/선택 상태만 의존한다
@@ -2156,7 +2236,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 착지는 둘로 갈린다. **보고 있는 대화**는 스레드 안 카드(+busy 되감기)로, **자리 밖
   // 대화**는 토스트 + 그 대화의 스냅샷에 접기로. 뒤쪽을 스냅샷에만 접으면 열어야 보인다.
   useEffect(() => {
-    const off = onChatVerdict((id, v) => {
+    const off = onChatVerdict((id, v, panelId) => {
       const note = verdictNote(v)
       if (!note) return // accepted·applied·noop — 판정 로그를 화면에 흘리지 않는다
       const line = verdictLine(note)
@@ -2170,6 +2250,11 @@ function MainApp({ user }: { user: AppUser }) {
         if (!shellSaid) noteVerdict(line, note.blocked)
         return
       }
+      // ★ 화면에 보이는 보드 자리의 대화 — 그 패널 스레드가 말한다(ActiveSession의
+      // chat:verdict 착지). 여기서 토스트를 또 내면 같은 사고를 두 곳에서 말하게 되고,
+      // 사용자에겐 "보고 있는 패널의 사유가 화면 반대편 구석에 뜨는" 이상한 위치로 보인다.
+      // 판별 키는 셸이 실어 준 자리 별칭(panelId) — 와이어의 chatId는 자리 화면에 배선이 없다.
+      if (modeRef.current === 'multi' && panelId && panelInfosRef.current.some((p) => p.panelId === panelId && p.pos != null && !p.popped)) return
       // 자리 밖 대화 — 지금 창에 한 줄 띄우고(놓치면 다시 못 본다) 그 대화에도 접어 둔다
       setVerdictToasts((cur) =>
         [...cur, { id: `${id}:${note.key}:${Date.now()}`, chatId: id, title: note.title, text: note.text, detail: note.detail }].slice(-3)
@@ -2359,6 +2444,7 @@ function MainApp({ user }: { user: AppUser }) {
           <ChatHeader
             title={taskTitle}
             cwd={cwd}
+            chatId={activeChatId}
             onSelectFolder={requestFolder}
             onBrowseFolder={pickFolder}
             refDirs={refDirs}
@@ -2534,18 +2620,20 @@ function MainApp({ user }: { user: AppUser }) {
       {/* 조건 마운트 — 닫힌 FileModal은 어차피 null을 그렸고(path 가드), 상시 마운트면
           lazy 청크가 부팅에 로드돼 지연 로드가 무력화된다. fallback 없음 = 첫 오픈 시
           로컬 청크 로드 한 프레임(체감 0)만 비었다가 뜬다 */}
-      {(openFilePath !== null || gitViewer !== null) && (
+      {(openFilePath !== null || gitViewer !== null || docked !== null) && (
         <Suspense fallback={null}>
           <FileModal
-            path={openFilePath}
-            cwd={cwd}
-            diffs={state.diffs}
-            override={gitViewer}
+            path={docked ? docked.path : openFilePath}
+            cwd={docked ? docked.cwd : cwd}
+            diffs={docked ? diffsOf(docked) : state.diffs}
+            override={docked ? docked.override : gitViewer}
             onClose={() => {
               setOpenFilePath(null)
               setGitViewer(null)
+              setDocked(null)
             }}
             onAskSelection={onAskSelection}
+            onPopout={onPopoutFile}
           />
         </Suspense>
       )}
@@ -2594,7 +2682,6 @@ function MainApp({ user }: { user: AppUser }) {
 
       {settingsOpen && (
         <SettingsModal
-          cwd={cwd}
           initialView={settingsView}
           onClose={() => {
             setSettingsOpen(false)
@@ -2612,22 +2699,6 @@ function MainApp({ user }: { user: AppUser }) {
             <span>{t('이 안에 마우스가 오면 펼쳐져요', 'Opens when the mouse enters this zone')}</span>
           </div>
         </div>
-      )}
-
-      {/* 새 채팅 선택 — 일반(코드 뷰에 빈 채팅)/멀티(패널 수 골라 새 세션) */}
-      {newChatOpen && (
-        <NewChatModal
-          busy={busy}
-          onClose={() => setNewChatOpen(false)}
-          onGeneral={() => {
-            if (mode !== 'single') switchMode('single')
-            createChat()
-          }}
-          onMulti={(n) => {
-            if (mode !== 'multi') switchMode('multi')
-            multi.newSession(n)
-          }}
-        />
       )}
 
 

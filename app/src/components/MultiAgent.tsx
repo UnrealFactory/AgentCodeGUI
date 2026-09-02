@@ -18,6 +18,7 @@ import {
   Composer,
   LimitHoldBar,
   MessageView,
+  WelcomeState,
   WorkingIndicator,
   WorkBar,
   WorkflowDock,
@@ -36,6 +37,8 @@ import {
   type ScheduledMsg
 } from './Chat'
 import { parseBtw, btwForkOf } from '../lib/btw'
+import { onChatVerdict } from '../api/unified'
+import { shellAuthored, verdictLine, verdictNote } from '../lib/verdict'
 import type { LimitHold } from '../lib/limitResume'
 import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
 import type { ChatSummary } from './Sidebar'
@@ -52,6 +55,7 @@ import { mergeRefs, useZoom, ZoomBadge } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture } from './mouseGesture'
 import { IconFolder, IconChevDown, IconMascot, IconPanelRight, IconSearch, IconExpand, IconCollapse, IconPopout, IconPencil, IconLock, IconLockOpen } from './icons'
 import { t, useLang } from '../lib/i18n'
+import { openInViewerWindow, setViewerWindowMode, viewerWindowMode } from '../lib/viewerWindow'
 
 // A multi-agent SESSION is a group of N panels that work together. The recent-tasks
 // list shows one entry per session (not per panel); "새 작업" opens a fresh session and
@@ -299,6 +303,9 @@ interface PanelViewProps {
   /** ★ 3.0 M-UX — n1(IDE 크롬)에서 이 패널의 헤더가 TopBar를 겸한다: 다이얼·접힘 배지·
    *  탐색기 토글·창 컨트롤이 헤더 오른쪽에 얹힌다. 2‥6에서는 undefined(.ma-head가 그린다). */
   topbar?: React.ReactNode
+  /** n1(IDE 크롬) 웰컴 인사말용 닉네임 — 본채팅(App user.name)과 같은 프로필 소스.
+   *  팝아웃 창(PanelWindow)은 topbar가 없어 웰컴을 안 그리므로 생략 가능. */
+  userName?: string
   meta: PanelMeta
   state: SessionState
   busy: boolean
@@ -356,6 +363,7 @@ export const PanelView = memo(function PanelView({
   panelId,
   num,
   topbar,
+  userName = 'User',
   meta,
   state,
   busy,
@@ -504,6 +512,14 @@ export const PanelView = memo(function PanelView({
     follow.snapIfStuck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.messages, state.thinkingText])
+  // 초기화(/clear·제스처)로 스레드가 비면 따라가기·점프 버튼도 백지로 — 패널의 clear는
+  // ActiveSession(clearPanel) 소관이라 여기서 빈 스레드를 신호로 받는다. 빈 스레드는
+  // scroll 이벤트가 없어 showJump 잔상이 저절로 안 꺼진다(2026-09-01 사용자 보고)
+  const emptied = state.messages.length === 0
+  useEffect(() => {
+    if (emptied) follow.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emptied])
   // ★ 3.0 M-UX R3 — 읽던 자리 앵커. 접히면(=이 패널이 언마운트되면) 뷰포트 맨 위
   // **메시지 id**를 자리 키에 적어 두고, 되올라오면 그 메시지를 같은 오프셋에 놓는다.
   // 크리틱 §2-⑧ `raise.scroll`의 정공법 — 픽셀 복원은 6분할↔n1에서 다른 문단에 착지한다.
@@ -608,13 +624,6 @@ export const PanelView = memo(function PanelView({
           )}
         </span>
         <span className="ma-spacer" />
-        {/* ★M9 — 도구 환경 칩(MCP·스킬). 폴더 칩 **왼쪽**에 두는 이유: 목록이 폴더에서
-            오므로 읽는 순서가 「무엇이 붙어 있나 ← 어느 폴더인가」여야 인과가 맞다.
-            첫 `system/init` 전에는 스스로 아무것도 안 그린다(빈 칩을 세우지 않는다).
-            ★R2 `onOpen` — 팝오버 배타. 도구 칩이 열릴 때 폴더 팝오버를 접는다(반대
-            방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
-            끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
-        <McpSkillView panelId={panelId} cwd={cwd} onOpen={() => setFolderPop(false)} />
         {/* 작업 폴더 칩 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더 + 찾아보기)이 열린다.
             .hfold 래퍼가 팝오버 기준점 + 안쪽 클릭의 바깥닫힘 전파 차단을 겸한다 */}
         <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
@@ -624,7 +633,8 @@ export const PanelView = memo(function PanelView({
             data-tip={
               meta.cwd
                 ? meta.cwd + t(' · 클릭해 폴더 변경', ' · Click to change folder')
-                : t('바탕화면 · 클릭해 폴더 선택', 'Desktop · Click to choose a folder')
+                : // 칩에 이미 「바탕화면」이 보이므로 툴팁에 되풀이하지 않는다(2026-09-01 사용자 지적)
+                  t('클릭해 폴더 선택', 'Click to choose a folder')
             }
             onClick={() => {
               onFocusPanel(slot)
@@ -651,14 +661,22 @@ export const PanelView = memo(function PanelView({
             />
           )}
         </span>
+        {/* ★M9·R3 — 도구 환경 칩(MCP & Skill). 폴더 칩 **오른쪽**(2026-09-01 사용자 결정:
+            읽는 순서 「어느 폴더 → 무엇이 붙어 있나」). 첫 실행 전에도 디스크 스캔으로
+            항상 선다 — 설정 ▸ MCP/Skill 탭을 걷어낸 자리를 이 칩이 넘겨받았다.
+            ★R2 `onOpen` — 팝오버 배타. 도구 칩이 열릴 때 폴더 팝오버를 접는다(반대
+            방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
+            끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
+        <McpSkillView panelId={panelId} cwd={cwd} onOpen={() => setFolderPop(false)} />
         <span className={'ma-status ' + status.cls}>
           {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
           {busy && !waiting && <span className="ma-status-spin" />}
           <span>{status.label()}</span>
           {busy && <span className="ma-status-time">{fmtElapsed(elapsed)}</span>}
         </span>
-        {/* 별도 창으로 — 이 패널을 독립 OS 창으로 팝아웃 (듀얼 모니터: 창은 왼쪽, 그리드는 오른쪽) */}
-        {onPopout && (
+        {/* 별도 창으로 — 이 패널을 독립 OS 창으로 팝아웃 (듀얼 모니터: 창은 왼쪽, 그리드는 오른쪽)
+            n1(IDE 크롬)에서는 숨김 — 패널이 이미 창 전체라 무의미하다(2026-09-01 사용자 결정) */}
+        {onPopout && !topbar && (
           <button
             className="ma-p-expand has-tip"
             data-tip={t('별도 창으로', 'Open in its own window')}
@@ -668,15 +686,18 @@ export const PanelView = memo(function PanelView({
             <IconPopout size={12} />
           </button>
         )}
-        {/* 크게 보기 ⟷ 원래 크기로 — 이 패널을 본채팅 크기의 오버레이 카드로 (작은 글씨 대책) */}
-        <button
-          className="ma-p-expand has-tip"
-          data-tip={expanded ? t('원래 크기로 (Esc)', 'Restore size (Esc)') : t('크게 보기', 'Expand')}
-          aria-label={expanded ? t('원래 크기로', 'Restore size') : t('크게 보기', 'Expand')}
-          onClick={() => onToggleExpand(slot)}
-        >
-          {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
-        </button>
+        {/* 크게 보기 ⟷ 원래 크기로 — 이 패널을 본채팅 크기의 오버레이 카드로 (작은 글씨 대책)
+            같은 이유로 n1에서는 숨김 — 이미 본채팅 크기다 */}
+        {!topbar && (
+          <button
+            className="ma-p-expand has-tip"
+            data-tip={expanded ? t('원래 크기로 (Esc)', 'Restore size (Esc)') : t('크게 보기', 'Expand')}
+            aria-label={expanded ? t('원래 크기로', 'Restore size') : t('크게 보기', 'Expand')}
+            onClick={() => onToggleExpand(slot)}
+          >
+            {expanded ? <IconCollapse size={12} /> : <IconExpand size={12} />}
+          </button>
+        )}
         {/* ★ n1(IDE 크롬) — 이 헤더가 TopBar를 겸한다. 다이얼의 x좌표가 2‥6의 .ma-head와
             같은 자리(오른쪽 끝 창 컨트롤 앞)라 1↔2 전환에서 버튼이 안 움직인다(§2.1) */}
         {topbar}
@@ -688,13 +709,26 @@ export const PanelView = memo(function PanelView({
       <div className="ma-p-body">
         <div className="ma-p-thread scroll" ref={threadRef}>
           {!started && !busy ? (
-            <div className="ma-p-empty">
-              {/* 공식 로봇 마스코트 — 웰컴 화면(.wc-mark)과 같은 정지 아이콘 */}
-              <div className="ma-p-empty-ic">
-                <IconMascot size={38} />
+            topbar ? (
+              // ★ n1(IDE 크롬)의 빈 화면 = 본채팅·추가 채팅과 같은 웰컴(마스코트+인사+추천).
+              // 다이얼 2→1로 돌아왔을 때 컴팩트 빈 화면이 나오면 "다른 화면"처럼 보여
+              // 통합이 깨져 보인다(2026-09-01 사용자 보고). 컴팩트판은 그리드(2‥6) 전용.
+              <WelcomeState
+                userName={userName}
+                onPick={(text) => {
+                  onInput(slot, text)
+                  composerRef.current?.focus()
+                }}
+              />
+            ) : (
+              <div className="ma-p-empty">
+                {/* 공식 로봇 마스코트 — 웰컴 화면(.wc-mark)과 같은 정지 아이콘 */}
+                <div className="ma-p-empty-ic">
+                  <IconMascot size={38} />
+                </div>
+                <div className="ma-p-empty-text">{t('메시지를 입력해 작업을 시작하세요', 'Type a message to start working')}</div>
               </div>
-              <div className="ma-p-empty-text">{t('메시지를 입력해 작업을 시작하세요', 'Type a message to start working')}</div>
-            </div>
+            )
           ) : (
             // 본채팅과 같은 .thread 마크업 — 패널에선 CSS(zoom .8·풀폭)만 다르고,
             // Ctrl+휠 읽기 크기(chat.zoom)는 그 위에 곱으로 얹힌다(전 패널 공통)
@@ -1015,6 +1049,27 @@ export function PanelDial({ count, onPick }: { count: number; onPick: (n: number
   )
 }
 
+// n1(IDE 크롬) 웰컴 인사말용 닉네임 — App(userFromProfile)·SessionWindow와 같은 소스
+// (getProfile + ccg-profile-changed). 프로필이 없으면 본채팅 기본값(User)과 같은 글자.
+function useProfileName(): string {
+  const [name, setName] = useState('User')
+  useEffect(() => {
+    window.api
+      .getProfile()
+      .then((p) => {
+        if (p?.nickname?.trim()) setName(p.nickname.trim())
+      })
+      .catch(() => {})
+    const onChanged = (e: Event): void => {
+      const p = (e as CustomEvent<{ nickname?: string }>).detail
+      if (p?.nickname?.trim()) setName(p.nickname.trim())
+    }
+    window.addEventListener('ccg-profile-changed', onChanged)
+    return () => window.removeEventListener('ccg-profile-changed', onChanged)
+  }, [])
+  return name
+}
+
 // ── one active multi-agent session: its panel grid + header (keyed by sessionId in the
 //    workspace, so switching sessions cleanly remounts a fresh set of 6 panel hooks) ──
 function ActiveSession({
@@ -1064,6 +1119,8 @@ function ActiveSession({
   const s4 = useAgentSession(subFor(chan(sessionId, 4)))
   const s5 = useAgentSession(subFor(chan(sessionId, 5)))
   const sessions = [s0, s1, s2, s3, s4, s5]
+  // n1(IDE 크롬) 웰컴 인사말 — 본채팅과 같은 프로필 닉네임
+  const profileName = useProfileName()
 
   // 계정별 한도 사용량(키=계정 이메일, ''=기본 계정) — 컨텍스트 한도는 "그 패널이
   // 실제로 소비할 계정" 기준이어야 해서(본채팅 picker.account와 같은 계약) 전역 한 장이
@@ -1569,6 +1626,27 @@ function ActiveSession({
     const s = Number(panelId.slice(prefix.length))
     return Number.isInteger(s) && s >= 0 && s < SLOT_COUNT ? s : null
   }
+  // ★ chat:verdict 착지 — **화면에 보이는 자리**의 거부는 본채팅처럼 그 패널 스레드의
+  // 카드로 말한다. App의 오른쪽 아래 토스트는 자리 밖 대화 전용이다 — 보이는 패널에서
+  // 한 행동의 사유가 화면 반대편 구석에 뜨는 게 이상하다는 보고(2026-09-01)가 계기.
+  // 셸이 문장을 직접 낸 판정(shellAuthored)은 이미 이 패널의 이벤트 스트림에 실려
+  // 온다 — 여기서 또 쓰면 두 벌이 된다(App 쪽 R5 접점과 같은 규칙).
+  const verdictCtx = useRef({ visibleSlots, popped, sessions })
+  verdictCtx.current = { visibleSlots, popped, sessions }
+  useEffect(() => {
+    // 와이어의 1번 키는 chatId지만 렌더러의 자리 화면엔 chatId 배선이 없다 — 셸이 같이
+    // 실어 주는 자리 별칭(panelId, hub `panel_alias`)으로만 판별한다.
+    return onChatVerdict((_chatId, v, panelId) => {
+      const slot = panelId != null ? slotOfPanelId(panelId) : null
+      if (slot == null) return
+      const cur = verdictCtx.current
+      if (!cur.visibleSlots.includes(slot) || cur.popped[slot]) return // 자리 밖(접힘·팝아웃)은 App 토스트 소관
+      const note = verdictNote(v)
+      if (!note || shellAuthored(v)) return
+      cur.sessions[slot].noteVerdict(verdictLine(note), note.blocked)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // 복귀분 적용 — 팝아웃 창의 마지막 상태(초안·메타·카드 정리·스냅샷)를 이 슬롯에 되메운다
   const applyPanelFlush = useEvent((f: PanelPopState) => {
     const slot = slotOfPanelId(f.panelId)
@@ -1783,7 +1861,19 @@ function ActiveSession({
         ta?.focus()
       })
   })
-  const onOpenPanelFile = useEvent((slot: number, rel: string) => setOpenFile({ slot, path: rel }))
+  // 끈적한 창 모드면 그 패널의 cwd·diffs로 독립 뷰어 창에(본채팅과 같은 규칙). 되돌아오는
+  // 「창 안으로」는 이 창의 루트(App)가 페이로드째 받는다 — 패널 자리와 무관하게 한 자리.
+  const openPanelFile = (slot: number, rel: string): void => {
+    if (viewerWindowMode()) {
+      const cwd = metas[slot].cwd || sessions[slot].state.session?.cwd || ''
+      void openInViewerWindow({ path: rel, cwd, diffs: sessions[slot].state.diffs }).then((took) => {
+        if (!took) setOpenFile({ slot, path: rel })
+      })
+      return
+    }
+    setOpenFile({ slot, path: rel })
+  }
+  const onOpenPanelFile = useEvent((slot: number, rel: string) => openPanelFile(slot, rel))
   const onOpenPanelSub = useEvent((slot: number, id: string) => setOpenSub({ slot, id }))
   const onOpenImage = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
   // 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 라우팅 (?.: 구 preload 가드)
@@ -1849,7 +1939,7 @@ function ActiveSession({
   const visSlot = (s: number): number => (visibleSlots.includes(s) ? s : (visibleSlots[0] ?? 0))
   const eSlot = visSlot(expSlot)
   // 파일 열기는 그 패널의 cwd·diffs 뷰어(openFile), 폴더 선택은 그 패널의 선택 흐름으로
-  const expOpenFile = useEvent((path: string) => setOpenFile({ slot: visSlot(expSlot), path }))
+  const expOpenFile = useEvent((path: string) => openPanelFile(visSlot(expSlot), path))
   const expPickFolder = useEvent(() => onPickFolder(visSlot(expSlot)))
   const expCwd = panelCwd(eSlot)
   const expFiles = sessions[eSlot].state.files
@@ -2139,6 +2229,7 @@ function ActiveSession({
         // ★ n1(IDE 크롬)에서는 이 패널의 헤더가 곧 TopBar다 — 다이얼·접힘 배지·탐색기
         // 토글·창 컨트롤이 여기 얹힌다(줄을 하나 더 쌓지 않는다, §2.1)
         topbar={soloReal && slot === soloSlot && !expanded ? topBar : undefined}
+        userName={profileName}
         meta={metas[slot]}
         state={sess.state}
         busy={sess.busy}
@@ -2375,6 +2466,19 @@ function ActiveSession({
             cwd={metas[openFile.slot].cwd || sessions[openFile.slot].state.session?.cwd || ''}
             diffs={sessions[openFile.slot].state.diffs}
             onClose={() => setOpenFile(null)}
+            // 「별도 창으로」 — 끈적한 모드를 켜고 이 파일을 그 패널의 cwd·diffs로 독립 창에
+            onPopout={(p) => {
+              const slot = openFile.slot
+              setViewerWindowMode(true)
+              void openInViewerWindow({
+                path: p,
+                cwd: metas[slot].cwd || sessions[slot].state.session?.cwd || '',
+                diffs: sessions[slot].state.diffs
+              }).then((took) => {
+                if (took) setOpenFile(null)
+                else setViewerWindowMode(false)
+              })
+            }}
           />
         </Suspense>
       )}

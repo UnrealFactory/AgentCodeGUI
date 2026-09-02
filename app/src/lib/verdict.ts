@@ -147,6 +147,11 @@ export function verdictNote(v: VerdictWire | null | undefined): VerdictNote | nu
   const cmd = v?.cmd ?? ''
   const { code, detail } = normalizeReason(v?.reason)
   if (kind === 'rejected') {
+    // 중단 계열이 「도는 실행이 없어요」로 튕긴 것은 사고가 아니라 **기대한 결과**다 —
+    // /clear의 정리용 중단, Esc 연타가 여기로 온다. 카드로 그리면 방금 비운 스레드에
+    // 경고만 덩그러니 남는다(2026-09-01 사용자 보고). 침묵 no-op 금지(D7)의 예외가
+    // 아니라 적용이다: "멈출 게 없어서 멈춘 상태"는 화면이 이미 말하고 있다.
+    if (code === 'nothing_running' && (cmd === 'interrupt' || cmd === 'stop_all')) return null
     // 전송을 막은 거부만 busy를 되감는다 — 승인 카드 응답이 튕긴 것으로 도는 턴을 죽이면
     // 그게 새 사고다. `ensure`는 런타임 자체를 못 만든 것이라 **무엇을 하려 했든** 막혔다.
     const blocked = USER_SEND.has(cmd)

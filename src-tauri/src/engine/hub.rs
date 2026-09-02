@@ -388,9 +388,10 @@ impl Hub {
             E::ApiKeyMissing => "API 키가 없어요 — 설정에서 키를 넣어 주세요".into(),
             E::EngineSwitchNeedsModel => "엔진을 바꾸려면 모델을 함께 골라야 해요".into(),
         };
+        let panel = self.panel_alias(chat);
         self.emit_all(
             crate::ipc::ch::CHAT_VERDICT,
-            json!({ "chatId": chat, "verdict": { "kind": "rejected",
+            json!({ "chatId": chat, "panelId": panel, "verdict": { "kind": "rejected",
                     "reason": format!("{e:?}"), "cmd": "ensure", "message": why } }),
         );
         // 런타임이 없어 `wire`도 없다 — 런 id는 여기서 발급한다(짝이 없는 1회용).
@@ -470,6 +471,22 @@ impl Hub {
             let _ = self
                 .app
                 .emit(crate::ipc::ch::MA_EVENT, json!({ "panelId": panel, "event": ev }));
+        }
+    }
+
+    /// 이 대화가 보드 자리에 앉아 있으면 그 자리 별칭(panelId) — fanout(MA_EVENT)과 같은
+    /// 번역·같은 캐시를 쓴다. `chat:verdict`가 이 값을 함께 실어야 렌더러가 자리 키로
+    /// 판별할 수 있다 — 안 실으면 **보이는 패널**에서 한 행동의 거부 사유가 패널 착지
+    /// (ActiveSession)와 토스트 가드(App) 둘 다에서 빗나가 구석 토스트로 샌다(2026-09-01
+    /// 사용자 보고 — 렌더러의 자리 화면은 전부 panelId로 식별하고 chatId 배선이 없다).
+    fn panel_alias(&mut self, chat: &str) -> Option<String> {
+        match self.route.panel.get(chat) {
+            Some(p) => p.clone(),
+            None => {
+                let p = super::panel_id_for_chat(chat);
+                self.route.panel.insert(chat.to_string(), p.clone());
+                p
+            }
         }
     }
 
@@ -811,7 +828,20 @@ impl Hub {
         self.slots
             .values()
             .filter(|s| s.rt.state() != StateTag::Idle)
-            .filter_map(|s| s.rt.identity().account().map(str::to_string))
+            .filter_map(|s| {
+                let id = s.rt.identity();
+                // ★Codex 축(2026-09-01) — Codex 채팅이 태우는 것은 OpenAI 계정이다.
+                // "cx:" 접두로 우주를 가른다(같은 이메일이 두 provider에 있어도 서로
+                // 안 가리게 — acct_switch::pick이 접두로 자기 축만 걸러 읽는다).
+                if id.engine_kind() == ccg_engine::identity::EngineKind::Codex {
+                    id.codex_account()
+                        .map(str::to_string)
+                        .or_else(super::acct_switch::default_codex_email)
+                        .map(|e| format!("cx:{e}"))
+                } else {
+                    id.account().map(str::to_string)
+                }
+            })
             .collect()
     }
 
@@ -1012,9 +1042,10 @@ impl Hub {
                 self.persist_queue(chat);
             }
             Event::Verdict { cmd, verdict } => {
+                let panel = self.panel_alias(chat);
                 self.emit_all(
                     crate::ipc::ch::CHAT_VERDICT,
-                    json!({ "chatId": chat, "verdict": verdict_wire(cmd, &verdict) }),
+                    json!({ "chatId": chat, "panelId": panel, "verdict": verdict_wire(cmd, &verdict) }),
                 );
             }
             Event::Status { status, .. } => {

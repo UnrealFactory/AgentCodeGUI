@@ -483,8 +483,11 @@ fn tool_gen_label(name: &str) -> &'static str {
 }
 
 /// 도구 인자에서 사람이 읽는 대상 한 줄. 없으면 빈 문자열(렌더러가 동사만 그린다).
+/// `skill`(Skill)·`name`(저장 워크플로 등)은 꼬리에 둔다 — description/prompt가 있는
+/// 도구(Agent 등)는 그쪽이 먼저다. 대상이 비면 행이 「동사 …(공백)… 결과」로 갈라져
+/// 결과 문장이 오른쪽 끝에 홀로 붙는다(2026-09-01 사용자 보고: Skill/Workflow 행).
 fn tool_target(input: &Value) -> String {
-    for k in ["file_path", "path", "notebook_path", "command", "pattern", "query", "url", "description", "prompt"] {
+    for k in ["file_path", "path", "notebook_path", "command", "pattern", "query", "url", "description", "prompt", "skill", "name"] {
         if let Some(v) = input.get(k).and_then(Value::as_str) {
             let one = v.replace(['\r', '\n'], " ");
             return if one.chars().count() > 180 {
@@ -494,7 +497,26 @@ fn tool_target(input: &Value) -> String {
             };
         }
     }
+    // 인라인 워크플로 — 이름 키 없이 `script`뿐이다. 대본 규약상 머리의 **순수 리터럴**
+    // `export const meta = { name: '…' }`에서 이름을 집는다(실패하면 빈 대상 그대로).
+    if let Some(script) = input.get("script").and_then(Value::as_str) {
+        if let Some(n) = script_meta_name(script) {
+            return n;
+        }
+    }
     String::new()
+}
+
+/// 워크플로 대본 머리의 `meta.name` 리터럴 값. 파서가 아니라 표시용 추출 — meta는
+/// 규약상 보간 없는 순수 리터럴이라 첫 `name:` 뒤의 따옴표 짝이면 충분하다.
+fn script_meta_name(script: &str) -> Option<String> {
+    let head: String = script.chars().take(600).collect();
+    let rest = &head[head.find("name")? + 4..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let quote = rest.chars().next().filter(|c| matches!(c, '\'' | '"' | '`'))?;
+    let body = &rest[quote.len_utf8()..];
+    let name = &body[..body.find(quote)?];
+    (!name.is_empty() && name.chars().count() <= 80).then(|| name.to_string())
 }
 
 impl Wire {
@@ -1235,6 +1257,21 @@ impl Wire {
                     if low.contains("workflow") {
                         self.live_workflows.insert(id.to_string());
                         self.wf_ids.insert(id.to_string());
+                        // ★ 알약은 첫 progress를 기다리지 않는다 — REPLACE 목록에 나타난
+                        // 순간 최소 스냅샷으로 바로 세운다. 첫 `workflow_progress`가 늦거나
+                        // (짧은 워크플로는) 아예 안 오면 알약이 영영 안 떴다(2026-09-01
+                        // 사용자 보고: 뜰 때도 있고 안 뜰 때도 있음). 이후 progress가 오면
+                        // 그 REPLACE가 이 자리를 덮고, 정착 통지도 이 스냅샷으로 닫힌다.
+                        if !self.wf_snaps.contains_key(id) {
+                            let wf = json!({
+                                "id": id,
+                                "summary": t.get("description").and_then(Value::as_str).unwrap_or(""),
+                                "status": "running", "phases": [], "agents": [],
+                                "totalTokens": 0, "toolUses": 0, "durationMs": 0,
+                            });
+                            self.wf_snaps.insert(id.to_string(), wf.clone());
+                            out.push(json!({ "type": "workflow", "runId": run, "wf": wf }));
+                        }
                     } else if low.contains("bash") || low.contains("shell") {
                         next_shell.insert(id.to_string());
                         shells.push(json!({
@@ -1704,9 +1741,12 @@ mod tests {
             "tasks": [{ "task_id": "t1", "task_type": "local_bash", "description": "빌드" },
                       { "task_id": "w1", "task_type": "local_workflow", "description": "wf" }]
         }));
-        assert_eq!(types(&a), vec!["bg-tasks"]);
-        // 워크플로는 셸 칩 목록에 안 들어간다(전용 표시가 있다).
-        let tasks = a[0]["tasks"].as_array().unwrap();
+        // 워크플로는 셸 칩 목록에 안 들어가고(전용 표시), 대신 알약 스냅샷이 즉시 선다.
+        assert_eq!(types(&a), vec!["workflow", "bg-tasks"]);
+        assert_eq!(a[0]["wf"]["id"], "w1");
+        assert_eq!(a[0]["wf"]["status"], "running");
+        assert_eq!(a[0]["wf"]["summary"], "wf");
+        let tasks = a[1]["tasks"].as_array().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0]["id"], "t1");
         assert!(tasks[0]["outputFile"].as_str().unwrap().ends_with("t1.output"));
@@ -1756,6 +1796,32 @@ mod tests {
         assert!(b.is_empty());
     }
 
+    /// 첫 progress가 아예 없는 짧은 워크플로 — 알약이 REPLACE에서 서고 통지에서 닫힌다
+    /// (2026-09-01 사용자 보고: progress 도착 여부에 따라 알약이 뜰 때도 안 뜰 때도 있었다).
+    #[test]
+    fn a_workflow_without_progress_still_gets_a_pill_and_settles() {
+        let mut w = wire();
+        let a = w.translate(&json!({
+            "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "w1", "task_type": "local_workflow", "description": "덧셈 스모크" }]
+        }));
+        assert_eq!(types(&a), vec!["workflow", "bg-tasks"]);
+        assert_eq!(a[0]["wf"]["summary"], "덧셈 스모크");
+        // 같은 목록의 재통지가 알약을 두 번 세우지 않는다(스냅샷 있으면 침묵)
+        let again = w.translate(&json!({
+            "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "w1", "task_type": "local_workflow", "description": "덧셈 스모크" }]
+        }));
+        assert_eq!(types(&again), vec!["bg-tasks"]);
+        // progress 한 번 없이 곧장 통지 — 알약이 completed로 닫힌다
+        let done = w.translate(&json!({
+            "type": "system", "subtype": "task_notification",
+            "task_id": "w1", "status": "completed", "summary": "합 17109"
+        }));
+        let wf = done.iter().find(|e| e["type"] == "workflow").expect("정착 이벤트");
+        assert_eq!(wf["wf"]["status"], "completed");
+    }
+
     #[test]
     fn a_running_workflow_never_survives_the_stream_close() {
         let mut w = wire();
@@ -1800,6 +1866,20 @@ mod tests {
         let b = w.translate(&json!({ "type": "stream_event",
             "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "답" } } }));
         assert_eq!(types(&b), vec!["thinking-clear", "status", "assistant-stream"]);
+    }
+
+    #[test]
+    fn skill_and_workflow_rows_carry_a_target_beside_the_verb() {
+        // 대상이 비면 행이 「동사 …(공백)… 결과」로 갈라진다(2026-09-01 사용자 보고)
+        assert_eq!(tool_target(&json!({ "skill": "workflow-authoring" })), "workflow-authoring");
+        assert_eq!(tool_target(&json!({ "name": "deep-research", "args": {} })), "deep-research");
+        // 인라인 대본 — meta 리터럴의 name을 집는다 (따옴표 세 종 모두)
+        let script = "export const meta = {\n  name: 'smoke-test',\n  description: 'x'\n}\nreturn 1";
+        assert_eq!(tool_target(&json!({ "script": script })), "smoke-test");
+        assert_eq!(script_meta_name("export const meta = { name: \"a-b\" }"), Some("a-b".into()));
+        assert_eq!(script_meta_name("no meta here"), None);
+        // description/prompt가 있는 도구(Agent 등)는 그쪽이 우선 — name이 가리지 않는다
+        assert_eq!(tool_target(&json!({ "description": "리뷰", "name": "critic" })), "리뷰");
     }
 
     #[test]

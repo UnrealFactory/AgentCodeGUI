@@ -31,9 +31,21 @@ const MAX_FILES: usize = 6000;
 /// `cwd`를 너비 우선으로 걸어 프로젝트 상대 POSIX 경로를 돌려준다.
 /// 너비 우선이라 얕은 파일(사용자가 가장 자주 멘션하는 것)이 앞에 온다.
 pub fn list_project_files(cwd: &str) -> Vec<String> {
-    if cwd.is_empty() {
-        return Vec::new();
-    }
+    // 빈 cwd = 폴더 미선택 채팅. 라벨과 실행은 「바탕화면」(engine/ident.rs `desktop()`
+    // 폴백)인데 여기만 빈 목록을 주면 "@" 멘션이 빈손이 된다(2026-09-01 사용자 보고
+    // — 새 홈 첫 채팅에서 @ 목록 실종). 같은 폴백을 그대로 비춘다.
+    let desktop;
+    let cwd = if cwd.is_empty() {
+        match std::env::var("USERPROFILE") {
+            Ok(p) => {
+                desktop = format!("{p}\\Desktop");
+                desktop.as_str()
+            }
+            Err(_) => return Vec::new(),
+        }
+    } else {
+        cwd
+    };
     let root = Path::new(cwd);
     let mut out: Vec<String> = Vec::new();
     let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();

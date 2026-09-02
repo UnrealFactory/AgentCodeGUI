@@ -318,29 +318,57 @@ pub fn active_chat_id() -> String {
 }
 
 /// `${boardId}::${slot}` → 그 자리에 앉은 채팅. 보드가 진실이라 패널을 옮겨도 따라간다.
+///
+/// ★ 빈 자리는 **선지급**한다 — 새 자리의 첫 전송은 렌더러의 보드 저장(디바운스)과
+/// 경주한다. 저장이 지면 슬롯 참조가 아직 디스크에 없고, R28까지는 그때 None →
+/// `ma:run`이 빈 문자열로 **조용히 삼켜** 첫 메시지가 무응답으로 증발했다(2026-09-01
+/// 실증: `bench/scratch/dev-fresh-slot-probe.mjs` — 새 슬롯 첫 전송은 이벤트 0건·판정
+/// 0건, 두 번째부터 정상). 자리 채팅의 채번은 저장 경로가 항상 `ma-{board}-{slot}`
+/// (legacy_bridge.rs `format!("ma-{sid}-{i}")`)이므로 같은 규칙으로 미리 답한다 —
+/// 곧 도착할 저장이 같은 id를 쓴다. 참조가 **있으면** 무조건 그것이 진실이다(드래그로
+/// 자리를 옮긴 보드, 마이그레이션의 uniquify id 등은 전부 파일에 적혀 있다).
 pub fn panel_id_to_chat(panel_id: &str) -> Option<String> {
     let (board, slot) = panel_id.split_once("::")?;
-    let slot: usize = slot.parse().ok()?;
+    let slot_n: usize = slot.parse().ok()?;
     let b = ccg_store::boards::read_board(&json!(board));
-    b.get("slots")?
-        .get(slot)?
-        .as_str()
+    if let Some(c) = b
+        .get("slots")
+        .and_then(|s| s.get(slot_n))
+        .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    {
+        return Some(c.to_string());
+    }
+    Some(format!("ma-{board}-{slot_n}"))
 }
 
 /// 역인덱스 — 이 채팅이 어느 자리에 앉아 있나(`ma:event` 봉투용).
+///
+/// ★ 순방향(`panel_id_to_chat`)과 같은 경주의 반대편 — 첫 전송 직후의 이벤트 스트림이
+/// 보드 저장보다 먼저 오면 스캔이 빗나가고, fanout의 라우팅 캐시에 None이 박혀 **그 런의
+/// 이벤트 전부가 증발**한다(내레이션만 도는 무응답의 두 번째 절반). 채번 규칙이 자리를
+/// 말하므로(`ma-{board}-{slot}`), 스캔이 빗나갔고 **그 자리가 파일에서도 비어 있을 때만**
+/// 규칙으로 답한다 — 자리가 채워져 있으면(다른 대화가 앉음) 남의 패널로 이벤트를 쏘지
+/// 않도록 None을 유지한다.
 pub fn panel_id_for_chat(chat: &str) -> Option<String> {
     let all = ccg_store::boards::read_boards();
-    for b in all.get("boards")?.as_array()? {
-        let id = b.get("id")?.as_str()?;
-        for (i, s) in b.get("slots")?.as_array()?.iter().enumerate() {
-            if s.as_str() == Some(chat) {
-                return Some(format!("{id}::{i}"));
+    if let Some(boards) = all.get("boards").and_then(Value::as_array) {
+        for b in boards {
+            let Some(id) = b.get("id").and_then(Value::as_str) else { continue };
+            let Some(slots) = b.get("slots").and_then(Value::as_array) else { continue };
+            for (i, s) in slots.iter().enumerate() {
+                if s.as_str() == Some(chat) {
+                    return Some(format!("{id}::{i}"));
+                }
             }
         }
     }
-    None
+    let rest = chat.strip_prefix("ma-")?;
+    let (board, slot) = rest.rsplit_once('-')?;
+    let slot_n: usize = slot.parse().ok()?;
+    let b = ccg_store::boards::read_board(&json!(board));
+    let seat = b.get("slots").and_then(|s| s.get(slot_n)).and_then(Value::as_str).unwrap_or("");
+    if seat.is_empty() { Some(format!("{board}::{slot_n}")) } else { None }
 }
 
 /// ★R28 ACCT R2(F4) — **표시용** 자리 id. 「사용 중 · 2번 자리」의 그 번호다.

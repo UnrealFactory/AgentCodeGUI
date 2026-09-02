@@ -118,6 +118,13 @@ struct Snapshot {
     order: Vec<String>,
     usage: BTreeMap<String, AccountUsage>,
     preflight: BTreeMap<String, PreflightVerdict>,
+    /// ★Codex 축(2026-09-01) — OpenAI 계정의 같은 세 판. 다른 우주라 같은 이메일이라도
+    /// 섞지 않는다. `cx_at`이 따로인 이유: Claude 물음만 있던 바퀴는 Codex 판을 안 채우고,
+    /// 그 판이 차가운 것을 "갈 데가 없다"로 읽으면 안 된다(pending의 축별 판정).
+    cx_at: Option<Instant>,
+    cx_order: Vec<String>,
+    cx_usage: BTreeMap<String, AccountUsage>,
+    cx_preflight: BTreeMap<String, PreflightVerdict>,
 }
 
 /// 마지막 판정의 탈락 사유 — `engine:debug`/리포트가 읽는 진단 값이다.
@@ -140,7 +147,8 @@ pub struct Switcher {
     /// ★R2 C1(c) — **물음 장부**(예산 문 ②). 항목 하나가 채팅 하나의 *제외 집합*이다
     /// (지금 쓰는 계정 + 이 에피소드에서 거쳐 온 계정). 워커는 이걸 보고 조회 대상을
     /// 정한다. 같은 집합은 겹쳐 담지 않는다(틱마다 묻기 때문에 Vec이면 무한히 자란다).
-    asks: Mutex<BTreeSet<BTreeSet<String>>>,
+    /// ★Codex 축 — 첫 원소(bool)가 축이다: false=Claude, true=Codex.
+    asks: Mutex<BTreeSet<(bool, BTreeSet<String>)>>,
     /// `(워커가 돈 횟수, 실제 HTTP 조회 건수)` — 예산 문 ②·②'의 **측정 축**이다.
     /// `engine:debug`의 `accountSwitch.worker`로 나간다: 문서가 "안 묻는다"고 적어 두고
     /// 코드는 묻고 있던 것이 R1의 C1·C4였다. 이제 하네스가 숫자로 확인할 수 있다.
@@ -242,19 +250,19 @@ impl Switcher {
     ///
     /// `exclude` = 지금 이 채팅이 쓰는 계정 + 이 에피소드에서 이미 거쳐 온 계정.
     /// 그 둘은 후보가 될 수 없으므로([`switch::plan`]의 첫 두 문) 물어볼 이유도 없다.
-    fn ask(&self, exclude: BTreeSet<String>) {
+    fn ask(&self, codex: bool, exclude: BTreeSet<String>) {
         {
             let mut g = self.asks.lock().unwrap_or_else(|e| e.into_inner());
             // 열려 있는 대화 수만큼만 자란다(같은 집합은 하나로 접힌다). 그래도 상한을 둔다.
             if g.len() < 64 {
-                g.insert(exclude);
+                g.insert((codex, exclude));
             }
         }
         self.kick();
     }
 
     /// 워커가 한 바퀴를 시작하며 가져가는 물음들. 가져간 뒤 장부는 빈다.
-    fn take_asks(&self) -> BTreeSet<BTreeSet<String>> {
+    fn take_asks(&self) -> BTreeSet<(bool, BTreeSet<String>)> {
         std::mem::take(&mut *self.asks.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
@@ -339,9 +347,27 @@ impl Switcher {
 impl Switcher {
     /// 스냅샷이 아직 없다 = `pick`의 `None`이 "갈 데가 없다"가 아니라 "아직 안 물어봤다"다.
     /// 엔진은 이 값으로 대기 문장을 한 tick 미룬다([`AccountSwitcher::pending`]).
+    /// 두 축 다 차가울 때만 — 한 축이라도 돈 적이 있으면 "아직"이 아니라 판정이다
+    /// (Claude만 쓰는 사용자의 Codex 판은 영원히 차갑다 — 그걸 pending으로 읽으면
+    /// 모든 대기 문장이 유예 상한까지 밀린다).
     fn snapshot_cold(&self) -> bool {
-        self.snap.lock().unwrap_or_else(|e| e.into_inner()).at.is_none()
+        let g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
+        g.at.is_none() && g.cx_at.is_none()
     }
+}
+
+/// ★Codex 축 — 기본 계정 이메일(3초 TTL 캐시). `pick`은 허브 스레드에서 tick마다 불리므로
+/// 매번 스토어 파일을 열 수 없다(토글 TTL과 같은 이유·같은 창).
+pub(crate) fn default_codex_email() -> Option<String> {
+    static C: std::sync::OnceLock<Mutex<(Option<String>, Option<Instant>)>> = std::sync::OnceLock::new();
+    let m = C.get_or_init(|| Mutex::new((None, None)));
+    let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
+    if g.1.is_some_and(|t| t.elapsed() < TOGGLE_TTL) {
+        return g.0.clone();
+    }
+    let v = ccg_auth::codex::default_account_email();
+    *g = (v.clone(), Some(Instant::now()));
+    v
 }
 
 impl AccountSwitcher for Switcher {
@@ -354,45 +380,67 @@ impl AccountSwitcher for Switcher {
         if !self.enabled() {
             return None; // ★ 꺼짐 = 무동작. 워커도 안 깨운다 = HTTP 0건.
         }
-        let ccg_engine::identity::BillingAxis::Subscription { account: cur, .. } = req.current else {
+        let ccg_engine::identity::BillingAxis::Subscription { account: sub_cur, .. } = req.current else {
             return None; // API 키 실행에는 갈아탈 "계정"이 없다.
+        };
+        // ★Codex 축 — 계정 우주를 가른다. Codex의 현재 계정 None(기본)은 스토어의
+        // 기본 이메일로 해석해야 제외·비교가 실이메일 위에서 돈다.
+        let cur: String = if req.codex {
+            match req.codex_account {
+                Some(a) => a.to_string(),
+                None => default_codex_email().unwrap_or_default(),
+            }
+        } else {
+            sub_cur.clone()
         };
         // 이 채팅이 **후보로 삼을 수 없는** 계정 = 물어볼 이유가 없는 계정(예산 문 ②).
         let exclude: BTreeSet<String> =
-            std::iter::once(cur.to_string()).chain(req.tried.iter().cloned()).collect();
+            std::iter::once(cur.clone()).chain(req.tried.iter().cloned()).collect();
         // 락 안에서 하는 일은 **clone뿐**이다. `ask`는 밖에서 부른다 — 안에서 부르면
         // `snap → asks` 순서가 생기고, 워커는 `asks → snap` 순서라 언젠가 물린다.
-        let (stale, snap) = {
+        let (stale, at, order, usage, preflight) = {
             let g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
-            (
-                g.at.is_none_or(|t| t.elapsed() > SNAP_TTL),
-                Snapshot {
-                    at: g.at,
-                    order: g.order.clone(),
-                    usage: g.usage.clone(),
-                    preflight: g.preflight.clone(),
-                },
-            )
+            let (at, order, usage, preflight) = if req.codex {
+                (g.cx_at, g.cx_order.clone(), g.cx_usage.clone(), g.cx_preflight.clone())
+            } else {
+                (g.at, g.order.clone(), g.usage.clone(), g.preflight.clone())
+            };
+            (at.is_none_or(|t| t.elapsed() > SNAP_TTL), at, order, usage, preflight)
         };
         if stale {
-            self.ask(exclude.clone());
+            self.ask(req.codex, exclude.clone());
         }
-        if snap.at.is_none() {
+        if at.is_none() {
             return None; // 아직 아무것도 모른다 — 증거 없이는 안 옮긴다.
         }
-        let mut busy = self.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        // busy는 축 접두로 갈려 온다("cx:" = Codex 계정 — 같은 이메일이 두 세계에 있어도
+        // 서로를 가리지 않게). 예약 장부는 접두 없이 공유한다 — 같은 이메일 충돌은
+        // 두 provider에 같은 주소를 쓴 드문 판에서 잠깐(60초) 과잉 차단될 뿐이다.
+        let busy_raw = self.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut busy: BTreeSet<String> = busy_raw
+            .iter()
+            .filter_map(|b| {
+                let cx = b.strip_prefix("cx:");
+                match (req.codex, cx) {
+                    (true, Some(e)) => Some(e.to_string()),
+                    (false, None) => Some(b.clone()),
+                    _ => None,
+                }
+            })
+            .collect();
         // ★R2 C2 — **예약도 busy다.** 허브의 busy는 펌프 한 바퀴에 한 번 갱신되고 스폰이
         // 끝나야 반영된다. 그 사이에 열린 다른 채팅이 같은 1등을 집는 것이 스탬피드다.
         busy.extend(self.reserved_by_others(req.chat_id));
         let plan = switch::plan(&SwitchInput {
             now_epoch_secs: (req.now_epoch_ms / 1000) as i64,
-            order: &snap.order,
+            order: &order,
             current: cur.as_str(),
-            needs_fable: switch::model_needs_fable(req.model),
+            // Codex에는 Fable 창 개념이 없다 — 창 둘(5h·주간)뿐이다.
+            needs_fable: !req.codex && switch::model_needs_fable(req.model),
             busy: &busy,
             tried: req.tried,
-            usage: &snap.usage,
-            preflight: &snap.preflight,
+            usage: &usage,
+            preflight: &preflight,
         });
         let picked = plan.pick().cloned();
         *self.last.lock().unwrap_or_else(|e| e.into_inner()) = LastPlan {
@@ -402,7 +450,7 @@ impl AccountSwitcher for Switcher {
         // 후보가 없다 = 지금 아는 것으로는 갈 데가 없다. 다음 tick을 위해 갱신을 건다
         // (`usage_unknown` 하나만으로도 몇 초 뒤 성사될 수 있다).
         if picked.is_none() && plan.skipped.iter().any(|s| s.why == SkipWhy::UsageUnknown) {
-            self.ask(exclude);
+            self.ask(req.codex, exclude);
         }
         let c = picked?;
         Some(SwitchPick {
@@ -434,7 +482,13 @@ fn collect(sw: &Switcher) -> Snapshot {
     //   물음에서도 후보가 될 수 있는* 계정만 조회 대상에 넣는다. 모든 물음이 제외한
     //   계정(전형적으로 그 채팅이 지금 쓰는 계정과 이미 거쳐 온 계정)에는 HTTP가 없다.
     //   물음이 하나도 없으면(=쿨다운에 밀린 헛기상) 조회도 0건이다.
-    let asks = sw.take_asks();
+    // ★Codex 축 — 물음이 축 표식(bool)을 든다. Claude 물음은 아래 기존 흐름 그대로,
+    //   Codex 물음은 함수 끝의 `collect_codex`가 처리한다.
+    let asks_all = sw.take_asks();
+    let asks: Vec<BTreeSet<String>> =
+        asks_all.iter().filter(|(cx, _)| !cx).map(|(_, e)| e.clone()).collect();
+    let cx_asks: Vec<BTreeSet<String>> =
+        asks_all.iter().filter(|(cx, _)| *cx).map(|(_, e)| e.clone()).collect();
     let mut want: BTreeSet<String> = BTreeSet::new();
     for excl in &asks {
         want.extend(order.iter().filter(|e| !excl.contains(*e)).cloned());
@@ -513,7 +567,92 @@ fn collect(sw: &Switcher) -> Snapshot {
     }
     // ★R28 ACCT R2(N1) — 내가 받은 줄만 얹는다(남의 줄은 손대지 않는다).
     usage::merge_usage_cache(&fetched);
-    Snapshot { at: Some(Instant::now()), order, usage: usage_map, preflight }
+    // ★Codex 축 — 이번 바퀴에 Codex 물음이 없으면 **이전 판을 이어받는다**(통째 대입이
+    // 반대편 축을 지우면, 한 축의 물음이 다른 축의 후보를 증발시킨다).
+    let (cx_at, cx_order, cx_usage, cx_preflight) = if cx_asks.is_empty() {
+        let g = sw.snap.lock().unwrap_or_else(|e| e.into_inner());
+        (g.cx_at, g.cx_order.clone(), g.cx_usage.clone(), g.cx_preflight.clone())
+    } else {
+        collect_codex(sw, &cx_asks)
+    };
+    Snapshot { at: Some(Instant::now()), order, usage: usage_map, preflight, cx_at, cx_order, cx_usage, cx_preflight }
+}
+
+/// ★Codex 축(2026-09-01) — OpenAI 계정판 수집. 재료가 HTTP가 아니라 **프로세스**다
+/// (`codex app-server` ≈0.7초/계정 — `codex_limit.rs` 헤더). 그래서 이 함수도 워커
+/// 스레드에서만 돈다. 조회기는 새로 만들지 않는다 — 한도 재검증·설정 게이지와 같은
+/// [`super::codex_limit`]의 캐시·왕복을 그대로 쓴다(두 벌 금지 규약).
+#[allow(clippy::type_complexity)]
+fn collect_codex(
+    sw: &Switcher,
+    cx_asks: &[BTreeSet<String>],
+) -> (Option<Instant>, Vec<String>, BTreeMap<String, AccountUsage>, BTreeMap<String, PreflightVerdict>) {
+    ccg_auth::codex::ensure_default_migrated();
+    let cx_order: Vec<String> = ccg_auth::codex::read_store_file()
+        .accounts
+        .iter()
+        .filter_map(|a| ccg_auth::codex::email_of(a).map(str::to_string))
+        .collect();
+    let mut want: BTreeSet<String> = BTreeSet::new();
+    for excl in cx_asks {
+        want.extend(cx_order.iter().filter(|e| !excl.contains(*e)).cloned());
+    }
+    let mut usage_map: BTreeMap<String, AccountUsage> = BTreeMap::new();
+    let mut preflight: BTreeMap<String, PreflightVerdict> = BTreeMap::new();
+    for email in &cx_order {
+        // 격리 장부는 축 접두 키("cx:") — 같은 이메일의 Claude 실패와 곡선을 섞지 않는다.
+        let ledger_key = format!("cx:{email}");
+        // busy는 루프 안에서 재읽기(F4와 같은 이유 — 조회 도중 턴을 시작한 계정 밑에서
+        // app-server를 또 태우지 않는다).
+        let busy_now = sw.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let is_busy = busy_now.contains(&ledger_key);
+        // 캐시 우선 — 재검증 훅·게이지와 같은 행(2분 TTL). 없을 때만 프로세스 하나.
+        let mut row = super::codex_limit::peek(email, 120_000);
+        if row.is_none()
+            && want.contains(email)
+            && !is_busy
+            && !ccg_auth::net::disabled()
+            && sw.may_fetch(&ledger_key)
+        {
+            sw.stats.lock().unwrap_or_else(|e| e.into_inner()).1 += 1;
+            super::codex_limit::fill(email);
+            row = super::codex_limit::peek(email, 120_000);
+        }
+        match row.as_ref().and_then(|r| cx_usage_row(email, r)) {
+            Some(u) => {
+                usage_map.insert(email.clone(), u);
+                preflight.insert(email.clone(), PreflightVerdict::Probe);
+                sw.note_well(&ledger_key);
+            }
+            // 값이 없다/빈 창 = 못 물어봤다(**모름**) — plan이 `usage_unknown`으로 걸러
+            // 다음 바퀴에 되묻는다. 실패 곡선은 캐시 실패 TTL(20초)이 이미 쥐고 있어
+            // 여기서 sick을 또 세면 곡선이 두 벌이 된다.
+            None => {
+                preflight.insert(email.clone(), PreflightVerdict::Probe);
+            }
+        }
+    }
+    (Some(Instant::now()), cx_order, usage_map, preflight)
+}
+
+/// `codex_limit` 행(`{planType, windows:[{usedPct, resetsAt}…]}`) → 판정식의 창 두 개.
+/// `parse`가 primary(5시간 상당)→secondary(주간) 순서를 지키므로 자리로 가른다.
+/// Codex에는 Fable 창이 없다 — `needs_fable=false`라 그 자리는 판정에 안 들어간다.
+fn cx_usage_row(email: &str, row: &serde_json::Value) -> Option<AccountUsage> {
+    let ws = row.get("windows")?.as_array()?;
+    if ws.is_empty() {
+        return None; // 실패 행(빈 창) = 증거 없음
+    }
+    let mut u = AccountUsage::empty(email);
+    if let Some(w) = ws.first() {
+        u.five_hour_pct = w.get("usedPct").and_then(serde_json::Value::as_i64);
+        u.five_hour_resets_at = w.get("resetsAt").and_then(serde_json::Value::as_i64);
+    }
+    if let Some(w) = ws.get(1) {
+        u.weekly_pct = w.get("usedPct").and_then(serde_json::Value::as_i64);
+        u.weekly_resets_at = w.get("resetsAt").and_then(serde_json::Value::as_i64);
+    }
+    Some(u)
 }
 
 /// ★R4(G6) — 이 실패는 **계정 탓인가, 네트워크 탓인가**.
@@ -630,6 +769,8 @@ mod tests {
             chat_id: "c-1",
             current: &cur,
             model: "haiku",
+            codex: false,
+            codex_account: None,
             tried: &tried,
             now_epoch_ms: 1_800_000_000_000,
         };
@@ -662,20 +803,20 @@ mod tests {
         let sw = Switcher::start();
         let order: Vec<String> = ["a@x", "b@x", "c@x"].iter().map(|s| s.to_string()).collect();
         // 채팅 하나: 현재 a, 거쳐 온 b → 물어볼 값어치가 있는 것은 c뿐.
-        sw.ask(BTreeSet::from(["a@x".to_string(), "b@x".to_string()]));
+        sw.ask(false, BTreeSet::from(["a@x".to_string(), "b@x".to_string()]));
         let asks = sw.take_asks();
         let want: BTreeSet<String> = asks
             .iter()
-            .flat_map(|ex| order.iter().filter(move |e| !ex.contains(*e)).cloned())
+            .flat_map(|(_, ex)| order.iter().filter(move |e| !ex.contains(*e)).cloned())
             .collect();
         assert_eq!(want, BTreeSet::from(["c@x".to_string()]));
         // 채팅 둘: 두 번째는 b를 쓰고 있다 → a·c는 그쪽의 후보다. b는 아무도 안 묻는다.
-        sw.ask(BTreeSet::from(["a@x".to_string(), "b@x".to_string()]));
-        sw.ask(BTreeSet::from(["b@x".to_string()]));
+        sw.ask(false, BTreeSet::from(["a@x".to_string(), "b@x".to_string()]));
+        sw.ask(false, BTreeSet::from(["b@x".to_string()]));
         let asks = sw.take_asks();
         let want: BTreeSet<String> = asks
             .iter()
-            .flat_map(|ex| order.iter().filter(move |e| !ex.contains(*e)).cloned())
+            .flat_map(|(_, ex)| order.iter().filter(move |e| !ex.contains(*e)).cloned())
             .collect();
         assert_eq!(want, BTreeSet::from(["a@x".to_string(), "c@x".to_string()]), "★ b는 두 물음 모두가 제외했다");
         std::env::remove_var("CCG_NO_NET");
@@ -775,7 +916,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
             sw2.set_busy(BTreeSet::from(["b@x".to_string(), "c@x".to_string()]));
         });
-        sw.ask(BTreeSet::from(["a@x".to_string()])); // b·c가 후보
+        sw.ask(false, BTreeSet::from(["a@x".to_string()])); // b·c가 후보
         for _ in 0..80 {
             if !sw.pending() {
                 break;

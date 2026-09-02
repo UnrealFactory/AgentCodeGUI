@@ -1,0 +1,327 @@
+{
+  "at": "2026-09-01T10:30:33.635Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\debug\\agentcodegui.exe",
+  "engine": "0.3.252",
+  "account": "lmg56635@gmail.com",
+  "samples": [
+    {
+      "t": 24,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Starting",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 330,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Starting",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 645,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 954,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 1265,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 1581,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 1892,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 2200,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 2514,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 2828,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 3139,
+      "pill": 0,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 3450,
+      "pill": 1,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 3763,
+      "pill": 1,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 4076,
+      "pill": 1,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 4389,
+      "pill": 1,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 4699,
+      "pill": 1,
+      "card": 0,
+      "busy": true,
+      "total": null,
+      "worked": 0,
+      "state": "Streaming",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 5009,
+      "pill": 1,
+      "card": 0,
+      "busy": false,
+      "total": null,
+      "worked": 1,
+      "state": "Resident",
+      "spawns": 1,
+      "exits": 0,
+      "pid": 29772
+    },
+    {
+      "t": 5334,
+      "pill": 0,
+      "card": 0,
+      "busy": false,
+      "total": null,
+      "worked": 1,
+      "state": "Idle",
+      "spawns": 1,
+      "exits": 1,
+      "pid": 29772
+    },
+    {
+      "t": 5651,
+      "pill": 0,
+      "card": 0,
+      "busy": false,
+      "total": "1804",
+      "worked": 1,
+      "state": "Idle",
+      "spawns": 1,
+      "exits": 1,
+      "pid": 29772
+    }
+  ],
+  "frames": [
+    {
+      "i": 2,
+      "f": "INIT",
+      "session": "3147d67f-2880-4e2b-ab74-e6fab0bbf74a"
+    },
+    {
+      "i": 75,
+      "f": "REPLACE",
+      "tasks": [
+        "wgczharex:local_workflow"
+      ]
+    },
+    {
+      "i": 76,
+      "f": "STARTED",
+      "task": "wgczharex"
+    },
+    {
+      "i": 83,
+      "f": "PROGRESS",
+      "task": "wgczharex",
+      "wf": 3
+    },
+    {
+      "i": 87,
+      "f": "PROGRESS",
+      "task": "wgczharex",
+      "wf": 3
+    },
+    {
+      "i": 88,
+      "f": "PROGRESS",
+      "task": "wgczharex",
+      "wf": 3
+    },
+    {
+      "i": 95,
+      "f": "RESULT",
+      "isError": false
+    },
+    {
+      "i": 96,
+      "f": "PROGRESS",
+      "task": "wgczharex",
+      "wf": 0
+    },
+    {
+      "i": 97,
+      "f": "PROGRESS",
+      "task": "wgczharex",
+      "wf": 3
+    },
+    {
+      "i": 98,
+      "f": "REPLACE",
+      "tasks": []
+    },
+    {
+      "i": 100,
+      "f": "NOTIFY",
+      "task": "wgczharex",
+      "status": "completed"
+    },
+    {
+      "i": 101,
+      "f": "INIT",
+      "session": "3147d67f-2880-4e2b-ab74-e6fab0bbf74a"
+    }
+  ],
+  "verdict": {
+    "totalShown": true,
+    "pillEverShown": true,
+    "pillShownMs": 1800,
+    "replaceHadWorkflow": true,
+    "notifyBeforeFirstResult": false,
+    "results": 1,
+    "inits": 2,
+    "lastSample": {
+      "t": 5651,
+      "pill": 0,
+      "card": 0,
+      "busy": false,
+      "total": "1804",
+      "worked": 1,
+      "state": "Idle",
+      "spawns": 1,
+      "exits": 1,
+      "pid": 29772
+    }
+  }
+}

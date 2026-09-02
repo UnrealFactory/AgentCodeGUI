@@ -12,7 +12,7 @@ const FILE: &str = "window-state.json";
 pub const MIN_W: i64 = 940;
 pub const MIN_H: i64 = 600;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WinState {
     // 키 순서도 2.6.2가 쓰던 그대로 (x,y,width,height,maximized)
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -17,7 +17,7 @@ import { PromptLibrary } from './PromptLibrary'
 
 // 2.0 사이드바 — 모드 탭 없이 일반/멀티/추가 채팅 3섹션이 상시 노출된다 (PoC v3).
 // 일반 항목 클릭=코드 뷰, 멀티 항목 클릭=멀티 뷰, 추가 항목 클릭=그 세션 창 포커스.
-// 새 채팅은 선택 모달(일반/멀티→패널 수)이 담당하고 여기선 onNewChat만 부른다.
+// 새 채팅은 onNewChat이 곧장 일반 채팅을 만든다(선택 모달은 통합 뒤 제거 — 2026-09-01).
 
 export interface ChatSummary {
   id: string
@@ -127,7 +127,7 @@ function confirmAllText(label: string, n: number): { title: string; msg: string 
 
 // 열려 있는 동안 F2/Del 단축키를 비켜야 하는 오버레이들 — 모달이 키보드를 소유한다
 const OVERLAY_GUARD =
-  '.q-overlay, .sa-overlay, .fv-overlay, .set-overlay, .set-dialog-overlay, .sconfirm, .pr-overlay, .iv-overlay, .ma-expand-overlay, .pn-overlay, .chgm-overlay, .nc-veil'
+  '.q-overlay, .sa-overlay, .fv-overlay, .set-overlay, .set-dialog-overlay, .sconfirm, .pr-overlay, .iv-overlay, .ma-expand-overlay, .pn-overlay, .chgm-overlay'
 
 interface MenuState {
   sec: SidebarSectionKey
@@ -288,7 +288,7 @@ export const Sidebar = memo(function Sidebar({
         <span className="name">AgentCodeGUI</span>
       </div>
 
-      {/* 새 채팅 — 일반/멀티 선택 모달을 연다 (PoC: 버튼이 곧장 만들지 않는다) */}
+      {/* 새 채팅 — 곧장 일반 채팅 생성 (자리 수는 채팅 크롬의 다이얼 소관) */}
       <button className="sb-new" onClick={onNewChat}>
         <IconPlus size={16} />
         <span>{t('새 채팅', 'New chat')}</span>
@@ -458,7 +458,7 @@ export const Sidebar = memo(function Sidebar({
                             {t('이어가기', 'Continue')}
                           </button>
                         )}
-                        {!isRenaming && c.running && !c.ask && <span className="runbadge">{t('실행', 'run')}</span>}
+                        {/* 「실행」 배지 제거(2026-09-01 사용자) — 앞의 상태 점이 이미 실행 중을 말한다 */}
                         {!isRenaming && <span className="when">{relTime(c.updatedAt)}</span>}
                       </div>
                     )

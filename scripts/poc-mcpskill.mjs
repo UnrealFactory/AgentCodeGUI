@@ -421,6 +421,23 @@ if (APP) {
     // init이 턴마다 오는지).
     await j(`(window.__tl = [], window.api.multi.onEvent('m9-two::0', (e) => { if (e.type === 'tooling') window.__tl.push(e) }), 'armed')`)
 
+    // ★R3 — 칩은 첫 턴 **전에도** 선다(디스크 폴백 — 설정 ▸ MCP/Skill 탭 제거의 전제).
+    // 와이어가 오기 전의 툴팁은 「등록」 낱말을 쓴다(라이브는 「연결」) — 이 낱말이
+    // 아래 라이브 게이트의 반대편 증거다. 라벨은 수 세기를 폐지한 「MCP & Skill」.
+    const CHIP = `[...document.querySelectorAll('.ma-panel')].map((p) =>
+      [...p.querySelectorAll('.ma-p-head button.ma-p-folder')].find((b) => /MCP/.test(b.getAttribute('aria-label') || '')) ?? null)`
+    const preUp = await until(`(${CHIP}).filter(Boolean).length >= 2`, 30_000)
+    out.preChips = await j(`(${CHIP}).map((b) => b && ({ text: b.innerText.replace(/\\s+/g, ' ').trim(), tip: b.getAttribute('aria-label') }))`)
+    ok(preUp, `첫 턴 전에도 두 패널에 칩이 선다(디스크 폴백) — 실제: ${JSON.stringify(out.preChips)}`)
+    ok(
+      (out.preChips ?? []).every((c) => c && /MCP & SKILL/.test(c.text)),
+      `칩 라벨이 「MCP & SKILL」이다 — 실제: ${JSON.stringify((out.preChips ?? []).map((c) => c?.text))}`
+    )
+    ok(
+      (out.preChips ?? []).every((c) => c && /등록/.test(c.tip) && !/연결/.test(c.tip)),
+      `실행 전 툴팁은 「등록」으로 말한다(「연결」은 라이브 전용) — 실제: ${JSON.stringify((out.preChips ?? []).map((c) => c?.tip))}`
+    )
+
     // ── 각 패널 1턴 ─────────────────────────────────────────────────────────
     // 도구 환경 스냅샷은 `system/init`에 실려 오고, init은 **스폰**에서 온다 —
     // 즉 패널이 한 번은 말을 걸어야 한다. 가장 싼 한 턴(haiku · 도구 없음).
@@ -440,10 +457,14 @@ if (APP) {
       await sleep(400)
     }
 
-    // ── 칩이 뜰 때까지 ──────────────────────────────────────────────────────
-    const CHIP = `[...document.querySelectorAll('.ma-panel')].map((p) =>
-      [...p.querySelectorAll('.ma-p-head button.ma-p-folder')].find((b) => /MCP/.test(b.getAttribute('aria-label') || '')) ?? null)`
-    const chipUp = await until(`(${CHIP}).filter(Boolean).length >= 2`, 180_000)
+    // ── 라이브 스냅샷이 칩에 닿을 때까지 ─────────────────────────────────────
+    // ★R3 — 칩 존재는 이제 증거가 아니다(디스크 폴백으로 항상 서 있다). 툴팁이
+    // 「연결」로 바뀌는 순간이 와이어 스냅샷 도착이다 — 그 뒤에야 팝오버를 읽는다
+    // (연결 실패·도구 이름은 라이브만 안다. 안 기다리면 디스크 목록을 읽고 헛실패한다).
+    const chipUp = await until(
+      `(${CHIP}).filter(Boolean).length >= 2 && (${CHIP}).every((b) => b && /연결/.test(b.getAttribute('aria-label') || ''))`,
+      180_000
+    )
     out.chips = await j(`(${CHIP}).map((b) => b && ({ text: b.innerText.replace(/\\s+/g, ' ').trim(), tip: b.getAttribute('aria-label') }))`)
     ok(chipUp, `두 패널 모두에 도구 환경 칩이 떴다 — 실제: ${JSON.stringify(out.chips)}`)
 
@@ -473,7 +494,13 @@ if (APP) {
             if (el.classList.contains('wb-psep')) { cur = null; foot = ''; continue }
             if (foot !== null) { foot += el.innerText.trim(); continue }
             if (el.classList.contains('hsec')) { cur = { head: el.innerText.trim(), rows: [] }; secs.push(cur) }
-            else if (el.classList.contains('wb-pop-list') && cur) cur.rows = [...el.children].map((r) => r.innerText.replace(/\\n/g, ' · ').trim())
+            // ★R4 — 도구 이름 나열은 화면에서 호버 툴팁(.grow의 앱 공통 data-tip —
+            // 네이티브 title 아님)으로 옮겨 갔다. 행 텍스트 뒤에 [툴팁]을 이어 붙여야
+            // "무엇을 주는지"의 증거가 남는다.
+            else if (el.classList.contains('wb-pop-list') && cur) cur.rows = [...el.children].map((r) => {
+              const tt = r.querySelector('.grow') ? r.querySelector('.grow').getAttribute('data-tip') : null
+              return r.innerText.replace(/\\n/g, ' · ').trim() + (tt ? ' · [' + tt + ']' : '')
+            })
             else if (el.classList.contains('ag-none') && cur) cur.rows = ['(비어 있음) ' + el.innerText.trim()]
           }
           return { head: pop.querySelector('.wb-pop-h')?.innerText.replace(/\\n/g, ' · ').trim() ?? null, secs, foot }
@@ -495,17 +522,30 @@ if (APP) {
     ok(/ccg-broken-b/.test(p1) && /연결 실패/.test(p1), '패널2에 죽은 서버가 「연결 실패」로 남는다')
     ok(!/ccg-probe-a|alpha-probe/.test(p1), '패널2에 A의 서버·스킬이 **없다**')
     ok(p0 !== p1, '두 패널의 목록이 서로 다르다 (panelId 봉투가 안 샌다)')
-    // 서버가 붙인 도구가 행에 실렸는가 (`init.tools` 접두사 갈라내기의 화면 증거)
-    ok(/echo/.test(p1) && /ping/.test(p1), `패널2 MCP 행에 도구 이름(echo·ping) — 실제: ${p1.slice(0, 500)}`)
+    // 서버가 붙인 도구가 행에 실렸는가 (`init.tools` 접두사 갈라내기의 화면 증거 —
+    // ★R4부터 이름 나열은 호버 툴팁이고 본문엔 「도구 N」 배지만 남는다)
+    ok(/echo/.test(p1) && /ping/.test(p1), `패널2 MCP 행에 도구 이름(echo·ping, 호버 툴팁) — 실제: ${p1.slice(0, 500)}`)
+    ok(/도구 2/.test(p1), '패널2 MCP 행에 「도구 2」 배지')
+    // ★R4 — 연결된 행에 상태 문구가 **없다**(체크 아이콘이 곧 「연결됨」 — 사용자 지적).
+    ok(!/연결됨/.test(p0) && !/연결됨/.test(p1), '연결된 행에 「연결됨」 문구가 안 남는다')
     // ★설명 한 줄 자르기 — 내장 스킬 설명은 941자짜리가 있다(dataviz). 안 자르면 그
     // 한 행이 팝오버(340px) 전체를 먹어 목록이 문단 더미가 된다.
     const skillRows = (out.pops[1]?.secs ?? []).find((s) => /스킬/.test(s.head))?.rows ?? []
-    const longest = skillRows.reduce((a, r) => Math.max(a, r.length), 0)
+    // ★R4 — 행 문자열 꼬리의 ` · [툴팁]`은 스크레이퍼가 붙인 것(화면 밖 data-tip)이라
+    // "보이는 행이 한 줄인가" 판정에서 떼고 잰다. 툴팁 자체는 280자 컷(+…)이 규약.
+    const bare = (r) => r.replace(/ · \[[^]*\]$/, '')
+    const longest = skillRows.reduce((a, r) => Math.max(a, bare(r).length), 0)
+    const longestTip = skillRows.reduce((a, r) => {
+      const m = r.match(/ · \[([^]*)\]$/)
+      return Math.max(a, m ? m[1].length : 0)
+    }, 0)
     out.longestSkillRow = longest
+    out.longestSkillTip = longestTip
     ok(
       skillRows.length >= 10 && longest <= 200,
       `스킬 행 ${skillRows.length}개가 전부 한 줄로 잘렸다(최장 ${longest}자 ≤ 200)`
     )
+    ok(longestTip > 0 && longestTip <= 281, `스킬 설명 툴팁이 앱 공통 data-tip으로 실리고 280자에서 잘린다(최장 ${longestTip})`)
 
     // ── 2턴째 — 상주 CLI에서 스냅샷이 몇 번 나가는가 ─────────────────────────
     // 「턴마다 온다」와 「스폰마다 온다」는 다른 말이다: 전자면 화면이 매 턴 REPLACE를
@@ -559,12 +599,15 @@ if (APP) {
     console.log('\n===== R2 칩 수명 =====')
     const CHIP0 = `[...document.querySelectorAll('.ma-panel[data-slot="0"] .ma-p-head button.ma-p-folder')]
       .find((b) => /MCP/.test(b.getAttribute('aria-label') || '')) ?? null`
+    // ★R3 — 판정값은 innerText가 아니라 **툴팁(aria-label)**이다. 라벨은 이제 상수
+    // 「MCP & Skill」라 껍데기가 갈려도 늘 같다 — 라이브 스냅샷을 잃고 디스크 폴백으로
+    // 미끄러지는 회귀(「연결」→「등록」)는 툴팁만이 갈라 준다.
     const chipTextIn = (scope) => `(() => { const b = [...document.querySelectorAll(${JSON.stringify(scope)} + ' button.ma-p-folder')]
-      .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`
+      .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.getAttribute('aria-label') : null })()`
     const clickAria = (re) => `(() => { const b = [...document.querySelectorAll('button')]
       .find((x) => ${re}.test(x.getAttribute('aria-label') || '')); if (!b) return 'no-btn'; b.click(); return 'clicked' })()`
 
-    const lifeBefore = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+    const lifeBefore = await j(`(() => { const b = ${CHIP0}; return b ? b.getAttribute('aria-label') : null })()`)
     // ── 크게 보기 (그리드 자리는 유령이 되고 실물은 오버레이 카드로 옮겨 간다)
     await j(`(() => { const b = [...document.querySelectorAll('.ma-panel[data-slot="0"] button')]
       .find((x) => /크게 보기|Expand/.test(x.getAttribute('aria-label') || '')); if (!b) return 'no-btn'; b.click(); return 'clicked' })()`)
@@ -574,10 +617,10 @@ if (APP) {
     // ── 원래 크기로 (그리드 재마운트)
     await j(clickAria('/원래 크기로|Restore size/'))
     await sleep(1200)
-    const lifeRestored = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+    const lifeRestored = await j(`(() => { const b = ${CHIP0}; return b ? b.getAttribute('aria-label') : null })()`)
     out.chipLifetime = { before: lifeBefore, expanded: lifeExpanded, restored: lifeRestored }
     console.log('  칩 —', JSON.stringify(out.chipLifetime))
-    ok(!!lifeBefore, `턴 뒤 그리드 칩이 있다 — 실제 ${JSON.stringify(lifeBefore)}`)
+    ok(!!lifeBefore && /연결/.test(lifeBefore), `턴 뒤 그리드 칩이 라이브 툴팁을 문다 — 실제 ${JSON.stringify(lifeBefore)}`)
     ok(lifeExpanded === lifeBefore, `「크게 보기」에서도 같은 칩 — 기대 ${JSON.stringify(lifeBefore)} · 실제 ${JSON.stringify(lifeExpanded)}`)
     ok(lifeRestored === lifeBefore, `「원래 크기로」 복귀 뒤에도 같은 칩 — 실제 ${JSON.stringify(lifeRestored)}`)
 
@@ -612,6 +655,45 @@ if (APP) {
     ok(popsAfterFolder === 1, `도구 팝오버가 열린 채 폴더 칩 → 여전히 1장 — 실제 ${popsAfterFolder}`)
     ok(popsAfterToolAgain === 1, `폴더 팝오버가 열린 채 도구 칩 → 여전히 1장 — 실제 ${popsAfterToolAgain}`)
 
+    // ══ R3 토글 — 팝오버에서 끄면 앱 홈 끔 목록에 남는가 ═══════════════════════
+    // 설정 ▸ MCP/Skill 탭이 없어졌으므로 이 스위치가 유일한 창구다. 끄기 →
+    // `CCG_HOME/mcp.json`의 disabled에 이름이 남고, 되켜기 → 빠진다(실행 중 세션은
+    // 안 건드린다 — 다음 스폰부터. 그래서 파일이 판정점이지 와이어가 아니다).
+    console.log('\n===== R3 팝오버 토글 =====')
+    await j(`(() => { const b = ${CHIP0}; if (!b) return 'no-chip'; b.click(); return 'clicked' })()`)
+    await sleep(300)
+    // 이름은 스위치의 aria-label(「{이름} 끄기」)에서 딴다 — 행 innerText의 줄 구조는
+    // flex 블록화에 좌우돼 첫 줄이 이름이라는 보장이 없다.
+    const flipped = await j(`(() => {
+      const p = document.querySelector('.ma-panel[data-slot="0"]')
+      const sw = p && p.querySelector('.wb-pop .wb-prow .sw2')
+      if (!sw) return null
+      const label = sw.getAttribute('aria-label') || ''
+      sw.click()
+      return label
+    })()`)
+    await sleep(700)
+    const offFile = path.join(CCG_HOME, 'mcp.json')
+    const offList = () => { try { return JSON.parse(fs.readFileSync(offFile, 'utf8')).disabled ?? [] } catch { return [] } }
+    const afterOff = offList()
+    out.toggle = { flipped, afterOff }
+    ok(
+      !!flipped && afterOff.length === 1 && flipped.includes(afterOff[0]),
+      `팝오버 토글로 끈 서버가 앱 홈 끔 목록에 남는다 — 실제 ${JSON.stringify(out.toggle)}`
+    )
+    // 되켠다 — 뒤 판정들(칩 수명·팝아웃)이 켜진 판을 전제한다
+    await j(`(() => {
+      const p = document.querySelector('.ma-panel[data-slot="0"]')
+      const sw = p && p.querySelector('.wb-pop .wb-prow .sw2')
+      if (sw) sw.click()
+      return 'x'
+    })()`)
+    await sleep(700)
+    out.toggle.afterOn = offList()
+    ok(out.toggle.afterOn.length === 0, `되켜면 끔 목록에서 빠진다 — 실제 ${JSON.stringify(out.toggle.afterOn)}`)
+    await j(`(document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), 'closed')`)
+    await sleep(200)
+
     // ══ R2 ③ 팝아웃 창 — 첫 진입에 칩이 서는가 ════════════════════════════════
     // R1은 그 창에서 한 턴을 더 태워야 칩이 떴다(구독만 있고 조회가 없었다).
     // 이 판정은 **턴을 안 태운다** — 창이 뜨자마자 물어봐서 채워야 통과다.
@@ -625,14 +707,16 @@ if (APP) {
     } else {
       const wc = await Cdp.connect(winTarget.webSocketDebuggerUrl, { timeoutMs: 8000 })
       const wj = async (expr) => JSON.parse(await wc.eval(`(async () => JSON.stringify((${expr}) ?? null))()`, { awaitPromise: true }))
-      // 조회 왕복 + 렌더 한 프레임을 기다린다(턴은 안 태운다)
+      // 조회 왕복 + 렌더 한 프레임을 기다린다(턴은 안 태운다).
+      // ★R3 — 칩은 디스크 폴백으로 즉시 서므로 존재가 아니라 **라이브 툴팁(「연결」)**을
+      // 기다린다 — toolingGet 왕복이 죽는 회귀면 「등록」에 머물러 아래 비교가 잡는다.
       for (let i = 0; i < 40; i++) {
-        const seen = await wj(`!![...document.querySelectorAll('.ma-p-head button.ma-p-folder')].find((x) => /MCP/.test(x.getAttribute('aria-label') || ''))`).catch(() => false)
+        const seen = await wj(`!![...document.querySelectorAll('.ma-p-head button.ma-p-folder')].find((x) => /연결/.test(x.getAttribute('aria-label') || ''))`).catch(() => false)
         if (seen) break
         await sleep(150)
       }
       const popChip = await wj(`(() => { const b = [...document.querySelectorAll('.ma-p-head button.ma-p-folder')]
-        .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+        .find((x) => /MCP/.test(x.getAttribute('aria-label') || '')); return b ? b.getAttribute('aria-label') : null })()`)
       out.popoutChipFirstEntry = popChip
       console.log('  팝아웃 첫 진입 칩 —', JSON.stringify(popChip))
       ok(popChip === lifeBefore, `팝아웃 첫 진입(턴 0회)에 같은 칩 — 기대 ${JSON.stringify(lifeBefore)} · 실제 ${JSON.stringify(popChip)}`)
@@ -643,7 +727,7 @@ if (APP) {
         if (b) { b.click(); return 'clicked' } return 'no-btn' })()`).catch(() => null)
       await j(`(await window.api.multi.panelClose('m9-two::0'), 'closed')`).catch(() => null)
       await sleep(2600)
-      const backChip = await j(`(() => { const b = ${CHIP0}; return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null })()`)
+      const backChip = await j(`(() => { const b = ${CHIP0}; return b ? b.getAttribute('aria-label') : null })()`)
       out.chipAfterFoldBack = backChip
       console.log('  팝아웃 복귀 뒤 그리드 칩 —', JSON.stringify(backChip))
       ok(backChip === lifeBefore, `팝아웃 복귀(턴 0회) 뒤에도 같은 칩 — 실제 ${JSON.stringify(backChip)}`)

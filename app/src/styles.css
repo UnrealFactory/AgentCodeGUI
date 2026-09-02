@@ -145,7 +145,34 @@ input,textarea{ font-family:inherit; }
   background:transparent; background-clip:padding-box;
   border:3.5px solid transparent; border-radius:99px; min-height:36px;
 }
-*:hover::-webkit-scrollbar-thumb{ background-color:rgba(255,255,255,.15); }
+/* 썸 드러내기는 실제 스크롤러에만 건다 — `*:hover`는 포인터가 지나는 조상 체인 전체를
+   매 mousemove마다 스타일 무효화 대상으로 만들어 전역 클릭 지연의 주범이었다(성능 패스
+   2026-09-01). 새 스크롤 컨테이너를 만들면 이 목록에 넣거나 `.scroll` 마커를 붙일 것 —
+   빠뜨리면 그 영역만 썸이 (마우스를 썸 위에 올리기 전까지) 안 보인다. */
+.scroll:hover::-webkit-scrollbar-thumb, textarea:hover::-webkit-scrollbar-thumb,
+.sb-scroll:hover::-webkit-scrollbar-thumb, .fxtree:hover::-webkit-scrollbar-thumb,
+.exp-tree:hover::-webkit-scrollbar-thumb, .chgm-body:hover::-webkit-scrollbar-thumb,
+.chat-scroll:hover::-webkit-scrollbar-thumb, .wl-list:hover::-webkit-scrollbar-thumb,
+.dc-body:hover::-webkit-scrollbar-thumb, .md-table-wrap:hover::-webkit-scrollbar-thumb,
+.codeblock pre:hover::-webkit-scrollbar-thumb, .picker-pop:hover::-webkit-scrollbar-thumb,
+.slash-menu:hover::-webkit-scrollbar-thumb, .ntf-raw:hover::-webkit-scrollbar-thumb,
+.wb-pop:hover::-webkit-scrollbar-thumb, .qcard:hover::-webkit-scrollbar-thumb,
+.wf-rail:hover::-webkit-scrollbar-thumb, .wf-agents:hover::-webkit-scrollbar-thumb,
+.qsum:hover::-webkit-scrollbar-thumb, .todos:hover::-webkit-scrollbar-thumb,
+.files:hover::-webkit-scrollbar-thumb, .term-out:hover::-webkit-scrollbar-thumb,
+.fv-code:hover::-webkit-scrollbar-thumb, .fv-md:hover::-webkit-scrollbar-thumb,
+.fv-imgbody:hover::-webkit-scrollbar-thumb, .fv-ask-code:hover::-webkit-scrollbar-thumb,
+.gitm-nav:hover::-webkit-scrollbar-thumb, .gitm-scroll:hover::-webkit-scrollbar-thumb,
+.gitm-detail:hover::-webkit-scrollbar-thumb, .set-nav:hover::-webkit-scrollbar-thumb,
+.set-main:hover::-webkit-scrollbar-thumb, .chips2:hover::-webkit-scrollbar-thumb,
+.vpick-list:hover::-webkit-scrollbar-thumb, .ic-log:hover::-webkit-scrollbar-thumb,
+.sd-msg:hover::-webkit-scrollbar-thumb, .plib-list:hover::-webkit-scrollbar-thumb,
+.plib-ed .tx:hover::-webkit-scrollbar-thumb, .iv-imgwrap.zoom:hover::-webkit-scrollbar-thumb,
+.iv-strip:hover::-webkit-scrollbar-thumb, .ma-grid:hover::-webkit-scrollbar-thumb,
+.ma-p-body:hover::-webkit-scrollbar-thumb, .ma-p-thread:hover::-webkit-scrollbar-thumb,
+.pn-scroll:hover::-webkit-scrollbar-thumb, .eb-msg:hover::-webkit-scrollbar-thumb{
+  background-color:rgba(255,255,255,.15);
+}
 *::-webkit-scrollbar-thumb:hover{ background-color:rgba(255,255,255,.28); border-width:2.5px; }
 *::-webkit-scrollbar-thumb:active{ background-color:rgba(255,255,255,.38); border-width:2.5px; }
 
@@ -155,8 +182,12 @@ input,textarea{ font-family:inherit; }
 
 /* ============================== WINDOW ============================== */
 #root{ height:100%; }
-/* 블러 워머 — 유리 팝오버/베일(backdrop-filter)의 첫 표면 생성 스톨(~100-200ms)을
-   앱 시작 시점으로 옮긴다. 항상 떠 있는 2px 워머가 블러 파이프라인을 미리 컴파일. */
+/* 블러 워머 — 유리 팝오버(backdrop-filter)의 첫 표면 생성 스톨(~100-200ms)을
+   앱 시작 시점으로 옮긴다. 항상 떠 있는 2px 워머가 블러 파이프라인을 미리 컴파일.
+   ★성능 패스(2026-09-01): 전창 베일(inset:0 오버레이)에는 blur를 걸지 않는다 — 열 때마다
+   창 크기의 블러 서피스를 새로 만들어(워머가 못 덮는 할당 비용) 설정/카드 열기가 매번
+   버벅였다. 베일은 어둡기(alpha .6~.68)로만 깊이를 내고, blur는 면적이 작은 프로스트
+   팝오버(메뉴·사이드바 자동숨김 등)에만 남긴다. */
 .blurwarm{ position:fixed; right:0; bottom:0; width:2px; height:2px; backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px); pointer-events:none; }
 /* 창 자체가 카드(아크릴·DWM 라운드) — 옛 투명 창의 16px 인셋/자체 그림자는 없다.
    배경은 body의 --panel 틴트가 그대로 비치고, 본문(.chat/.multi)만 --chat-bg로 진하다. */
@@ -333,11 +364,17 @@ input,textarea{ font-family:inherit; }
   transition:background .12s, color .12s; }
 .sb-label .slb:hover{ background:var(--hover); color:var(--text); }
 .sb-label .slb.on{ background:rgba(255,255,255,.09); color:var(--text); }
-.sb-label .slb:disabled{ opacity:.45; cursor:default; }
+/* 잠김의 흐림은 **아이콘에만** — 버튼 전체에 걸면 ::after 툴팁까지 45%로 바래서
+   잠긴 이유 문장이 안 읽힌다(2026-09-01 사용자 보고: 툴팁이 흐릿함) */
+.sb-label .slb:disabled{ cursor:default; }
+.sb-label .slb:disabled svg{ opacity:.45; }
 .sb-label .slb:disabled:hover{ background:transparent; color:var(--text-4); }
 /* 라벨 행 버튼 툴팁(전체 삭제 등) — 가운데 정렬은 사이드바 오른쪽 경계(.lcol
-   overflow:hidden)에서 잘리므로 버튼 오른쪽 끝 기준으로 왼쪽으로 편다 */
-.sb-label .has-tip::after{ left:auto; right:0; transform:translate(0, 3px); }
+   overflow:hidden)에서 잘리므로 버튼 오른쪽 끝 기준으로 왼쪽으로 편다.
+   위로 뜨는 기본 방향은 .sb-scroll(overflow-y:auto) 위 경계에서 잘린다 — 첫 섹션
+   라벨이 스크롤 맨 위에 있어 툴팁 아랫단만 빼꼼 보였다(2026-09-01 사용자 보고:
+   전체 삭제 호버 가려짐) → 버튼 아래로 뒤집는다(.fxh 헤더와 같은 문법) */
+.sb-label .has-tip::after{ bottom:auto; top:100%; margin-bottom:0; margin-top:8px; left:auto; right:0; transform:translate(0, -3px); }
 .sb-label .has-tip:hover::after{ transform:translate(0, 0); }
 
 /* 섹션 검색 — 헤더 아래로 열리는 인라인 필터 (PoC .sb-search2) */
@@ -426,8 +463,7 @@ input,textarea{ font-family:inherit; }
    원형 위험 아이콘(빨강 틴트 링), 제목/문구 가운데 정렬, 취소·위험 두 버튼 */
 .sconfirm{
   position:fixed; inset:0; z-index:80; display:grid; place-items:center;
-  background:oklch(0.1 0.004 60 / 0.55);
-  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+  background:oklch(0.1 0.004 60 / 0.68);
   animation:fade .16s ease both;
 }
 .sccard{
@@ -639,7 +675,7 @@ input,textarea{ font-family:inherit; }
    베일 위 불투명 판 + mhead(타일·2줄 제목·± 알약) + 세그먼트 알약 + 파일 행. */
 .chgm-overlay{
   position:absolute; inset:0; z-index:55;
-  background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px);
+  background:oklch(0.1 0.004 60 / 0.68);
   display:grid; place-items:center; padding:40px;
   animation:fade .16s ease both;
 }
@@ -742,19 +778,28 @@ input,textarea{ font-family:inherit; }
 .hpop .hprow{ width:100%; text-align:left; cursor:pointer; transition:background .12s, color .12s; }
 .hpop .hprow:hover{ background:var(--hover); color:var(--text); }
 .hpop .hprow .sub{ font-family:var(--font-mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.hpop .pcheck{ margin-left:auto; color:var(--text-2); flex:0 0 auto; display:grid; place-items:center; }
+/* ★R4 — 폭을 고정한다: 빈 자리(현재 아닌 행)도 같은 칸을 차지해 시간 열이 맞는다 */
+.hpop .pcheck{ margin-left:auto; width:16px; color:var(--text-2); flex:0 0 auto; display:grid; place-items:center; }
 /* 작업 폴더 팝오버 섹션 캡션 — "즐겨찾기 ────" 라벨 뒤로 헤어라인이 오른쪽 끝까지 */
 .hpop .hsec{
   display:flex; align-items:center; gap:7px; margin:5px 4px 1px; user-select:none;
   font-size:10px; font-weight:600; color:var(--text-4);
 }
 .hpop .hsec::after{ content:''; flex:1; height:1px; background:rgba(255,255,255,.07); }
+/* ★R4 — 접히는 섹션 머리(도구 팝오버): 머리 전체가 토글, 갈매기는 헤어라인 **뒤**
+   (::after는 문서상 마지막이라 order로 svg만 끝으로 보낸다). 접히면 -90°. */
+button.hsec{ width:100%; background:none; border:0; padding:0; cursor:pointer; text-align:left; }
+button.hsec:hover{ color:var(--text-3); }
+.hsec-btn svg{ order:2; flex:0 0 auto; color:var(--text-4); transition:transform .15s; }
+.hsec-btn.folded svg{ transform:rotate(-90deg); }
 /* 작업 폴더 즐겨찾기 별 — 켜지면 노란 채움 상시, 꺼진 행은 호버에만 (VS Code 별 문법) */
 .hprow .hstar{
   flex:0 0 auto; width:20px; height:20px; border-radius:5px; display:grid; place-items:center;
   color:var(--text-4); opacity:0; transition:opacity .12s, color .12s, background .12s;
 }
 .hprow:hover .hstar{ opacity:1; }
+/* ★R4 — 자리만 지키는 빈 칸(시간 열 정렬용): 호버에도 안 나타나고 클릭도 없다 */
+.hprow .hstar.hold, .hprow:hover .hstar.hold{ opacity:0; pointer-events:none; }
 .hprow .hstar:hover{ background:rgba(255,255,255,.09); color:var(--text); }
 .hprow .hstar.on{ opacity:1; color:var(--yellow); }
 .hprow .hstar.on svg{ fill:currentColor; }
@@ -792,23 +837,25 @@ input,textarea{ font-family:inherit; }
 .jump-bottom-wrap{ position:sticky; bottom:18px; height:0; display:flex; justify-content:center; z-index:6; pointer-events:none; transition:bottom .18s ease; }
 /* 알약(내려둔 질문·워크플로)이 하단 중앙에 떠 있으면 화살표가 그 위로 비켜난다 — 알약은
    각 표면 루트(.win-body/.sw/.ma-panel)의 직계 자식이라 :has(>)가 그 표면만 반응시킨다.
-   패널의 질문 알약(10px)은 스크롤러 밖이라 워크플로 알약(84px)만 조건에 든다 */
+   패널의 질문 알약도 84px(워크플로 알약과 같은 선반)로 올라와 조건에 든다(2026-09-01) */
 .win-body:has(> .q-mini, > .wf-dock) .chat-scroll .jump-bottom-wrap,
 .sw:has(> .q-mini, > .wf-dock) .jump-bottom-wrap,
-.ma-panel:has(> .wf-dock) .jump-bottom-wrap{ bottom:64px; }
-/* 둘 다 내려둔 경우 — 워크플로 알약이 질문 알약 위(140px)로 가므로 화살표는 한 층 더 */
+.ma-panel:has(> .q-mini, > .wf-dock) .jump-bottom-wrap{ bottom:64px; }
+/* 둘 다 내려둔 경우 — 워크플로 알약이 질문 알약 위(140/124px)로 가므로 화살표는 한 층 더 */
 .win-body:has(> .q-mini):has(> .wf-dock) .chat-scroll .jump-bottom-wrap,
-.sw:has(> .q-mini):has(> .wf-dock) .jump-bottom-wrap{ bottom:110px; }
+.sw:has(> .q-mini):has(> .wf-dock) .jump-bottom-wrap,
+.ma-panel:has(> .q-mini):has(> .wf-dock) .jump-bottom-wrap{ bottom:110px; }
 /* 알약이 떠 있는 동안 대화 끝이 그 뒤에 숨지 않게 — 본문 바닥 여백(기본 30px)을 알약
    위까지 늘려, 바닥에 붙어 읽을 때 마지막 줄이 알약 위로 올라온다. px를 --z로 나누는 건
    .thread max-width와 같은 줌 보정 — 확대해도 "보이는 여백"이 일정하다. 펼침 카드
    (.wf-card)도 조건에 두는 건 알약↔카드 토글 때 본문이 출렁이지 않게 하는 고정핀. */
 .win-body:has(> .q-mini, > .wf-dock, > .wf-card) .chat-scroll .thread,
 .sw:has(> .q-mini, > .wf-dock, > .wf-card) .thread{ padding-bottom:calc(76px / var(--z, 1)); }
-.ma-panel:has(> .wf-dock, > .wf-card) .thread{ padding-bottom:calc(60px / var(--z, 1)); }
-/* 둘 다 내려둔 경우 — 위층 워크플로 알약(140px) 기준으로 여백도 한 층 더 */
+.ma-panel:has(> .q-mini, > .wf-dock, > .wf-card) .thread{ padding-bottom:calc(60px / var(--z, 1)); }
+/* 둘 다 내려둔 경우 — 위층 워크플로 알약(140/124px) 기준으로 여백도 한 층 더 */
 .win-body:has(> .q-mini):has(> .wf-dock) .chat-scroll .thread,
 .sw:has(> .q-mini):has(> .wf-dock) .thread{ padding-bottom:calc(108px / var(--z, 1)); }
+.ma-panel:has(> .q-mini):has(> .wf-dock) .thread{ padding-bottom:calc(100px / var(--z, 1)); }
 .jump-bottom{ pointer-events:auto; display:grid; place-items:center; width:38px; height:38px; margin-top:-38px;
   border-radius:99px; background:rgba(28,28,28,.72); border:1px solid rgba(255,255,255,.10); color:var(--text-2);
   backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
@@ -904,6 +951,18 @@ input,textarea{ font-family:inherit; }
 /* 턴 마무리 줄 — 'N초 동안 작업함' (PoC .worked): 답변 뒤에 붙는 조용한 턴 푸터.
    margin 쇼트핸드 금지 — 스레드 owl(.thread > * + *)과 특이도가 같아 위 여백을 덮는다 */
 .worked{ margin-left:2px; margin-right:2px; font-size:13px; color:var(--text-3); animation:fade .2s ease both; }
+/* ★R4 — 끝난 시각 꼬리(「· 오후 2:59」)는 본문과 **완전히 같은 서식** — 흐린 색·
+   tabular-nums를 얹었더니 크기가 달라 보인다는 피드백(2026-09-01)으로 되돌림 */
+.worked .tm{ color:inherit; }
+/* ★R4 — 유저 필의 보낸 시각(중단 마커 「오후 2:59」와 같은 문법). 필 안 본문 끝에
+   **플로트** — 마지막 줄에 자리가 있으면 같은 줄 오른쪽 끝, 없으면 저절로 다음 줄
+   (사용자 결정: 바깥 배치·상시 둘째 줄 둘 다 기각). margin-top은 15.5px 본문 줄박스에
+   11px 글자를 바닥 정렬로 얹는 보정. p가 플로트 높이를 품도록 clearfix */
+/* margin-top 4px = (본문 줄박스 24.8 − 시각 줄박스 17.6)/2 — 줄 **가운데** 정렬
+   (7px 바닥 정렬은 시각이 내려앉아 보였다 — 2026-09-01 사용자 지적) */
+.msg.user .content .msg-tm{ float:right; margin-left:14px; margin-top:4px; font-size:11px; color:var(--text-4); font-variant-numeric:tabular-nums; }
+.msg.user .content p::after{ content:''; display:block; clear:both; }
+.msg.user .content .msg-tm.block{ float:none; display:block; text-align:right; margin-top:4px; }
 
 /* ── 형태 1 · rule — 대화의 **구조**를 가르는 줄 (M-UI §2.2) ──────────────────
    판정 질문: "스레드의 앞뒤를 가르나?" → 중단 · 압축 경계 · resume · 엔진 재시작.
@@ -963,7 +1022,12 @@ input,textarea{ font-family:inherit; }
 /* 말줄임은 안쪽 .t-txt가 담당 — .t-target에 overflow:hidden을 걸면 has-tip ::after가 잘린다 */
 .t-target{ font-family:var(--font-mono); font-size:12.5px; color:rgba(255,255,255,.56); min-width:0; flex:1; display:flex; }
 .t-target .t-txt{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.t-res{ margin-left:auto; flex:0 0 auto; padding-left:12px; font-family:var(--font-sans); font-size:12px; color:rgba(255,255,255,.5); white-space:nowrap; }
+/* max-width+말줄임 — 결과가 문장인 도구가 행을 밀어내지 않게
+   (짧은 요약 「+3 −1」·「1.2s · 40줄」은 그대로다) */
+.t-res{ margin-left:auto; flex:0 0 auto; padding-left:12px; font-family:var(--font-sans); font-size:12px; color:rgba(255,255,255,.5); white-space:nowrap; max-width:42%; overflow:hidden; text-overflow:ellipsis; }
+/* Skill/Workflow 정착 요약 — 오른쪽 끝이 아니라 동사 옆(행 gap 한 칸 뒤)에 앉는다
+   (2026-09-01 사용자 결정). 길면 행 끝에서 말줄임 */
+.t-res.near{ margin-left:0; padding-left:0; max-width:none; flex:0 1 auto; min-width:0; }
 .t-res .add{ color:var(--green); }
 .t-res .del{ color:var(--red); }
 .t-res.err{ color:var(--red); }
@@ -1303,26 +1367,9 @@ input,textarea{ font-family:inherit; }
 .composer .cw{ position:relative; display:flex; flex:0 0 auto; }
 .composer .send{ flex:0 0 28px; margin-bottom:0; }
 
-/* ★R28 ACCT §3-b — 계정 전환 되돌리기 줄. **팝오버가 아니라 칩에** 붙는다: 실수를
-   알아채는 건 보통 팝오버를 닫은 뒤라, 팝오버 안에 두면 사라진 뒤에 필요해진다.
-   계정 전환은 프롬프트 캐시가 식는 비용이 커서 실수의 대가가 크다 — 그래서 복구 동선. */
-.acct-undo{
-  position:absolute; bottom:calc(100% + 10px); right:0; z-index:46;
-  display:flex; align-items:center; gap:8px; white-space:nowrap;
-  padding:7px 7px 7px 11px; border-radius:11px; font-size:11px; color:var(--text-2);
-  background:rgba(28,28,28,.86); border:1px solid rgba(255,255,255,.10);
-  backdrop-filter:blur(32px) saturate(1.25); -webkit-backdrop-filter:blur(32px) saturate(1.25);
-  box-shadow:0 18px 44px -18px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05);
-  animation:rise .16s cubic-bezier(.2,.8,.2,1);
-}
-.acct-undo .au-txt{ color:var(--text-3); }
-.acct-undo .au-go{
-  font-size:10.5px; font-weight:650; padding:3px 9px; border-radius:99px;
-  color:var(--blue); background:rgba(127,167,216,.16); transition:background .12s;
-}
-.acct-undo .au-go:hover{ background:rgba(127,167,216,.26); }
-.acct-undo .au-x{ display:grid; place-items:center; width:18px; height:18px; border-radius:6px; color:var(--text-4); }
-.acct-undo .au-x:hover{ background:var(--hover); color:var(--text-2); }
+/* ★R28 ACCT §3-b — 계정 전환 확인. 즉시 전환+되돌리기 토스트(.acct-undo)는 확인 카드
+   (.set-dialog, PickerChip의 acctConfirm)로 대체됐다(2026-09-01 사용자 결정) — 전환은
+   프롬프트 캐시가 식는 비용이 커서 "실수 후 복구"보다 "실행 전 확인"의 무게. */
 
 /* ── 통합 picker 팝오버 (PoC .pop) — 칩 위로 열리는 유리 카드 ── */
 .picker-pop{
@@ -1358,34 +1405,28 @@ input,textarea{ font-family:inherit; }
    띄어, 실수로 다른 계정을 누르면 원래 무엇이었는지 못 찾았다(사용자 보고). 파랑 계열
    왼쪽 선 + 「현재」 라벨로 한 층 올린다 — §3의 「사용 중」(주황)과 **다른 시각층**이라
    한 줄에 둘이 같이 서도 안 헷갈린다. */
-.pp-row.cur{ color:var(--text); background:var(--blue-soft); box-shadow:inset 2px 0 0 var(--blue); }
+/* 왼쪽 inset 2px 바(「[」 모양)는 뺐다 — 현재 표시는 배경 틴트+「현재」 필+체크로 충분(2026-09-01 사용자) */
+.pp-row.cur{ color:var(--text); background:var(--blue-soft); }
 .pp-row.cur:hover{ background:var(--blue-soft); filter:brightness(1.12); }
+/* 이름 줄 — 플렉스로 필(현재·사용 중)을 글줄 세로 중앙에(2026-09-01 사용자: 필이 떠 보임).
+   필에 translateY(-1.5px) 광학 보정 — 박스 중심은 0이어도 이름 글립의 시각 질량이
+   라인박스 위쪽에 몰려 있어(디센더 여백) 필이 낮아 보였다(3배 확대 실측 ~1.5px) */
+.pp-main{ display:flex; align-items:center; gap:6px; min-width:0; }
+.pp-main .pp-now, .pp-main .pp-warn{ transform:translateY(-1.5px); }
 .pp-now{
-  margin-left:6px; font-size:9px; font-weight:700; letter-spacing:.03em; vertical-align:1px;
-  color:var(--blue); background:rgba(127,167,216,.16); padding:2px 6px; border-radius:99px;
+  flex:0 0 auto; font-size:9px; font-weight:700; letter-spacing:.03em; line-height:1;
+  color:var(--blue); background:rgba(127,167,216,.16); padding:2.5px 6px; border-radius:99px;
 }
 /* ★R28 ACCT §3 — 「사용 중 · 2번 자리」. **경고 톤일 뿐 선택을 막지 않는다** —
-   사용자가 알고 고르는 건 존중하고, 모르고 겹치는 것만 막는다. */
+   사용자가 알고 고르는 건 존중하고, 모르고 겹치는 것만 막는다.
+   자리는 「현재」 필과 같은 문법(이름 바로 뒤 인라인) — 오른쪽 끝 배치는 「현재」와
+   갈려 이물로 보였다(2026-09-01 사용자: 통일성). */
 .pp-warn{
-  flex:0 0 auto; margin-left:auto; font-size:9.5px; font-weight:600; white-space:nowrap;
-  color:var(--amber); background:rgba(217,160,91,.14); padding:2.5px 7px; border-radius:99px;
+  flex:0 0 auto; font-size:9px; font-weight:700; letter-spacing:.03em; line-height:1;
+  white-space:nowrap; color:var(--amber); background:rgba(217,160,91,.14);
+  padding:2.5px 6px; border-radius:99px;
 }
-.pp-row .pp-warn + .pp-check{ margin-left:6px; }
-/* 과금 헤더 오른쪽의 '자동 이어서' 미니 필 — 켜짐=액센트 필(멀티 패널 수 탭 문법).
-   행(라벨+스위치)로 그리면 라디오 행 사이의 이물이라는 실측 피드백으로 헤더 승격 */
-.pp-h4.row{ display:flex; align-items:center; gap:8px; margin-right:2px; }
-.pp-h4.row .sp{ flex:1; }
-.pp-flag{
-  font-size:10px; font-weight:600; padding:2.5px 8px; border-radius:99px;
-  color:var(--text-4); background:rgba(255,255,255,.05); transition:background .12s, color .12s;
-}
-.pp-flag:hover{ color:var(--text-2); background:rgba(255,255,255,.09); }
-.pp-flag.on{ color:var(--on-accent); background:var(--accent); }
-.pp-flag.on:hover{ color:var(--on-accent); background:var(--accent); filter:brightness(1.08); }
-/* 필 툴팁 — 기본(중앙 정렬)은 292px 팝오버 오른쪽 끝에서 overflow에 잘린다(실측) →
-   오른끝 정렬로 왼쪽을 향해 펼친다 (win-ctl·qhead와 같은 잘림 방향 보정 문법) */
-.pp-flag.has-tip::after{ left:auto; right:0; transform:translate(0, 3px); }
-.pp-flag.has-tip:hover::after{ transform:translate(0, 0); }
+/* .pp-flag(과금 헤더 자동 이어서 필)는 「한도 소진 시」 체크 행 2개로 대체돼 은퇴(2026-09-01) */
 /* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행 문법 */
 .pp-more{
   display:flex; align-items:center; gap:6px; width:100%; padding:5px 7px; border-radius:7px;
@@ -1471,8 +1512,10 @@ input,textarea{ font-family:inherit; }
      그림자·툴팁은 그대로 밖으로 나간다. 자손만 질의 대상이다(자기 자신은 못 바꾼다). */
   container-type: inline-size;
 }
+/* ★R4 — 글리프를 **첫 줄에 광학 중앙**으로: 줄박스 20.8px(13×1.6) 대 글리프 칸 15px →
+   (20.8−15)/2 ≈ 3px (1px는 ✕가 문장보다 2px 떠 보였다 — 2026-09-01 사용자 지적) */
 .ntf-band .ntf-g{ flex:0 0 auto; width:var(--ntf-ic); height:var(--ntf-ic); display:grid; place-items:center;
-  color:var(--ntf-fg); margin-top:1px; font-size:12px; }
+  color:var(--ntf-fg); margin-top:3px; font-size:12px; }
 /* flow-root = 본문 블록이 **자기 안의 띄운 트레이를 담는다**. 안 담으면 알약이 판 밖으로
    삐져나와 band 높이가 47.0 → 44.8로 흔들린다(트레이가 높이를 정하는 자리라서). */
 .ntf-band .ntf-bd{ flex:1; min-width:0; display:flow-root; }
@@ -1480,6 +1523,8 @@ input,textarea{ font-family:inherit; }
 /* 강조는 색이 아니라 **무게**로 먼저 한다 — 색은 심각도 몫이라 문장 안에서 또 쓰면
    위계가 겹친다. `.ntf-kw`(색)는 "무엇이 **무엇으로** 바뀌었다"의 **도착값 하나**에만. */
 .ntf-band .ntf-b{ font-weight:600; color:var(--text); }
+/* 오류 요약 줄 — 굵기 없이 색만(★R4: 문장 통째 600은 뭉개져 보인다는 사용자 지적) */
+.ntf-band .ntf-eh{ color:var(--text); }
 .ntf-band .ntf-kw{ font-weight:600; color:var(--ntf-key); }
 .ntf-band .ntf-mono{ font-family:var(--font-mono); font-size:12px; }
 /* 오류 원문 면 — 이 체계에서 **유일하게 높이를 늘리는 자리**이고 그게 의도다(§5-3).
@@ -1499,7 +1544,11 @@ input,textarea{ font-family:inherit; }
    앞). 넓은 폭에서는 flex 칸이던 때와 좌표가 같다(오른쪽 끝·위 1px). 대신 좁아지면
    문장이 첫 줄만 트레이를 피하고 **둘째 줄부터 판 전폭을 쓴다** — flex 칸은 모든 줄에서
    같은 폭을 뺏겼다(R1이 전환 배너에서 3줄이 된 이유). */
-.ntf-band .ntf-tx > .ntf-tray{ float:right; margin-left:var(--ntf-gap); margin-top:1px; }
+/* ★R4 — 트레이 높이를 첫 줄박스(20.8px)에 맞춰 중앙 정렬: [복사] 알약(22px)이 +1px에서
+   시작해 문장보다 ~2px 내려앉아 보였다(2026-09-01 사용자 지적). 알약이 위아래로 0.6px씩
+   넘치지만 광학 중앙이 맞는 쪽이 옳다 */
+.ntf-band .ntf-tx > .ntf-tray{ float:right; margin-left:var(--ntf-gap); margin-top:0;
+  height:calc(var(--ntf-body) * var(--ntf-lh)); align-items:center; }
 .ntf-band .ntf-tm{ font-size:var(--ntf-meta); color:var(--text-3); font-variant-numeric:tabular-nums; }
 .ntf-act{
   display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:7px;
@@ -1713,6 +1762,18 @@ input,textarea{ font-family:inherit; }
 .sched-text{ flex:1; min-width:0; font-size:12.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sched-item:hover .sched-text{ color:var(--text); }
 .sched-img{ flex:0 0 auto; display:grid; place-items:center; color:var(--text-4); }
+/* ★R4 — 예약 항목의 첨부 실물: 이미지=미니 썸네일(클릭=뷰어) · 문서=파일 배지.
+   행 높이를 안 키우는 20px 상자 — 자세한 확인은 클릭(뷰어)과 툴팁이 맡는다 */
+.sched-atts{ flex:0 0 auto; display:flex; align-items:center; gap:4px; }
+.sched-att{ width:20px; height:20px; border-radius:5px; overflow:hidden; display:grid; place-items:center;
+  border:1px solid var(--line-2); background:var(--surface-2); flex:0 0 auto; }
+.sched-att img{ width:100%; height:100%; object-fit:cover; display:block; }
+button.sched-att{ cursor:zoom-in; }
+button.sched-att:hover{ border-color:var(--line-strong); }
+.sched-ed{
+  flex:0 0 auto; width:22px; height:22px; border-radius:6px; display:grid; place-items:center; color:var(--text-4);
+}
+.sched-ed:hover{ background:var(--hover); color:var(--text); }
 .sched-x{
   flex:0 0 auto; display:grid; place-items:center; width:22px; height:22px; border-radius:7px;
   color:var(--text-4); transition:background .12s, color .12s;
@@ -1816,6 +1877,11 @@ input,textarea{ font-family:inherit; }
   font-size:11px; color:var(--text-3);
   transition:background .12s, color .12s; }
 .wb-chip:hover{ background:var(--hover); color:var(--text-2); }
+/* ★R4 — 워크바 칩 툴팁은 **칩 왼쪽 정렬**: 기본(중앙 정렬)은 왼쪽 끝 칩(할 일)에서
+   창 밖으로 반쯤 잘렸다(2026-09-01 사용자 보고). 오른쪽 끝 칩(컨텍스트)만 오른쪽 맞춤 */
+.wb-chip.has-tip::after{ left:0; transform:translate(0, 3px); }
+.wb-chip.has-tip:hover::after{ transform:translate(0, 0); }
+.wb-cell:last-child .wb-chip.has-tip::after{ left:auto; right:0; }
 .wb-chip.on{ background:var(--active); color:var(--text-2); }
 .wb-ic{ width:14px; height:14px; flex:0 0 14px; display:grid; place-items:center; color:var(--text-4); }
 .wb-chip svg{ width:12px; height:12px; }
@@ -1869,6 +1935,14 @@ button.wb-prow{ width:100%; text-align:left; }
 .wb-prow.done{ color:var(--text-4); }
 .wb-prow.done .ic{ color:var(--green); }
 .wb-prow.err .ic{ color:var(--red); }
+/* ★3.0 R3 — 도구 환경 팝오버(MCP & Skill)의 행 토글: 설정의 .sw2를 팝오버 행 높이에
+   맞춘 축소판. 복합 선택자 특이도가 .sw2 원본(뒤에 정의됨)을 이긴다. */
+.wb-prow .sw2{ width:28px; height:16px; }
+.wb-prow .sw2::after{ top:2px; left:2px; width:12px; height:12px; }
+.wb-prow .sw2.on::after{ transform:translateX(12px); }
+/* ★R4 — 행 호버 툴팁(스킬 설명·MCP 도구 목록). 카드가 스크롤 컨테이너(overflow)라
+   카드 밖으로 나간 툴팁은 잘린다 — 폭을 카드(292px) 안쪽으로 줄여 좌우 잘림을 없앤다. */
+.wb-pop .has-tip.tip-wrap::after{ max-width:240px; }
 /* 행 끝 중지 — PoC .stop: 빨간 소프트 알약 */
 .wb-stop{ flex:0 0 auto; font-size:10.5px; color:var(--red); background:var(--red-soft); padding:2.5px 9px; border-radius:99px; }
 .wb-stop:hover{ background:rgba(221,122,107,.2); }
@@ -1916,7 +1990,7 @@ button.wb-prow{ width:100%; text-align:left; }
 /* AskUserQuestion — 'Claude의 질문' 카드 (PoC qcard 문법): 마스코트 헤더 + 질문 1/N
    라벨(+이전 질문) + 볼드 질문 + 플랫 선택지(제목/설명) + 인라인 직접 입력.
    한 번에 한 질문 — 답하면 다음으로, 방향에 맞는 슬라이드. */
-.q-overlay{ position:absolute; inset:0; z-index:80; background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; padding:40px; animation:fade .16s ease both; }
+.q-overlay{ position:absolute; inset:0; z-index:80; background:oklch(0.1 0.004 60 / 0.68); display:flex; align-items:center; justify-content:center; padding:40px; animation:fade .16s ease both; }
 .qcard{
   width:min(560px, 100%); max-height:88vh; overflow-y:auto;
   padding:20px 24px 18px; border-radius:18px;
@@ -1971,7 +2045,7 @@ button.wb-prow{ width:100%; text-align:left; }
 /* 내려둔 질문 — 하단 중앙 알약 (PoC qmini): 클릭해 다시 펼침, ✕는 건너뛰기.
    알약·워크플로 표면은 z30 — 채팅 내용 위, 모든 오버레이(Git 55 이상)·컴포저 팝오버(45+) 아래 */
 .q-mini{
-  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
+  position:absolute; left:50%; transform:translateX(-50%); bottom:116px; z-index:30;
   display:flex; align-items:center; gap:9px; padding:7px 8px 7px 15px; border-radius:99px;
   background:var(--bg); border:1px solid var(--line-2);
   box-shadow:0 14px 40px -10px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
@@ -1989,7 +2063,7 @@ button.wb-prow{ width:100%; text-align:left; }
    여러 개면 알약도 여러 개. 좁은 표면에서 넘치면 wrap이 안전망(드문 경우라 그때만
    위로 한 줄 접힌다). */
 .wf-dock{
-  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
+  position:absolute; left:50%; transform:translateX(-50%); bottom:116px; z-index:30;
   display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px;
   max-width:calc(100% - 32px);
 }
@@ -2009,7 +2083,7 @@ button.wb-prow{ width:100%; text-align:left; }
 .wf-mini:hover .wx{ background:var(--hover); color:var(--text); }
 /* 질문 알약과 동시 상주 — 같은 자리(96px)라 워크플로가 한 층 위로 비킨다.
    멀티 패널은 자체 오프셋(84/10px)으로 이미 갈라져 있어 그 규칙이 이긴다 */
-.wf-dock:has(~ .q-mini){ bottom:140px; }
+.wf-dock:has(~ .q-mini){ bottom:160px; }
 .wf-mini .st, .wf-card .st{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
 .wf-mini .st.run, .wf-card .st.run{ background:var(--accent); animation:wfpulse 1.5s ease-in-out infinite; }
 .wf-card .st.ok{ background:var(--green); }
@@ -2021,7 +2095,7 @@ button.wb-prow{ width:100%; text-align:left; }
    창이 떠 있든 내려갔든 알약이 남아 창을 되부른다. 상태 점: 진행(펄스)/완료(초록)/
    오류(빨강)/대기(테두리). 닫힌 창의 알약은 톤을 살짝 접어 "내려둠"을 전한다. */
 .btw-dock{
-  position:absolute; left:50%; transform:translateX(-50%); bottom:96px; z-index:30;
+  position:absolute; left:50%; transform:translateX(-50%); bottom:116px; z-index:30;
   display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px;
   max-width:calc(100% - 32px);
 }
@@ -2050,8 +2124,8 @@ button.wb-prow{ width:100%; text-align:left; }
 .btw-mini .wx:hover{ background:var(--red-soft); color:var(--red); }
 /* 동시 상주 — 아래(96px)를 쓰는 워크플로/질문 알약이 있으면 btw가 한 층씩 비킨다
    (DOM 순서: btw 도크 → wf 도크 → q-mini — App 렌더 순서와 짝) */
-.btw-dock:has(~ .wf-dock), .btw-dock:has(~ .q-mini){ bottom:140px; }
-.btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:184px; }
+.btw-dock:has(~ .wf-dock), .btw-dock:has(~ .q-mini){ bottom:160px; }
+.btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:204px; }
 /* btw 웰컴(BtwWelcome)의 정체성 칩 — 알약과 같은 블루 테두리, 마스코트와 제목 사이 */
 .wc-btw{
   width:fit-content; margin:16px auto 0; padding:4px 13px; border-radius:99px;
@@ -2064,7 +2138,7 @@ button.wb-prow{ width:100%; text-align:left; }
 /* 펼친 카드 — 질문 카드처럼 중앙, 채팅 영역을 거의 다 차지하는 보드 */
 .wf-card{
   position:absolute; left:50%; transform:translateX(-50%); top:56px; bottom:110px; z-index:30;
-  width:min(760px, calc(100% - 56px));
+  width:calc(100% - 56px);
   display:flex; flex-direction:column;
   padding:18px 22px 14px; border-radius:18px;
   background:var(--bg); border:1px solid var(--line-2);
@@ -2128,9 +2202,16 @@ button.wb-prow{ width:100%; text-align:left; }
 .wf-stop{ font-size:12px; font-weight:600; color:var(--red); background:var(--red-soft); padding:6px 14px; border-radius:99px; flex:0 0 auto; }
 .wf-stop:hover{ background:rgba(221,122,107,.22); }
 
-/* 문답 흔적은 M-UI 알림 체계의 `card · face=off`로 옮겼다 — `.ntf-card.ntf-bare`
-   (위 '형태 3 · card' 블록). 2.6.2의 `.qa`(박스 없이 대화에 남는다)가 옳았고,
-   3.0은 그것을 **재사용 가능한 규칙**으로 승격했다: 상태가 변하지 않는 기록은 면이 없다. */
+/* 문답 흔적 — ★R4에서 2.6.2의 `.qa`로 되돌림(사용자 지적: `?` 타일이 별로고 옛
+   AgentCode 디자인이 낫다). ntf-card face=off 승격은 철회 — 마커 칸 없이 Q/✓만.
+   시각은 문답 아래 오른쪽 끝(유저 필의 .msg-tm과 같은 문법). */
+.qa{ display:flex; flex-direction:column; gap:13px; animation:fade .2s ease both; }
+.qa .qq2{ display:flex; align-items:baseline; gap:9px; font-size:13.5px; color:var(--text-3); }
+.qa .qm{ font-size:10.5px; font-weight:700; color:var(--text-4); letter-spacing:.03em; }
+.qa .qt2{ word-break:keep-all; }
+.qa .qa2{ display:flex; align-items:center; gap:8px; margin-top:5px; padding-left:24px; font-size:15.5px; font-weight:600; color:var(--text); }
+.qa .qa2 svg{ color:var(--green); flex:0 0 auto; }
+.qa .qa-tm{ align-self:flex-end; margin-top:-5px; margin-right:2px; font-size:11px; color:var(--text-4); font-variant-numeric:tabular-nums; }
 
 /* 승인 카드 전용 파츠 — 같은 qcard 문법 위에 도구 칩 + 모노 명령 웰 + 거부 색 힌트.
    명령/경로는 JetBrains Mono, 한국어는 --font-mono 스택의 Wanted Sans 폴백. */
@@ -2196,7 +2277,7 @@ button.wb-prow{ width:100%; text-align:left; }
 .spin{ display:inline-block; width:13px; height:13px; border-radius:99px; border:2px solid var(--accent-soft); border-top-color:var(--accent); animation:spin .7s linear infinite; }
 
 /* 상세 카드 공용 백드롭 — 상세 카드(.dc-card)들이 이 위에 뜬다 */
-.sa-overlay{ position:absolute; inset:0; z-index:70; background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; padding:28px; animation:fade .16s ease both; }
+.sa-overlay{ position:absolute; inset:0; z-index:70; background:oklch(0.1 0.004 60 / 0.68); display:flex; align-items:center; justify-content:center; padding:28px; animation:fade .16s ease both; }
 
 /* ============================== VIEWER HEADER ============================== */
 /* shared header of the file-viewer card (the old separate diff modal is folded into
@@ -2255,7 +2336,7 @@ button.wb-prow{ width:100%; text-align:left; }
 /* ============================== FILE VIEWER CARD ============================== */
 .fv-overlay{
   position:absolute; inset:0; z-index:60;
-  background: oklch(0.1 0.004 60 / 0.55); backdrop-filter: blur(3px);
+  background: oklch(0.1 0.004 60 / 0.68);
   display:flex; align-items:center; justify-content:center; padding:40px;
   animation:fade .16s ease both;
 }
@@ -2288,6 +2369,22 @@ button.wb-prow{ width:100%; text-align:left; }
 .fv-foot .dspacer{ flex:1; }
 /* 헤더가 2줄로 높아져 검색 바 기준점 하향 — 인셋 패널 우상단에 뜨게 */
 .fv-modal .fv-find{ top:72px; right:26px; }
+
+/* ── 파일 뷰어 독립 창(#viewer) — 카드 하나가 창 전체 ─────────────────────
+   오버레이 배경·패딩·등장 애니는 물러난다(창은 파일이 그려진 뒤에야 보이므로 애니가
+   반쯤 지난 채로 뜨느니 없는 게 낫다). 카드의 색·헤더 문법은 그대로 — 사용자가 이미
+   보던 그 카드가 창이 된 것뿐이다. 헤더는 창 드래그 띠(-webkit-app-region:drag를
+   chrome.ts가 네이티브 드래그로 재현 → Aero Snap·더블클릭 최대화가 OS 것), 그 안의
+   버튼·세그먼트·칩은 no-drag. */
+.fv-overlay.fv-win{ position:fixed; padding:0; background:transparent; animation:none; }
+.fv-win .fv-modal{
+  width:100%; height:100%; max-width:100%; max-height:100%;
+  border:none; border-radius:0; box-shadow:none; animation:none;
+}
+.fv-win .diff-head{ -webkit-app-region:drag; }
+.fv-win .diff-head button, .fv-win .diff-head .vtool, .fv-win .diff-head .fv-lsp{ -webkit-app-region:no-drag; }
+/* 창 컨트롤 넷(창 안으로·최소화·최대화·닫기)은 붙여 두어 한 묶음으로 읽히게 */
+.fv-win .fv-winctl{ display:flex; align-items:center; gap:2px; margin-left:2px; }
 .fv-loading{ flex:1; min-height:200px; display:grid; place-items:center; background:var(--inset); }
 .fv-empty{ flex:1; min-height:200px; display:grid; place-items:center; background:var(--inset); color:var(--text-3); font-size:13px; }
 
@@ -2831,7 +2928,7 @@ button.wb-prow{ width:100%; text-align:left; }
 
 .gitm-overlay{
   position:absolute; inset:0; z-index:55;
-  background: oklch(0.1 0.004 60 / 0.55); backdrop-filter: blur(3px);
+  background: oklch(0.1 0.004 60 / 0.68);
   display:flex; align-items:center; justify-content:center; padding:40px;
   animation:fade .16s ease both;
 }
@@ -3131,7 +3228,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* ============================== SETTINGS ============================== */
 .set-overlay{
   position:absolute; inset:0; z-index:70;
-  background: oklch(0.1 0.004 60 / 0.55); backdrop-filter: blur(3px);
+  background: oklch(0.1 0.004 60 / 0.68);
   display:flex; align-items:center; justify-content:center; padding:40px;
   animation:fade .16s ease both;
 }
@@ -3214,13 +3311,13 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sc2.acct .em .emt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sc2.acct .em .set-badge{ flex:0 0 auto; }
 .ava2{ width:40px; height:40px; border-radius:99px; display:grid; place-items:center; font-size:14px; font-weight:700; color:#fff; flex:0 0 auto; box-shadow:0 5px 14px -5px rgba(0,0,0,.5); }
-/* 초기화 시각 열(.lr)·"n% 남음" 값 칸만큼 넓힌 폭 — 게이지 블록이 왼쪽으로 밀리고 바 폭은 그대로 */
-.limits{ display:flex; flex-direction:column; gap:6px; width:290px; flex:0 0 auto; }
+/* 초기화 시각 열(.lr)·"n% 남음" 값 칸만큼 넓힌 폭. margin-left:auto — 게이지 블록을
+   오른쪽(삭제 버튼 쪽)으로 바짝 붙인다(2026-09-01 사용자: "5시간 이런 거 다 »로 땡겨줘") */
+.limits{ display:flex; flex-direction:column; gap:6px; width:290px; flex:0 0 auto; margin-left:auto; }
 /* ★R28 ACCT §1 — 조회 중·실패는 **빈 칸이 아니라 상태**다. R1까지 값이 없으면 자리가
    통째로 사라져, 429 한 번과 "그 플랜엔 그런 한도가 없다"가 구분되지 않았다. */
 .limits.lim-state{ flex-direction:row; align-items:center; gap:8px; font-size:10.5px; color:var(--text-4); }
 .limits.lim-state .lim-fail{ color:var(--amber); }
-.lim-stale{ font-size:9.5px; color:var(--text-5, var(--text-4)); opacity:.8; }
 .lim{ display:flex; align-items:center; gap:8px; }
 .lim .ll{ font-size:9.5px; color:var(--text-4); width:28px; text-align:right; flex:0 0 auto; }
 .lim .lv{ font-size:9.5px; color:var(--text-3); width:56px; flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -3235,9 +3332,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .g2{ flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
 .g2 i{ display:block; height:100%; border-radius:99px; background:var(--accent); }
 .g2.big{ height:4px; }
-/* 버튼 수(기본으로 유무)와 무관하게 한도 게이지 x좌표가 모든 카드에서 같도록 고정폭 우측 정렬
-   (margin-left:auto는 wrap으로 내려간 둘째 줄에서만 작동 — 첫 줄은 .who가 여백을 다 가진다) */
-.sc2.acct .acts{ display:flex; gap:7px; flex:0 0 128px; justify-content:flex-end; margin-left:auto; }
+/* 고정폭 128px(버튼 수와 무관한 게이지 x정렬)을 풀었다 — 게이지 블록을 오른쪽으로 당기면서
+   버튼과의 빈 공간을 없앤다(위 .limits 주석과 같은 사용자 결정). 버튼 수가 다르면 행마다
+   게이지 x가 몇십 px 다를 수 있다 — 그게 이 트레이드오프다. */
+.sc2.acct .acts{ display:flex; gap:7px; flex:0 0 auto; justify-content:flex-end; }
 .set-addrow{
   display:flex; align-items:center; justify-content:center; gap:6px; width:100%; margin-top:8px;
   padding:11px; border-radius:14px; border:1.5px dashed rgba(255,255,255,.11);
@@ -3275,6 +3373,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 /* MCP·Skill·Code — 행 카드(타일 + 본문 + 토글/버튼) */
 .sc2.row2{ display:flex; align-items:center; gap:13px; }
 .set-note2{ font-size:10.5px; color:var(--text-4); line-height:1.7; margin-top:14px; padding:0 2px; }
+/* 로그인 폴백 줄 — 각주가 아니라 행동 줄: 읽히는 크기 + 앱 공통 링크 톤(.content a) + 복사 칩 */
+.set-loginlink{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; font-size:12px; color:var(--text-3); line-height:1.6; margin-top:14px; padding:0 2px; }
+.set-loginlink a{ color:var(--accent-2); font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+.set-loginlink a:hover{ color:var(--accent); }
 /* Gestures — 획 다이어그램 카드(3열) */
 .set-grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
 .set-grid3 .sc2 + .sc2{ margin-top:0; }
@@ -3479,7 +3581,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 
 /* alert / error dialog card (over the settings modal) */
 .set-dialog-overlay{ position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; padding:40px;
-  background:oklch(0.1 0.004 60 / 0.5); backdrop-filter:blur(3px); animation:fade .14s ease both; }
+  background:oklch(0.1 0.004 60 / 0.64); animation:fade .14s ease both; }
 .set-dialog{ width:min(380px, 100%); background:var(--bg); border-radius:14px;
   box-shadow:0 28px 70px -16px rgba(0,0,0,0.4); padding:24px 22px 18px; text-align:center;
   animation:rise .18s cubic-bezier(.2,.8,.2,1) both; }
@@ -3510,7 +3612,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    (원래 프롬프트 설정 모달의 옷 — 그 기능은 2.0에서 삭제됐지만 카드 언어는 공용) */
 .pr-overlay{
   position:fixed; inset:0; z-index:120;
-  background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px);
+  background:oklch(0.1 0.004 60 / 0.68);
   display:flex; align-items:center; justify-content:center; padding:40px;
   animation:fade .16s ease both;
 }
@@ -3724,7 +3826,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .iv-overlay{
   position:absolute; inset:0; z-index:80;
   display:flex; flex-direction:column;
-  background:oklch(0.12 0.006 60 / 0.74); backdrop-filter:blur(7px);
+  background:oklch(0.12 0.006 60 / 0.86);
   animation:fade .16s ease both; user-select:none;
 }
 .iv-top{
@@ -3795,67 +3897,6 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   left:0; right:auto; white-space:normal; width:max-content; max-width:420px;
   word-break:break-all; line-height:1.5; padding:7px 10px;
 }
-
-/* ============================== NEW-CHAT MODAL ============================== */
-/* 새 채팅 선택 카드 (PoC .nccard) — 1단계: 일반/멀티 타일, 2단계: 패널 수 2~6.
-   베일·등장 모션은 확인 카드(set-dialog) 문법과 동일 */
-.nc-veil{
-  position:fixed; inset:0; z-index:80; display:grid; place-items:center;
-  background:oklch(0.1 0.004 60 / 0.55);
-  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
-  animation:fade .16s ease both;
-}
-.nccard{
-  width:480px; max-width:92vw; padding:22px 22px 18px; border-radius:18px;
-  background:rgba(21,21,21,.97); border:1px solid rgba(255,255,255,.10);
-  box-shadow:0 26px 70px -16px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
-  animation:rise .18s cubic-bezier(.2,.8,.2,1) both;
-  overflow:hidden;
-}
-.nct{ font-size:15px; font-weight:600; color:var(--text); }
-.ncs{ font-size:12px; color:var(--text-3); margin-top:4px; }
-.nctiles{ display:flex; gap:9px; margin-top:16px; }
-.nctile{
-  flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left;
-  padding:14px 14px 13px; border-radius:13px; background:rgba(255,255,255,.04); transition:background .12s;
-}
-.nctile:hover{ background:rgba(255,255,255,.09); }
-.nctile.off{ opacity:.45; cursor:default; }
-.nctile.off:hover{ background:rgba(255,255,255,.04); }
-.ncic{
-  width:30px; height:30px; border-radius:9px; margin-bottom:7px;
-  background:rgba(255,255,255,.06); display:grid; place-items:center; color:var(--text-2);
-}
-.ncl{ font-size:13.5px; font-weight:600; color:var(--text); }
-.ncd{ font-size:11.5px; color:var(--text-3); line-height:1.5; }
-.nc-back{
-  display:inline-flex; align-items:center; gap:4px; padding:3px 8px 3px 5px; margin-left:-5px;
-  border-radius:6px; font-size:11.5px; color:var(--text-3); transition:background .12s, color .12s;
-}
-.nc-back:hover{ background:var(--hover); color:var(--text); }
-/* 2단계 — 패널 수: 배치 미리보기(2·3=한 줄, 4=2×2, 5=3+2, 6=3×2)로 고른다 */
-.nccnts{ display:flex; gap:8px; margin-top:16px; }
-.ncnt{
-  flex:1; display:flex; flex-direction:column; align-items:center; gap:8px;
-  padding:13px 6px 10px; border-radius:12px; background:rgba(255,255,255,.04); transition:background .12s;
-}
-.ncnt:hover{ background:rgba(255,255,255,.09); }
-.ncprev{ width:46px; height:32px; display:grid; gap:2.5px; }
-.ncprev i{ background:rgba(255,255,255,.16); border-radius:2.5px; transition:background .12s; }
-.ncnt:hover .ncprev i{ background:rgba(255,255,255,.30); }
-.ncprev.n2{ grid-template-columns:repeat(2,1fr); }
-.ncprev.n3{ grid-template-columns:repeat(3,1fr); }
-.ncprev.n4{ grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); }
-.ncprev.n5{ grid-template-columns:repeat(6,1fr); grid-template-rows:repeat(2,1fr); }
-.ncprev.n5 i{ grid-column:span 2; }
-.ncprev.n5 i:nth-child(4), .ncprev.n5 i:nth-child(5){ grid-column:span 3; }
-.ncprev.n6{ grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); }
-.ncn{ font-size:12px; font-weight:600; color:var(--text-2); }
-/* 단계 전환 — 질문 카드처럼 진행 방향으로 밀려 들어온다 */
-.nc-slide{ animation:ncin .18s cubic-bezier(.2,.8,.2,1); }
-.nc-slide-b{ animation:ncin-b .18s cubic-bezier(.2,.8,.2,1); }
-@keyframes ncin{ from{ opacity:0; transform:translateX(26px); } }
-@keyframes ncin-b{ from{ opacity:0; transform:translateX(-26px); } }
 
 /* ============================== MULTI-AGENT WORKSPACE ============================== */
 .multi{ flex:1; min-width:0; display:flex; flex-direction:column; background:var(--chat-bg); position:relative; }
@@ -4097,20 +4138,25 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    패널은 ~400px 폭이라 전체 화면용 카드(580px, 큰 타이포)가 안 들어가므로 여기서
    줄인다. .ma-grid 스코프 — 크게 보기 카드 안에선 본채팅 크기 카드로 돌아온다. */
 .ma-grid .ma-panel .q-overlay{ padding:12px; border-radius:13px; }
-/* 내려둔 질문 알약 — 패널 하단 중앙에 앉는다 */
-.ma-grid .ma-panel .q-mini{ bottom:10px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
+/* 내려둔 질문 알약 — 워크플로/btw 알약과 같은 선반(컴포저·WorkBar 위 84px).
+   10px는 패널에 컴포저가 없던 시절의 값 — 지금은 컴포저 한복판에 앉는다
+   (2026-09-01 사용자 보고: "질문 2개 대기 중" 알약이 컴포저 줄을 덮음 — poc-qmini-pos 실측:
+   알약 y 821-857 vs 컴포저 811-867). */
+.ma-grid .ma-panel .q-mini{ bottom:84px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
 .ma-grid .ma-panel .q-mini .qmt{ overflow:hidden; text-overflow:ellipsis; }
 /* 질문/승인 카드 (qcard 공용) */
 .ma-grid .ma-panel .qcard{ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
-/* 워크플로 알약/카드 — 패널 미니어처: 알약은 컴포저 위, 카드는 패널 전면을 덮는 보드 */
+/* 워크플로 알약/카드 — 패널 미니어처: 알약은 컴포저 위, 카드는 패널 전면을 덮는 보드.
+   질문 알약과 동시 상주면 한 층 위로(본채팅 96/140 층계의 84/124 축소판) */
 .ma-grid .ma-panel .wf-dock{ bottom:84px; max-width:calc(100% - 20px); gap:6px; }
+.ma-grid .ma-panel .wf-dock:has(~ .q-mini){ bottom:124px; }
 .ma-grid .ma-panel .wf-mini{ font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
 .ma-grid .ma-panel .wf-mini .ws{ max-width:120px; overflow:hidden; text-overflow:ellipsis; }
-/* btw 알약 — 패널 미니어처: 워크플로 알약과 같은 자리(84px), 동시 상주면 한 층 위로.
-   q-mini는 패널에선 10px라 안 겹친다 — 전역 :has(~ .q-mini) 승격은 여기선 불필요
-   (이 기본 규칙(0,3,0)이 전역 승격(0,2,0)보다 세서 자연히 이긴다). */
+/* btw 알약 — 패널 미니어처: 워크플로 알약과 같은 자리(84px), 동시 상주면 한 층씩 위로
+   (DOM 순서: btw 도크 → wf 도크 → q-mini — 본채팅 140/184 층계의 124/164 축소판) */
 .ma-grid .ma-panel .btw-dock{ bottom:84px; max-width:calc(100% - 20px); gap:6px; }
-.ma-grid .ma-panel .btw-dock:has(~ .wf-dock){ bottom:124px; }
+.ma-grid .ma-panel .btw-dock:has(~ .wf-dock), .ma-grid .ma-panel .btw-dock:has(~ .q-mini){ bottom:124px; }
+.ma-grid .ma-panel .btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:164px; }
 .ma-grid .ma-panel .btw-mini{ font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
 .ma-grid .ma-panel .btw-mini .ws{ max-width:120px; overflow:hidden; text-overflow:ellipsis; }
 .ma-grid .ma-panel .wf-card{
@@ -4140,7 +4186,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    껍데기는 파일 뷰어 카드(.fv-overlay/.fv-modal) 문법. */
 .ma-expand-overlay{
   position:absolute; inset:0; z-index:55;
-  background:oklch(0.1 0.004 60 / 0.55); backdrop-filter:blur(3px);
+  background:oklch(0.1 0.004 60 / 0.68);
   display:flex; padding:14px 16px;
   animation:fade .16s ease both;
 }
@@ -4201,7 +4247,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    ============================================================ */
 .pn-overlay{
   position:fixed; inset:0; z-index:80;
-  background:oklch(0.1 0.004 60 / 0.45); backdrop-filter:blur(2.5px);
+  background:oklch(0.1 0.004 60 / 0.6);
   display:flex; align-items:center; justify-content:center; padding:44px;
   animation:fade .18s ease both;
 }
@@ -4363,6 +4409,65 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid.n1 .ma-p-tag{ display:none; }
 /* 스레드 폭 — 본채팅과 같은 읽기 폭으로 (px 경계는 줌 배율로 역보정) */
 .ma-grid.n1 .ma-p-thread .thread{ max-width:calc(820px / var(--z, 1)); margin:0 auto; }
+/* 컴포저·WorkBar·한도 상태줄 폭 — 그리드용 전폭 해제(max-width:none)의 n1 되돌림:
+   본채팅과 같은 880px 중앙 정렬·같은 여백 (전폭 채팅바가 "다른 화면"처럼 보였다 —
+   2026-09-01 사용자 보고) */
+.ma-grid.n1 .ma-panel .composer-inner{ max-width:880px; margin:0 auto; }
+.ma-grid.n1 .ma-panel .composer-wrap{ padding:14px 28px 18px; }
+.ma-grid.n1 .ma-panel .workbar{ max-width:880px; margin:0 auto; flex-wrap:nowrap; row-gap:0; }
+.ma-grid.n1 .ma-panel .workbar-wrap{ padding:8px 28px 0; }
+.ma-grid.n1 .ma-panel .limit-hold{ max-width:880px; margin:0 auto; }
+/* 팝오버 앵커 — 그리드의 "바/헤더 전체 앵커"(좁은 패널에서 팝오버가 잘리는 함정 대책)는
+   창 전폭인 n1에선 오히려 칩에서 동떨어진 오른쪽 끝에 팝오버를 떨군다(2026-09-01 사용자
+   보고: 폴더 팝오버·도구 팝오버 위치 이상). 본채팅과 같은 칩(.hfold/.wb-cell) 앵커로
+   되돌리고, 폭 상한도 기본값(86vw)으로 복원한다. */
+.ma-grid.n1 .ma-p-head .hfold{ position:relative; }
+.ma-grid.n1 .ma-p-head .wb-pop.hpop{ max-width:86vw; }
+.ma-grid.n1 .ma-panel .workbar .wb-cell{ position:relative; }
+.ma-grid.n1 .ma-panel .workbar .wb-pop{ max-width:86vw; }
+/* 알약 자리 — 그리드 미니어처 오프셋(84px 선반·124/164 층계)은 창 전폭인 n1에서
+   본채팅 높이의 컴포저와 안 맞는다. 본채팅 기본값으로 되돌린다: 단독 96px ·
+   겹침 시 140/184px 층계, 크기도 본채팅 서식 */
+.ma-grid.n1 .ma-panel .q-mini{ bottom:116px; max-width:none; font-size:12.5px; gap:9px; padding:7px 8px 7px 15px; }
+.ma-grid.n1 .ma-panel .wf-dock{ bottom:116px; }
+.ma-grid.n1 .ma-panel .btw-dock{ bottom:116px; }
+.ma-grid.n1 .ma-panel .wf-mini,
+.ma-grid.n1 .ma-panel .btw-mini{ font-size:12.5px; gap:9px; padding:7px 8px 7px 15px; }
+.ma-grid.n1 .ma-panel .wf-dock:has(~ .q-mini){ bottom:160px; }
+.ma-grid.n1 .ma-panel .btw-dock:has(~ .wf-dock),
+.ma-grid.n1 .ma-panel .btw-dock:has(~ .q-mini){ bottom:160px; }
+.ma-grid.n1 .ma-panel .btw-dock:has(~ .wf-dock):has(~ .q-mini){ bottom:204px; }
+/* 워크플로 펼침 카드 — 그리드 미니어처(패널 전면 8px 보드·축소 레일)는 창 전폭인
+   n1에서 화면을 다 덮는 납작한 판이 된다(2026-09-01 사용자 보고: 중앙정렬 안 되고
+   너무 작음) → 본채팅 기하(중앙 760px·기본 여백·기본 레일 폭)로 되돌린다 */
+.ma-grid.n1 .ma-panel .wf-card{
+  top:56px; bottom:110px; left:50%; right:auto; width:calc(100% - 56px);
+  transform:translateX(-50%); padding:18px 22px 14px; border-radius:18px;
+  animation:wfrise .18s cubic-bezier(.2,.8,.2,1) both;
+}
+.ma-grid.n1 .ma-panel .wf-rail{ width:150px; }
+/* 질문/승인 카드 — 같은 이유의 되돌림(2026-09-01 사용자: 워크플로 카드와 함께 통일).
+   그리드 컴팩트 서식(4136-4182)을 본채팅 기본값으로 전부 복원한다 */
+.ma-grid.n1 .ma-panel .q-overlay{ padding:40px; border-radius:0; }
+.ma-grid.n1 .ma-panel .qcard{ max-height:88vh; padding:20px 24px 18px; border-radius:18px; }
+.ma-grid.n1 .ma-panel .qhead{ margin-bottom:12px; }
+.ma-grid.n1 .ma-panel .qbt{ font-size:17px; }
+.ma-grid.n1 .ma-panel .qopts{ margin-top:15px; gap:6px; }
+.ma-grid.n1 .ma-panel .qopt{ padding:12px 40px 12px 14px; border-radius:11px; }
+.ma-grid.n1 .ma-panel .qopt .ql{ font-size:14.5px; }
+.ma-grid.n1 .ma-panel .qopt .qd{ font-size:12.5px; line-height:1.5; }
+.ma-grid.n1 .ma-panel .qopt .qck{ right:13px; }
+.ma-grid.n1 .ma-panel .qopt-free input{ font-size:13.5px; }
+.ma-grid.n1 .ma-panel .qfoot{ margin-top:13px; }
+.ma-grid.n1 .ma-panel .qhint{ font-size:11px; }
+.ma-grid.n1 .ma-panel .qgo{ padding:8px 16px; font-size:12.5px; border-radius:9px; }
+.ma-grid.n1 .ma-panel .qtool{ font-size:11px; padding:3px 10px; }
+.ma-grid.n1 .ma-panel .qsum{ margin-top:12px; font-size:13px; padding:11px 13px; border-radius:10px; max-height:200px; }
+/* 본채팅과 같은 화살표 비킴·바닥 여백 — 질문 알약이 스크롤러 바로 위(96px)에 앉으므로 */
+.ma-grid.n1 .ma-panel:has(> .q-mini) .jump-bottom-wrap{ bottom:64px; }
+.ma-grid.n1 .ma-panel:has(> .q-mini):has(> .wf-dock) .jump-bottom-wrap{ bottom:110px; }
+.ma-grid.n1 .ma-panel:has(> .q-mini) .thread{ padding-bottom:calc(76px / var(--z, 1)); }
+.ma-grid.n1 .ma-panel:has(> .q-mini):has(> .wf-dock) .thread{ padding-bottom:calc(108px / var(--z, 1)); }
 
 /* ── 접힘 배지 + 팝오버 (§2.2-3 · 목업 chat-unify-collapse) ─────────────────── */
 .ma-fold{ position:relative; display:inline-flex; align-items:center; }
@@ -4478,12 +4583,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sb-item .slotchip.folded[data-tag], .sb-item .slotchip.win[data-tag]{ background:transparent; }
 /* 승인/질문 대기 점 — 2.6.2엔 없던 상태(§2.2-5) */
 .sb-item .dot.ask{ background:var(--yellow); box-shadow:0 0 0 3px rgba(217,192,99,.18); }
-/* 실행 중 배지 — 1 모드 busy 전환을 허용하는 대신(스펙 ⑥) "이 채팅은 돌고 있다"를 표시한다 */
-.sb-item .runbadge{
-  flex:0 0 auto; font-size:9px; font-family:var(--font-mono); color:var(--yellow);
-  border:1px solid rgba(217,192,99,.32); background:var(--yellow-soft);
-  border-radius:3px; padding:0 3px; line-height:13px;
-}
+/* 「실행」 배지는 제거(2026-09-01 사용자) — 상태 점이 이미 실행 중을 말한다 */
 /* ★ 3.0 M-UX R3 — 「이어가기」. 엔진이 `ready`로 켜 두고 멈춘 대기표(스펙 ⑤ 후반부)를
    목록에서 바로 소진한다. 배지가 아니라 **버튼**이라 눌리는 표면임을 대비로 말한다 */
 .sb-item .sb-resume{

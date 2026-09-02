@@ -79,9 +79,9 @@ const NOTICE_PREF: &str = "tray.noticeShown";
 const NOTICE_LIFE_MS: u64 = 15_000;
 
 /// 아이콘 원본. 런타임 경로에 기대지 않고 exe에 박는다.
-/// ★ M12 R2 — `icon.png`(2.6.2 마크)가 아니라 **3.0 파생 마크**(`icon3.png`, teal 「3」 배지)다.
-/// 두 앱을 나란히 띄우면 알림 영역에 같은 그림 두 개가 뜬다(M12 R1 §5.3).
-const ICON_PNG: &[u8] = include_bytes!("../../build/icon3.png");
+/// 사용자 결정(2026-09-01): 마크는 2.6.2 원본(`icon.png`) 그대로 간다 — teal 「3」 배지 폐기.
+/// 두 앱을 나란히 띄우면 알림 영역에 같은 그림 두 개가 뜬다; 구분은 툴팁 글자로 한다.
+const ICON_PNG: &[u8] = include_bytes!("../../build/icon.png");
 /// tauri 레지스트리 안의 아이콘 id — `release_icon`이 그 사본을 되찾을 주소다.
 const TRAY_ID: &str = "ccg-tray";
 

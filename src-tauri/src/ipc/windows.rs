@@ -43,6 +43,21 @@ pub const MA_PANEL_LEFTOVER_CLEAR: &str = "ma:panel-leftover-clear";
 /// 셸 내부 진단 — 계약면에 없다. `scripts/poc-winsurface.mjs`가 창 회계를 읽는다.
 pub const WIN_SURFACE_DEBUG: &str = "win:surface-debug";
 
+/// ── 파일 뷰어 독립 창 (`win::viewer`) ─────────────────────────────────────
+/// 호출 8 + 이벤트 3 (`protocol.ts` `IPC.viewer*`). 상수를 여기 두는 이유는 위 블록과 같다.
+pub const VIEWER_STATE: &str = "viewer:state"; // 어느 창 → 셸: 끈적한 모드 조회(부팅 페이로드에도 실린다)
+pub const VIEWER_SET_MODE: &str = "viewer:set-mode"; // 어느 창 → 셸: 모드 전환 → `viewer:mode` 브로드캐스트
+pub const VIEWER_OPEN: &str = "viewer:open"; // 어느 창 → 셸: 파일 하나를 뷰어 창으로 · 셸 → 뷰어 창: 그 페이로드
+pub const VIEWER_HYDRATE: &str = "viewer:hydrate"; // 뷰어 창 → 셸: 마운트/재로드 복원분
+pub const VIEWER_SHOWN: &str = "viewer:shown"; // 뷰어 창 → 셸: 파일을 그렸다 — 이제 보여도 된다
+pub const VIEWER_HIDE: &str = "viewer:hide"; // 뷰어 창 → 셸: 파일을 닫았다 — 창은 숨긴다
+pub const VIEWER_DOCK: &str = "viewer:dock"; // 뷰어 창 → 셸: 「창 안으로」 — 모드 해제 + 원래 창으로 되돌림
+pub const VIEWER_ASK: &str = "viewer:ask-selection"; // 뷰어 창 → 셸 → 원래 창: 질문 패널 전송
+pub const VIEWER_MODE: &str = "viewer:mode"; // 셸 → 전 창: 모드 변경 브로드캐스트
+pub const VIEWER_DOCKED: &str = "viewer:docked"; // 셸 → 원래 창: 되돌아온 파일(카드 뷰어로 열기)
+/// 셸 내부 진단 — 계약면에 없다. `scripts/poc-viewer-window.mjs`가 읽는다.
+pub const VIEWER_DEBUG: &str = "viewer:debug";
+
 /// 그 채팅을 보고 있는 창에 "지금 저장해"라고 알린다(★R4 — 32채널의 마지막 한 칸).
 ///
 /// **그 창에만** 보낸다. 브로드캐스트하면 메인 창까지 자기 대화를 flush하고, 그 순간
@@ -218,6 +233,35 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             }
             Value::Null
         }
+
+        // ── 파일 뷰어 독립 창 (win::viewer) ────────────────────────────────
+        //
+        // "창은 자리, 파일은 페이로드" — 어느 창이 부르든 그 파일 하나에 필요한 것만
+        // 실어 보내고, 되돌아갈 주소(질문 전송·창 안으로)는 **부른 창의 라벨**이다.
+        VIEWER_STATE => crate::win::viewer::state_json(),
+        VIEWER_SET_MODE => {
+            crate::win::viewer::set_mode(app, arg(p, 0).as_bool().unwrap_or(false));
+            Value::Null
+        }
+        VIEWER_OPEN => json!(crate::win::viewer::open(app, window.label(), arg(p, 0))),
+        VIEWER_HYDRATE => crate::win::viewer::hydrate(),
+        VIEWER_SHOWN => {
+            crate::win::viewer::shown(app);
+            Value::Null
+        }
+        VIEWER_HIDE => {
+            crate::win::viewer::hide(app);
+            Value::Null
+        }
+        VIEWER_DOCK => {
+            crate::win::viewer::dock(app, arg(p, 0));
+            Value::Null
+        }
+        VIEWER_ASK => {
+            crate::win::viewer::ask_selection(app, arg(p, 0));
+            Value::Null
+        }
+        VIEWER_DEBUG => crate::win::viewer::debug_state(app),
 
         // ── 알림 토스트 창 (M8 — win::notify) ───────────────────────────────
         crate::win::notify::NOTIFY_EVENT => {

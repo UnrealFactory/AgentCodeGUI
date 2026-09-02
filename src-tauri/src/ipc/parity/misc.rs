@@ -39,7 +39,9 @@ pub const CLOSE_SHORTCUT_JS: &str = r#"
 "#;
 
 /// 렌더러 → 셸(눌렸다) **그리고** 셸 → 렌더러(닫아라). 2.6.2도 이름이 하나다.
-const SHORTCUT_CLOSE: &str = "shortcut:close";
+/// `pub`인 이유: 뷰어 창의 X·Alt+F4(`win::viewer` CloseRequested)가 **같은 신호**로
+/// 렌더러의 닫기 경로(미저장 확인 카드 포함)를 태운다 — 문자열을 두 곳에 적지 않는다.
+pub const SHORTCUT_CLOSE: &str = "shortcut:close";
 /// 세션 창 → 셸: 메인 창을 앞으로 + 설정 ▸ API 열기.
 const OPEN_API_SETTINGS: &str = "ui:open-api-settings";
 /// 셸 → 메인 창: 위 요청 전달(설정 모달을 연다).

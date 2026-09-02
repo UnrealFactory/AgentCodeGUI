@@ -1,0 +1,135 @@
+{
+  "at": "2026-09-01T11:14:41.778Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\debug\\agentcodegui.exe",
+  "surfaces": {
+    "n1": {
+      "gridClass": "ma-grid scroll n1",
+      "pill": {
+        "x": 530.7,
+        "y": 724,
+        "w": 258.7,
+        "h": 40,
+        "bottom": 764
+      },
+      "pillCssBottom": "116px",
+      "pillGapToPanelBottom": 116,
+      "pillGapToWinBottom": 116,
+      "panel": {
+        "x": 0,
+        "y": 0,
+        "w": 1320,
+        "h": 880,
+        "bottom": 880
+      },
+      "composerMaxW": "880px",
+      "composerWrap": {
+        "x": 0,
+        "y": 806,
+        "w": 1320,
+        "h": 74,
+        "bottom": 880
+      },
+      "zoomChain": [],
+      "dpr": 1,
+      "inner": {
+        "w": 1320,
+        "h": 880
+      }
+    },
+    "n2": {
+      "gridClass": "ma-grid scroll n2",
+      "pill": {
+        "x": 215.2,
+        "y": 747,
+        "w": 235.5,
+        "h": 36,
+        "bottom": 783
+      },
+      "pillCssBottom": "84px",
+      "pillGapToPanelBottom": 85,
+      "pillGapToWinBottom": 97,
+      "panel": {
+        "x": 12,
+        "y": 50,
+        "w": 642,
+        "h": 818,
+        "bottom": 868
+      },
+      "composerMaxW": "none",
+      "composerWrap": {
+        "x": 13,
+        "y": 811,
+        "w": 640,
+        "h": 56,
+        "bottom": 867
+      },
+      "zoomChain": [],
+      "dpr": 1,
+      "inner": {
+        "w": 1320,
+        "h": 880
+      }
+    },
+    "expand": {
+      "pill": {
+        "x": 530.7,
+        "y": 709,
+        "w": 258.7,
+        "h": 40,
+        "bottom": 749
+      },
+      "pillCssBottom": "116px",
+      "pillGapToPanelBottom": 116,
+      "composerMaxW": "880px",
+      "workbar": {
+        "x": 17,
+        "y": 761,
+        "w": 1286,
+        "h": 30,
+        "bottom": 791
+      },
+      "composerWrap": {
+        "x": 17,
+        "y": 791,
+        "w": 1286,
+        "h": 74,
+        "bottom": 865
+      },
+      "panel": {
+        "x": 17,
+        "y": 15,
+        "w": 1286,
+        "h": 850,
+        "bottom": 865
+      }
+    },
+    "popout": {
+      "gridClass": null,
+      "pill": null,
+      "pillCssBottom": null,
+      "pillGapToPanelBottom": null,
+      "pillGapToWinBottom": null,
+      "panel": {
+        "x": 0,
+        "y": 34,
+        "w": 1100,
+        "h": 786,
+        "bottom": 820
+      },
+      "composerMaxW": "880px",
+      "composerWrap": {
+        "x": 0,
+        "y": 746,
+        "w": 1100,
+        "h": 74,
+        "bottom": 820
+      },
+      "zoomChain": [],
+      "dpr": 1,
+      "inner": {
+        "w": 1100,
+        "h": 820
+      }
+    }
+  }
+}

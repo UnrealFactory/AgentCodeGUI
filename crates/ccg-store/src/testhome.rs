@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn the_home_never_falls_back_to_the_real_one_while_tests_swap_it() {
         let real = std::env::var_os("USERPROFILE")
-            .map(|p| std::path::PathBuf::from(p).join(".agentcodegui"))
+            .map(|p| std::path::PathBuf::from(p).join(".agentcodegui3"))
             .unwrap_or_default();
         let hands: Vec<_> = (0..8)
             .map(|i| {

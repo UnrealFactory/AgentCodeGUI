@@ -1,0 +1,623 @@
+{
+  "at": "2026-09-02T02:07:23.590Z",
+  "exe": "C:\\Code\\AgentCodeGUI\\target\\release\\agentcodegui.exe",
+  "steps": {
+    "memBaseMB": {
+      "ws": 383.4,
+      "priv": 186.7,
+      "lspWs": 0,
+      "lspPriv": 0,
+      "appWs": 383.4,
+      "appPriv": 186.7,
+      "procs": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 36.5,
+          "priv": 13.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 196.6,
+          "priv": 97.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "ws": 10.7,
+          "priv": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "ws": 20.5,
+          "priv": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "ws": 119.2,
+          "priv": 64.7
+        }
+      ]
+    },
+    "memCardOpenMB": {
+      "ws": 702,
+      "priv": 533.3,
+      "lspWs": 257.6,
+      "lspPriv": 323,
+      "appWs": 444.4,
+      "appPriv": 210.3,
+      "procs": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 36.8,
+          "priv": 13.4
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 228.7,
+          "priv": 107.5
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 48.2,
+          "priv": 61.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "ws": 10.7,
+          "priv": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "ws": 20.5,
+          "priv": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "ws": 147.8,
+          "priv": 77.9
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 209.4,
+          "priv": 261.4
+        }
+      ],
+      "dAppWs": 61,
+      "dAppPriv": 23.6,
+      "dLspWs": 257.6
+    },
+    "memCardClosedMB": {
+      "ws": 694.3,
+      "priv": 527.4,
+      "lspWs": 257.9,
+      "lspPriv": 323.6,
+      "appWs": 436.4,
+      "appPriv": 203.8,
+      "procs": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 40.4,
+          "priv": 14
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 217.5,
+          "priv": 98.3
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 48.2,
+          "priv": 61.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "ws": 10.7,
+          "priv": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "ws": 20.6,
+          "priv": 9.1
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "ws": 147.2,
+          "priv": 80
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 209.7,
+          "priv": 262
+        }
+      ],
+      "dAppWs": 53,
+      "dAppPriv": 17.1,
+      "dLspWs": 257.9
+    },
+    "coldPopoutMs": 466,
+    "memWithViewerMB": {
+      "ws": 772.1,
+      "priv": 567.6,
+      "lspWs": 257.3,
+      "lspPriv": 322.2,
+      "appWs": 514.8,
+      "appPriv": 245.4,
+      "procs": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 44.4,
+          "priv": 18
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 255.9,
+          "priv": 110.8
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 48.4,
+          "priv": 61.6
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "ws": 10.7,
+          "priv": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "ws": 20.6,
+          "priv": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "ws": 183.2,
+          "priv": 105.1
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 208.9,
+          "priv": 260.6
+        }
+      ],
+      "dAppWs": 70.4,
+      "dAppPriv": 35.1,
+      "dLspWs": -0.3
+    },
+    "moved": {
+      "target": {
+        "x": 327,
+        "y": 281
+      },
+      "win": {
+        "visible": true,
+        "minimized": false,
+        "maximized": false,
+        "x": 327,
+        "y": 281,
+        "width": 1124,
+        "height": 811
+      },
+      "saved": {
+        "x": 327,
+        "y": 281,
+        "width": 1124,
+        "height": 811,
+        "maximized": false
+      },
+      "onDisk": {
+        "window": true,
+        "x": 327,
+        "y": 281,
+        "width": 1124,
+        "height": 811,
+        "maximized": false
+      }
+    },
+    "memHiddenViewerMB": {
+      "ws": 671,
+      "priv": 430.8,
+      "lspWs": 184.4,
+      "lspPriv": 206.6,
+      "appWs": 486.6,
+      "appPriv": 224.2,
+      "procs": [
+        {
+          "name": "agentcodegui.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 44.4,
+          "priv": 17.9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 254.2,
+          "priv": 100.6
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 46.5,
+          "priv": 58.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "crashpad-handler",
+          "sub": "",
+          "ws": 10.7,
+          "priv": 2.5
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "utility",
+          "sub": "storage.mojom.StorageService",
+          "ws": 20.6,
+          "priv": 9
+        },
+        {
+          "name": "msedgewebview2.exe",
+          "role": "renderer",
+          "sub": "",
+          "ws": 156.8,
+          "priv": 94.2
+        },
+        {
+          "name": "node.exe",
+          "role": "browser",
+          "sub": "",
+          "ws": 137.9,
+          "priv": 148.1
+        }
+      ],
+      "dAppWs": 50.2,
+      "dAppPriv": 20.4,
+      "dLspWs": -73.5
+    },
+    "warmReopenMs": 34,
+    "restartColdMs": 471,
+    "gesturePopoutMs": 37
+  },
+  "checks": [
+    {
+      "name": "탐색기 파일 클릭",
+      "ok": true
+    },
+    {
+      "name": "탐색기 파일 다시 클릭",
+      "ok": true
+    },
+    {
+      "name": "처음엔 카드 모드(창 없음)",
+      "ok": true,
+      "detail": {
+        "exists": false,
+        "win": null,
+        "mode": false,
+        "saved": {
+          "x": null,
+          "y": null,
+          "width": 1140,
+          "height": 820,
+          "maximized": false
+        },
+        "origin": null,
+        "bootPath": null,
+        "pendingShow": false,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "뷰어 창이 떴다(콜드)",
+      "ok": true,
+      "detail": {
+        "coldMs": 466,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "안전망이 아니라 렌더러 신호로 보였다",
+      "ok": true,
+      "detail": 0
+    },
+    {
+      "name": "메인의 카드 뷰어는 내려갔다",
+      "ok": true
+    },
+    {
+      "name": "끈적한 모드 ON",
+      "ok": true
+    },
+    {
+      "name": "뷰어 창 헤더 = 파일명 + 창 컨트롤 넷",
+      "ok": true,
+      "detail": {
+        "title": "main.ts — AgentCodeGUI",
+        "name": "main.ts",
+        "hasDock": true,
+        "hasWinCtl": 4,
+        "dpr": 1,
+        "drag": "drag"
+      }
+    },
+    {
+      "name": "창을 옮겼다(Win32)",
+      "ok": true,
+      "detail": "ok:���� ��� ? AgentCodeGUI"
+    },
+    {
+      "name": "옮긴 자리가 창에 반영",
+      "ok": true,
+      "detail": {
+        "win": {
+          "visible": true,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        },
+        "target": {
+          "x": 327,
+          "y": 281
+        }
+      }
+    },
+    {
+      "name": "옮긴 자리가 viewer-window.json에 저장",
+      "ok": true,
+      "detail": {
+        "window": true,
+        "x": 327,
+        "y": 281,
+        "width": 1124,
+        "height": 811,
+        "maximized": false
+      }
+    },
+    {
+      "name": "Esc = 창 숨김(부수지 않음)",
+      "ok": true,
+      "detail": {
+        "exists": true,
+        "win": {
+          "visible": false,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        },
+        "mode": true,
+        "saved": {
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811,
+          "maximized": false
+        },
+        "origin": "main",
+        "bootPath": null,
+        "pendingShow": false,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "다른 파일 클릭",
+      "ok": true
+    },
+    {
+      "name": "숨긴 창이 같은 자리에 다시 떴다(웜)",
+      "ok": true,
+      "detail": {
+        "warmMs": 34,
+        "win": {
+          "visible": true,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        },
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "메인에는 카드가 안 떴다(창 모드 라우팅)",
+      "ok": true
+    },
+    {
+      "name": "뷰어 창 내용이 새 파일로 바뀌었다",
+      "ok": true
+    },
+    {
+      "name": "재시작 뒤에도 끈적한 모드 + 저장된 자리",
+      "ok": true,
+      "detail": {
+        "exists": false,
+        "win": null,
+        "mode": true,
+        "saved": {
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811,
+          "maximized": false
+        },
+        "origin": null,
+        "bootPath": null,
+        "pendingShow": false,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "재시작 뒤 파일 클릭",
+      "ok": true
+    },
+    {
+      "name": "재시작 뒤 첫 클릭이 곧장 뷰어 창으로, 저장된 자리에",
+      "ok": true,
+      "detail": {
+        "ms": 471,
+        "win": {
+          "visible": true,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        }
+      }
+    },
+    {
+      "name": "메인에는 카드가 안 떴다",
+      "ok": true
+    },
+    {
+      "name": "창 안으로: 모드 OFF + 창 숨김",
+      "ok": true,
+      "detail": {
+        "exists": true,
+        "win": {
+          "visible": false,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        },
+        "mode": false,
+        "saved": {
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811,
+          "maximized": false
+        },
+        "origin": "main",
+        "bootPath": null,
+        "pendingShow": false,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "원래 창(메인)의 카드 뷰어로 되돌아왔다",
+      "ok": true,
+      "detail": "notes.txt"
+    },
+    {
+      "name": "viewer-window.json: window=false, 자리는 유지",
+      "ok": true,
+      "detail": {
+        "window": false,
+        "x": 327,
+        "y": 281,
+        "width": 1124,
+        "height": 811,
+        "maximized": false
+      }
+    },
+    {
+      "name": "모드 OFF면 다시 카드로 열린다",
+      "ok": true,
+      "detail": {
+        "exists": true,
+        "win": {
+          "visible": false,
+          "minimized": false,
+          "maximized": false,
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811
+        },
+        "mode": false,
+        "saved": {
+          "x": 327,
+          "y": 281,
+          "width": 1124,
+          "height": 811,
+          "maximized": false
+        },
+        "origin": "main",
+        "bootPath": null,
+        "pendingShow": false,
+        "fallbackShows": 0
+      }
+    },
+    {
+      "name": "RU 제스처를 합성했다",
+      "ok": true
+    },
+    {
+      "name": "카드에서 →↑ 제스처 = 별도 창으로(모드 ON + 창 표시)",
+      "ok": true,
+      "detail": {
+        "ms": 37,
+        "bootPath": "main.ts"
+      }
+    },
+    {
+      "name": "제스처 뒤 메인의 카드는 내려갔다",
+      "ok": true
+    }
+  ],
+  "pass": true
+}

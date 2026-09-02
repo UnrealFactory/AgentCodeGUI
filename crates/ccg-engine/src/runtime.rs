@@ -44,6 +44,11 @@ pub const PROBE_MIN_GAP: Millis = 30 * SEC;
 pub const PROBE_TIMEOUT: Millis = 3 * SEC;
 /// `Starting` 타임아웃(T3) · 중단 응답 대기(T15) · 유휴 회수(T32).
 pub const START_TIMEOUT: Millis = 20 * SEC;
+/// 워크플로 정착 통지 뒤 CLI **자발 기상 턴(T19)**을 기다리는 유예. 통지가 원장을 비운
+/// 순간 닫으면(T20/§3.4) CLI가 열던 정리 턴(최종 결과 보고)을 태우다 죽인다 —
+/// 실측(poc-wf-live-race r1): NOTIFY → 우리 close → INIT까지 오고 두 번째 result 없이
+/// 사망. 기상이 오면 T19가 턴을 열고, 안 오면 T33이 만기에 닫는다.
+pub const WF_WAKE_GRACE: Millis = 15 * SEC;
 pub const INTERRUPT_TIMEOUT: Millis = 6 * SEC;
 pub const STREAM_IDLE_LIMIT: Millis = 6 * 60 * MIN;
 /// 무음 `result` 슬라이딩 보류(T10) — 2.5s × 최대 8회 ≈ 22s.
@@ -230,6 +235,10 @@ struct Stream {
     guard: Option<StreamGuard>,
     cause: Rc<Cell<CloseCause>>,
     linger_deadline: Option<Millis>,
+    /// 워크플로 정착 통지 직후의 **기상 유예 만기**([`WF_WAKE_GRACE`]). 이 시각 전에는
+    /// 원장이 비어도 닫지 않고 상주(Linger)로 버틴다 — CLI의 자발 정리 턴(T19)이 온다.
+    /// 턴이 열리면(T16/T19) 내려간다.
+    wake_due: Option<Millis>,
     interrupt_deadline: Option<Millis>,
     /// **재주입 금지 표식**(T14 note · T12 가드의 "중단 요청 없음" — ★R2 크리틱 C6).
     ///
@@ -963,9 +972,15 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         let armed_at = hold.armed_at;
         let old_axis = self.identity.billing().clone();
-        let BillingAxis::Subscription { account: cur, .. } = old_axis.clone() else {
+        let BillingAxis::Subscription { account: sub_cur, .. } = old_axis.clone() else {
             return false;
         };
+        // ★Codex 축(2026-09-01) — 갈아탈 계정의 우주가 엔진에 따라 다르다.
+        //   Claude: 과금 축의 구독 계정. Codex: 엔진 축의 codex_account(None=기본 —
+        //   기본의 실제 이메일은 셸이 해석하고, 셸의 판정이 그 계정을 스스로 제외한다).
+        let is_codex = self.identity.engine_kind() == crate::identity::EngineKind::Codex;
+        let old_cx = self.identity.codex_account().map(str::to_string);
+        let cur: String = if is_codex { old_cx.clone().unwrap_or_default() } else { sub_cur };
         // ★M11 R2(C2) — **낡은 1등은 다시 묻는다.**
         //
         // 훅이 보는 `busy`는 스폰이 끝나야 참이 된다(허브가 `state != Idle`로 만든다).
@@ -986,6 +1001,8 @@ impl<D: CliDriver> ChatRuntime<D> {
                 chat_id: self.chat_id.as_str(),
                 current: self.identity.billing(),
                 model: self.identity.model(),
+                codex: is_codex,
+                codex_account: old_cx.as_deref(),
                 tried: if refused.is_empty() { &self.switch_tried } else { &tried },
                 now_epoch_ms: now_epoch,
             };
@@ -1006,10 +1023,17 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         // 이번 에피소드에서 다시 고르지 않도록 **먼저** 적는다 — 정규화가 실패해도
         // 같은 계정을 매 tick 되묻지 않는다(로그아웃된 계정으로 무한 재시도 금지).
-        self.switch_tried.insert(cur.clone());
+        // (Codex 기본 계정은 cur가 빈 문자열일 수 있다 — 빈 항목은 안 적는다.)
+        if !cur.is_empty() {
+            self.switch_tried.insert(cur.clone());
+        }
         self.switch_tried.insert(pick.account.clone());
         let mut patch = RawIdentityPatch::default();
-        patch.billing.account = Some(pick.account.clone());
+        if is_codex {
+            patch.engine.codex_account = Some(Some(pick.account.clone()));
+        } else {
+            patch.billing.account = Some(pick.account.clone());
+        }
         let next = match RunIdentity::normalize(self.identity_raw.patched(&patch), &self.defaults) {
             Ok(v) => v,
             Err(e) => {
@@ -1061,7 +1085,13 @@ impl<D: CliDriver> ChatRuntime<D> {
         let defaults = &self.defaults;
         let mut repinned = 0usize;
         for m in self.queue.iter_mut() {
-            if *m.identity.billing() != old_axis {
+            // 소진된 축에 못 박힌 항목만 — Codex는 엔진 축의 계정으로 비교한다(같은 규약).
+            let pinned_to_old = if is_codex {
+                m.identity.codex_account().map(str::to_string) == old_cx
+            } else {
+                *m.identity.billing() == old_axis
+            };
+            if !pinned_to_old {
                 continue;
             }
             if let Ok(v) = RunIdentity::normalize(m.identity.to_raw().patched(&patch), defaults) {
@@ -1858,6 +1888,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             guard: Some(guard),
             cause,
             linger_deadline: None,
+            wake_due: None,
             interrupt_deadline: None,
             interrupt_marker: false,
             stop_deadline: None,
@@ -1904,6 +1935,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         if let Some(s) = &mut self.stream {
             s.turn = Some(Turn::new(run_id, seq, false));
             s.linger_deadline = None;
+            s.wake_due = None; // 턴이 열렸다 — 기상 유예는 소임을 다했다
             // 사용자가 **직접** 다음 턴을 시작했다 → 재주입 금지 표식 해제(T12 가드).
             s.interrupt_marker = false;
         }
@@ -2165,8 +2197,17 @@ impl<D: CliDriver> ChatRuntime<D> {
             }
             (true, false) => match self.close_policy {
                 StreamClosePolicy::OnIdle => {
-                    self.set_state("§3.4", StateTag::Terminating, None);
-                    self.close_and_finish(CloseCause::AllClear);
+                    // 이 턴 도중 워크플로가 정착했다면 CLI의 자발 정리 턴(T19)이 뒤따른다 —
+                    // 기상 유예까지 상주(T20b와 같은 모양: 타이머만 걸고 T33이 만기에 닫는다).
+                    if let Some(due) = self.stream.as_ref().and_then(|s| s.wake_due).filter(|d| now < *d) {
+                        if let Some(s) = &mut self.stream {
+                            s.linger_deadline = Some(due);
+                        }
+                        self.set_state("§3.4", StateTag::Resident, Some(ResidentWhy::Linger));
+                    } else {
+                        self.set_state("§3.4", StateTag::Terminating, None);
+                        self.close_and_finish(CloseCause::AllClear);
+                    }
                 }
                 StreamClosePolicy::Linger(ms) => {
                     if let Some(s) = &mut self.stream {
@@ -2595,6 +2636,8 @@ impl<D: CliDriver> ChatRuntime<D> {
                         let seq = self.frame_seq;
                         if let Some(s) = &mut self.stream {
                             s.turn = Some(Turn::new(run_id, seq, true));
+                            s.linger_deadline = None;
+                            s.wake_due = None; // 기상 턴이 왔다 — 유예 해제
                         }
                         self.set_state("T19", StateTag::Streaming, None);
                     }
@@ -2759,6 +2802,19 @@ impl<D: CliDriver> ChatRuntime<D> {
                 self.fire("F17");
                 let it = self.ledger.borrow_mut().remove(&task_id, false);
                 if let Some(it) = it {
+                    // 정착 **통지** = CLI가 보고할 것이 있다는 예고다 — 정리 턴(T19)으로 곧
+                    // 깬다. 그 전에 원장이 비었다고 닫으면 그 턴이 죽는다(실측 poc-wf-live-race
+                    // r1: NOTIFY→INIT까지 오고 사망) → 기상 유예. 종류를 안 가리는 이유:
+                    //  · 워크플로·백그라운드 서브에이전트·상주 셸 전부 통지로 정착하면 같은
+                    //    보고 턴이 따라올 수 있다(2.6.2의 "완료 → 스스로 이어서" 파리티).
+                    //  · 빈 REPLACE가 통지보다 먼저 온 순서에서는 f13_replace가 kind를
+                    //    PendingSettle로 바꿔 둬 원래 종류가 이미 지워져 있다(실측
+                    //    poc-wf-live-interleave r1: Workflow만 보던 유예가 그 순서에서 빠짐).
+                    // 기상이 안 오면 T33이 15s 만기에 닫는다 — 과잉 상주 비용은 그게 전부다.
+                    let due = now + WF_WAKE_GRACE;
+                    if let Some(s) = &mut self.stream {
+                        s.wake_due = Some(due);
+                    }
                     let reason = if by_user {
                         SettleReason::Stopped { by_user: true }
                     } else {
@@ -2997,8 +3053,17 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         match self.close_policy {
             StreamClosePolicy::OnIdle => {
-                self.set_state("T20", StateTag::Terminating, None);
-                self.close_and_finish(CloseCause::AllClear);
+                // 워크플로 정착 통지가 방금 원장을 비웠다 — CLI의 자발 정리 턴(T19)이
+                // 오는 중일 수 있다. 기상 유예까지 상주(T20b와 같은 모양 — T33이 만기에 닫는다).
+                if let Some(due) = self.stream.as_ref().and_then(|s| s.wake_due).filter(|d| now < *d) {
+                    if let Some(s) = &mut self.stream {
+                        s.linger_deadline = Some(due);
+                    }
+                    self.set_state("T20b", StateTag::Resident, Some(ResidentWhy::Linger));
+                } else {
+                    self.set_state("T20", StateTag::Terminating, None);
+                    self.close_and_finish(CloseCause::AllClear);
+                }
             }
             StreamClosePolicy::Linger(ms) => {
                 if let Some(s) = &mut self.stream {
@@ -4107,6 +4172,75 @@ mod t22_tests {
         }));
         assert_eq!(rt.state(), StateTag::AwaitingUser);
         assert_eq!(rt.ledger().items().len(), 1, "AskCard가 원장에 있다");
+    }
+
+    /// 기상 유예(WF_WAKE_GRACE) — 워크플로가 턴 안에서 정착해도 턴 종료가 CLI를 닫지
+    /// 않고(§3.4→Resident{Linger}), CLI의 자발 정리 턴(T19)이 열리면 유예가 내려간 뒤
+    /// 그 턴의 result에서 정상 종료한다. 실측 근거: poc-wf-live-race r1 — NOTIFY 직후
+    /// 닫아서 INIT까지 온 기상 턴을 태워 죽였다(최종 합 실종).
+    #[test]
+    fn a_workflow_settling_mid_turn_leaves_a_wake_grace_before_close() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "워크플로 돌려줘".into() });
+        r.on_frame(&json!({ "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} } }));
+        r.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        // 워크플로가 백그라운드 목록에 오르고, 턴이 끝나기 전에 완주한다
+        r.on_frame(&json!({ "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "w1", "task_type": "local_workflow", "description": "덧셈" }] }));
+        r.on_frame(&json!({ "type": "system", "subtype": "task_notification",
+            "task_id": "w1", "status": "completed", "by_user": false }));
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "결과 오면 알려드릴게요", "num_turns": 1 }));
+        // §3.4 — 원장이 비었어도 닫지 않는다(기상 유예 상주)
+        assert_eq!(r.state(), StateTag::Resident, "정리 턴이 오기 전에 닫으면 최종 보고가 죽는다");
+
+        // CLI 자발 기상(T19) — 통지 실린 user 프레임 → 정리 턴이 정상으로 돈다
+        r.on_frame(&json!({ "type": "user", "parent_tool_use_id": null,
+            "message": { "role": "user", "content": [{ "type": "text",
+              "text": "<task-notification task_id=\"w1\">끝났습니다</task-notification>" }] } }));
+        assert_eq!(r.state(), StateTag::Streaming, "T19 기상 턴");
+        r.on_frame(&json!({ "type": "assistant", "parent_tool_use_id": null,
+            "message": { "role": "assistant", "model": "claude-haiku",
+                         "content": [{ "type": "text", "text": "TOTAL=180" }] } }));
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "TOTAL=180", "num_turns": 1 }));
+        // 기상 턴이 유예를 내렸으므로(T19) 이번 §3.4는 정상 종료다
+        assert!(matches!(r.state(), StateTag::Terminating | StateTag::Idle),
+            "정리 턴까지 끝나면 닫는다: {:?}", r.state());
+    }
+
+    /// 순서 B — 빈 REPLACE(목록 이탈)가 통지보다 **먼저**. f13_replace가 항목을
+    /// PendingSettle로 바꿔 두므로 통지 시점 kind는 Workflow가 아니다 — 그 순서에서도
+    /// 기상 유예가 걸려야 한다(실측 poc-wf-live-interleave r1: 이 순서에서 기상 턴 사망).
+    #[test]
+    fn a_workflow_leaving_the_replace_list_first_still_gets_a_wake_grace() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "워크플로 돌려줘".into() });
+        r.on_frame(&json!({ "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} } }));
+        r.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        r.on_frame(&json!({ "type": "system", "subtype": "background_tasks_changed",
+            "tasks": [{ "task_id": "w1", "task_type": "local_workflow", "description": "덧셈" }] }));
+        // 발사 턴 종료 — 워크플로가 살아 있어 상주(LiveItems)
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "돌아갑니다", "num_turns": 1 }));
+        assert_eq!(r.state(), StateTag::Resident);
+        // 목록 이탈이 먼저 → PendingSettle → 통지가 그 항목을 닫는다
+        r.on_frame(&json!({ "type": "system", "subtype": "background_tasks_changed", "tasks": [] }));
+        assert_eq!(r.state(), StateTag::Resident, "PendingSettle이 남아 아직 안 닫는다");
+        r.on_frame(&json!({ "type": "system", "subtype": "task_notification",
+            "task_id": "w1", "status": "completed", "by_user": false }));
+        assert_eq!(r.state(), StateTag::Resident, "통지 직후에도 기상 유예로 버틴다 — 닫으면 보고 턴이 죽는다");
+
+        // CLI 자발 기상 → 보고 턴 정상 완주
+        r.on_frame(&json!({ "type": "user", "parent_tool_use_id": null,
+            "message": { "role": "user", "content": [{ "type": "text",
+              "text": "<task-notification task_id=\"w1\">끝났습니다</task-notification>" }] } }));
+        assert_eq!(r.state(), StateTag::Streaming, "T19 기상 턴");
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "WFDONE=1110", "num_turns": 1 }));
+        assert!(matches!(r.state(), StateTag::Terminating | StateTag::Idle));
     }
 
     #[test]

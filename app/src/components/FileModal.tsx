@@ -65,7 +65,10 @@ import {
   IconEye,
   IconFolderOpen,
   IconMax,
+  IconMin,
   IconPencil,
+  IconPopin,
+  IconPopout,
   IconRestore,
   IconSearch,
   IconSend
@@ -2866,7 +2869,11 @@ export function FileModal({
   diffs,
   override,
   onClose,
-  onAskSelection
+  onAskSelection,
+  windowed,
+  onPopout,
+  onDock,
+  onReady
 }: {
   path: string | null
   cwd: string
@@ -2884,6 +2891,15 @@ export function FileModal({
   onClose: () => void
   // 드래그 선택 → 뷰어 안 질문 패널에서 작성한 질문을 선택 텍스트·파일·줄 범위와 함께 전송
   onAskSelection?: (p: { path: string; text: string; from: number | null; to: number | null; question: string }) => void
+  // 독립 창 모드(ViewerWindow) — 오버레이 배경·카드 크기 조절·카드 최대화가 물러나고, 헤더가
+  // 창 드래그 띠 + 창 컨트롤(창 안으로·최소화·최대화·닫기)이 된다. 나머지는 카드와 같다.
+  windowed?: boolean
+  // 카드 모드의 「별도 창으로」 — 보고 있는 파일(정의 점프로 들어간 파일이면 그 파일)을 넘긴다
+  onPopout?: (path: string) => void
+  // 창 모드의 「창 안으로」 — 같은 규칙으로 보고 있는 파일을 넘긴다
+  onDock?: (path: string) => void
+  // 본문이 처음 그려졌다(내용 도착·이미지·HTML 미리보기) — 창 모드가 "이제 창을 보여도 된다"에 쓴다
+  onReady?: () => void
 }) {
   const [res, setRes] = useState<FileReadResult | null>(null)
   // lspStatus는 색칠·hover·정의이동 게이트 + 파일별 "심볼 분석 중" 칩 판정에 쓴다.
@@ -3079,6 +3095,14 @@ export function FileModal({
     return window.api.onCloseShortcut(requestClose)
   }, [path, requestClose])
 
+  // 독립 창 모드 — 창의 최대화 상태(헤더의 최대화/복원 아이콘). 이 창의 통지만 온다(창별 win:state).
+  const [winMax, setWinMax] = useState(false)
+  useEffect(() => {
+    if (!windowed) return
+    window.api.win.isMaximized().then(setWinMax).catch(() => {})
+    return window.api.onWinState((s) => setWinMax(s.maximized))
+  }, [windowed])
+
   // (re)load whenever the viewed path changes; `alive` guards against a stale
   // response landing after the user already switched files or closed the card.
   // Images skip the text read entirely — their bytes are served over ccg-img://.
@@ -3108,6 +3132,14 @@ export function FileModal({
       alive = false
     }
   }, [effPath, cwd, isImg, ovContent])
+
+  // 본문이 처음 그려졌다 — 창 모드의 "이제 창을 보여도 된다" 신호. 텍스트는 내용(또는 오류)이
+  // 도착했을 때, 이미지·HTML 미리보기는 마운트 즉시(바이트·페이지는 각자 스킴으로 온다).
+  // 수신 쪽(viewer:shown)은 멱등이라 파일마다 다시 불러도 된다.
+  useEffect(() => {
+    if (!onReady) return
+    if (res != null || isImg || htmlView) onReady()
+  }, [res, isImg, htmlView, onReady])
 
   // code-intelligence status for the viewed file — drives only the feature gate
   // (lsp={ready} below). The first ask lazily spawns the project's server, so poll
@@ -3534,7 +3566,20 @@ export function FileModal({
     },
     { pattern: 'U', label: t('맨 위로', 'Scroll to top'), run: () => scrollBody('top') },
     { pattern: 'D', label: t('맨 아래로', 'Scroll to bottom'), run: () => scrollBody('bottom') },
-    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: requestClose }
+    { pattern: 'DR', label: t('창 닫기', 'Close window'), run: requestClose },
+    // →↑ = 최대화 문법(멀티 패널의 크게 보기·별도 창으로와 같은 획). 카드에선 곧장 「별도 창으로」
+    // (사용자 결정 2026-09-02 — 카드 최대화를 거치지 않는다), 독립 창에선 OS 최대화/복원.
+    ...(windowed
+      ? [
+          {
+            pattern: 'RU',
+            label: winMax ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize'),
+            run: () => void window.api.win.toggleMaximize()
+          }
+        ]
+      : onPopout
+        ? [{ pattern: 'RU', label: t('별도 창으로', 'Open in its own window'), run: () => effPath && onPopout(effPath) }]
+        : [])
   ]
 
   // Ctrl+클릭 definition target: same document → just jump; another file → stack it
@@ -3590,15 +3635,16 @@ export function FileModal({
 
   return (
     <div
-      className="fv-overlay"
+      className={'fv-overlay' + (windowed ? ' fv-win' : '')}
       onMouseDown={(e) => {
         downOnOverlay.current = e.target === e.currentTarget
       }}
       onClick={(e) => {
-        if (downOnOverlay.current && e.target === e.currentTarget) requestClose()
+        // 창 모드엔 배경이 없다(카드가 창 전체) — 배경 클릭 닫기도 없다
+        if (!windowed && downOnOverlay.current && e.target === e.currentTarget) requestClose()
       }}
     >
-      <div className="fv-modal rzm" ref={modalRef} style={rz.modalStyle}>
+      <div className="fv-modal rzm" ref={modalRef} style={windowed ? undefined : rz.modalStyle}>
         {headCtx &&
           createPortal(
             <div ref={headCtxRef} className="ctx-menu" style={{ left: headCtx.x, top: headCtx.y }}>
@@ -3626,7 +3672,8 @@ export function FileModal({
           )}
         <div
           className="diff-head"
-          onDoubleClick={rz.onHeaderDoubleClick}
+          // 창 모드의 더블클릭은 OS 최대화다(chrome.ts가 드래그 띠에서 처리) — 카드 최대화는 물러난다
+          onDoubleClick={windowed ? undefined : rz.onHeaderDoubleClick}
           onContextMenu={(e) => {
             e.preventDefault()
             setHeadCtx({ x: e.clientX, y: e.clientY })
@@ -3803,24 +3850,79 @@ export function FileModal({
               )}
             </div>
           )}
-          <button
-            className="dclose htip"
-            onClick={rz.toggleMaximize}
-            aria-label={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
-            data-tip={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
-          >
-            {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
-          </button>
-          <button
-            className="dclose htip"
-            onClick={requestClose}
-            aria-label={t('닫기', 'Close')}
-            data-tip={t('닫기 (Esc)', 'Close (Esc)')}
-          >
-            <IconClose size={16} />
-          </button>
+          {windowed ? (
+            /* 창 모드 — 창 컨트롤 넷. 최소화·최대화는 OS 창, 닫기는 카드의 닫기 경로(미저장 확인
+               카드 포함)로 → onClose가 창을 숨긴다. 「창 안으로」는 이 파일을 원래 창의 카드로. */
+            <div className="fv-winctl">
+              {onDock && (
+                <button
+                  className="dclose htip fv-dock"
+                  onClick={() => effPath && onDock(effPath)}
+                  aria-label={t('창 안으로', 'Back into the main window')}
+                  data-tip={t('창 안으로 — 다시 카드로 보기', 'Back into the main window')}
+                >
+                  <IconPopin size={15} />
+                </button>
+              )}
+              <button
+                className="dclose htip"
+                onClick={() => void window.api.win.minimize()}
+                aria-label={t('최소화', 'Minimize')}
+                data-tip={t('최소화', 'Minimize')}
+              >
+                <IconMin size={14} />
+              </button>
+              <button
+                className="dclose htip"
+                onClick={() => void window.api.win.toggleMaximize()}
+                aria-label={winMax ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+                data-tip={winMax ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+              >
+                {winMax ? <IconRestore size={15} /> : <IconMax size={13} />}
+              </button>
+              <button
+                className="dclose htip"
+                onClick={requestClose}
+                aria-label={t('닫기', 'Close')}
+                data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+              >
+                <IconClose size={16} />
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 별도 창으로 — 이 뷰어를 독립 OS 창으로(듀얼 모니터: 한쪽은 IDE, 한쪽은 코드).
+                  한 번 누르면 이후 파일 열기가 전부 그 창으로 간다(창 헤더의 「창 안으로」까지). */}
+              {onPopout && (
+                <button
+                  className="dclose htip fv-popout"
+                  onClick={() => effPath && onPopout(effPath)}
+                  aria-label={t('별도 창으로', 'Open in its own window')}
+                  data-tip={t('별도 창으로 — 이후 파일도 그 창에서', 'Open in its own window')}
+                >
+                  <IconPopout size={15} />
+                </button>
+              )}
+              <button
+                className="dclose htip"
+                onClick={rz.toggleMaximize}
+                aria-label={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+                data-tip={rz.maximized ? t('이전 크기로', 'Restore') : t('최대화', 'Maximize')}
+              >
+                {rz.maximized ? <IconRestore size={15} /> : <IconMax size={13} />}
+              </button>
+              <button
+                className="dclose htip"
+                onClick={requestClose}
+                aria-label={t('닫기', 'Close')}
+                data-tip={t('닫기 (Esc)', 'Close (Esc)')}
+              >
+                <IconClose size={16} />
+              </button>
+            </>
+          )}
         </div>
-        {!rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
+        {!windowed && !rz.maximized && <ModalResizeHandles onStart={rz.startResize} />}
         {/* PoC mbody — 본문은 카드 위에 얹힌 인셋 패널(라운드·헤어라인), 아래 mfoot 스탯 줄 */}
         <div className={'fv-body' + (showFoot ? '' : ' nofoot')}>
           {isImg ? (
