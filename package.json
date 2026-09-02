@@ -22,6 +22,7 @@
     "tauri:build": "node scripts/tauri-build.mjs build",
     "tauri:build:unsigned": "node scripts/tauri-build.mjs build --unsigned",
     "tauri:bundle": "node scripts/tauri-build.mjs bundle",
+    "release:3": "node scripts/release-3.mjs",
     "gen-icon": "node scripts/gen-icon.cjs && node scripts/gen-installer-art.cjs",
     "package": "npm run gen-icon && electron-vite build && electron-builder --publish never",
     "release": "npm run gen-icon && electron-vite build && electron-builder --publish always",
