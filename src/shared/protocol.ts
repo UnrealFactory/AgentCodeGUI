@@ -33,6 +33,9 @@ export interface ToolLogItem {
   durationMs?: number // 실행 시간 (tool-start→end) — bash 행의 우측 요약·모달에 표시
   links?: WebLink[] // web rows — pages a WebSearch found; the chat row expands to clickable links
   parentToolId?: string // set when this tool runs inside a subagent (Task)
+  // ★3.0 TOOLROW — 클릭 카드 재료(검색·MCP·기타 행). 파일 도구·Bash는 안 싣는다.
+  name?: string // 원 도구 이름(`mcp__agentmon__status`) — MCP 카드 제목 「서버 · 도구」
+  args?: string // 도구 입력 JSON 한 줄(6000자 캡) — 카드의 「요청」 섹션
 }
 
 // ── Todos (TodoWrite tool) ───────────────────────────────────

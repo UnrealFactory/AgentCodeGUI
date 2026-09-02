@@ -460,9 +460,97 @@ fn tool_label(name: &str) -> (String, &'static str) {
         // 실제 변경 본문은 합성 프레임(`ccg_codex{file_change}`)이 실어 온다.
         "codex_file_change" => ("Edit".into(), "edit"),
         "TodoWrite" => ("Todo".into(), "other"),
-        n if n.starts_with("mcp__") => (n.to_string(), "mcp"),
+        // ★TOOLROW(2026-09-02 사용자 결정) — 동사는 `MCP`, 원 이름은 대상 자리로(`mcp_target`).
+        // `mcp__agentmon__status`가 동사 칸을 통째로 차지하던 것이 직관성을 죽였다.
+        n if n.starts_with("mcp__") => ("MCP".into(), "mcp"),
         n => (n.to_string(), "other"),
     }
+}
+
+/// MCP 도구 이름 → 행의 대상 `서버_도구`(2026-09-02 사용자가 고른 표기 — `agentmon_status`).
+/// 서버 이름 자체에 `__`가 들어갈 수 있어 **뒤에서** 가른다(`read_init_env`와 같은 판정).
+fn mcp_target(name: &str) -> String {
+    let rest = name.strip_prefix("mcp__").unwrap_or(name);
+    match rest.rsplit_once("__") {
+        Some((server, tool)) => format!("{server}_{tool}"),
+        None => rest.to_string(),
+    }
+}
+
+/// 파일 도구(Read/Write/Edit)의 대상 — 작업 폴더 기준 **상대 경로**(2.6.2 `toRel` 파리티).
+/// 렌더러는 이 값을 그대로 뷰어에 넘기고, 뷰어는 cwd 기준으로 푼다(`read_file(cwd, rel)`).
+/// 변경 파일 diff도 상대 키라 절대 경로를 넘기면 틴트 조회가 빗나간다.
+fn file_target(input: &Value, cwd: &str) -> String {
+    for k in ["file_path", "path", "notebook_path"] {
+        if let Some(v) = input.get(k).and_then(Value::as_str) {
+            return diff::to_rel(cwd, v);
+        }
+    }
+    tool_target(input)
+}
+
+/// 클릭 카드의 「요청」 섹션에 실을 도구 입력(JSON 한 줄). 파일 도구·Bash는 안 싣는다 —
+/// Write는 파일 본문이 통째로 들어 있고, 나머지는 대상 한 줄이 이미 요청 전부다.
+const TOOL_ARGS_MAX: usize = 6000;
+fn tool_args(input: &Value) -> Option<String> {
+    let s = serde_json::to_string(input).ok()?;
+    if s == "{}" || s == "null" {
+        return None;
+    }
+    Some(if s.chars().count() > TOOL_ARGS_MAX {
+        s.chars().take(TOOL_ARGS_MAX).collect::<String>() + "…"
+    } else {
+        s
+    })
+}
+
+/// 검색 출력의 각 줄 머리에서 작업 폴더를 뗀다 — 카드의 파일 목록이 짧아지고, 그 줄을
+/// 그대로 뷰어에 넘겨도 열린다(상대 경로는 cwd 기준으로 풀린다). 대소문자·슬래시 무시.
+fn strip_cwd_lines(cwd: &str, text: &str) -> String {
+    if cwd.is_empty() {
+        return text.to_string();
+    }
+    // ASCII만 접는다 — 유니코드 소문자화는 바이트 길이를 바꿔 아래 인덱스가 어긋난다
+    let cl = cwd.replace('\\', "/").to_ascii_lowercase();
+    let cl = cl.trim_end_matches('/');
+    text.lines()
+        .map(|line| {
+            let ll = line.replace('\\', "/").to_ascii_lowercase();
+            if ll.len() > cl.len() + 1 && ll.starts_with(cl) && ll.as_bytes()[cl.len()] == b'/' {
+                &line[cl.len() + 1..]
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 행 오른쪽 끝의 짧은 요약 — **언어 중립 토큰**. 렌더러가 표시 언어로 푼다
+/// (`lib/toolResult.tsx`): `N lines`→「N줄」· `N hits`→「N건」· `done`→「완료」.
+/// 결과 본문은 여기 절대 안 싣는다(2026-09-02 사용자 결정 — 본문은 클릭 카드로).
+fn result_token(kind: &str, name: &str, text: &str) -> String {
+    match kind {
+        "read" => format!("{} lines", if text.is_empty() { 0 } else { text.lines().count() }),
+        "search" => format!("{} hits", search_hits(name, text)),
+        _ => "done".into(),
+    }
+}
+
+/// Grep/Glob 출력의 건수. 머리말(`Found N files`)·잘림 안내·빈 줄은 세지 않는다.
+fn search_hits(_name: &str, text: &str) -> usize {
+    let t = text.trim_start();
+    if t.starts_with("No files found") || t.starts_with("No matches found") {
+        return 0;
+    }
+    text.lines()
+        .filter(|l| {
+            let l = l.trim();
+            !l.is_empty()
+                && !(l.starts_with("Found ") && l.contains(" file"))
+                && !l.starts_with("(Results are truncated")
+        })
+        .count()
 }
 
 /// 패널을 먹이는 도구 — 도구 행(로그)을 만들지 않는다.
@@ -487,7 +575,29 @@ fn tool_gen_label(name: &str) -> &'static str {
 /// 도구(Agent 등)는 그쪽이 먼저다. 대상이 비면 행이 「동사 …(공백)… 결과」로 갈라져
 /// 결과 문장이 오른쪽 끝에 홀로 붙는다(2026-09-01 사용자 보고: Skill/Workflow 행).
 fn tool_target(input: &Value) -> String {
-    for k in ["file_path", "path", "notebook_path", "command", "pattern", "query", "url", "description", "prompt", "skill", "name"] {
+    let t = target_from(input, &["file_path", "path", "notebook_path", "command", "pattern", "query", "url", "description", "prompt", "skill", "name"]);
+    if !t.is_empty() {
+        return t;
+    }
+    // 인라인 워크플로 — 이름 키 없이 `script`뿐이다. 대본 규약상 머리의 **순수 리터럴**
+    // `export const meta = { name: '…' }`에서 이름을 집는다(실패하면 빈 대상 그대로).
+    if let Some(script) = input.get("script").and_then(Value::as_str) {
+        if let Some(n) = script_meta_name(script) {
+            return n;
+        }
+    }
+    String::new()
+}
+
+/// 검색 행(Grep/Glob)의 대상은 **패턴**이다(2.6.2 파리티). 일반 순서는 `path`가 먼저라
+/// `path`를 준 Grep이 패턴 대신 폴더를 보였다(TOOLROW 테스트가 잡음).
+fn search_target(input: &Value) -> String {
+    let t = target_from(input, &["pattern", "query"]);
+    if t.is_empty() { tool_target(input) } else { t }
+}
+
+fn target_from(input: &Value, keys: &[&str]) -> String {
+    for k in keys {
         if let Some(v) = input.get(k).and_then(Value::as_str) {
             let one = v.replace(['\r', '\n'], " ");
             return if one.chars().count() > 180 {
@@ -495,13 +605,6 @@ fn tool_target(input: &Value) -> String {
             } else {
                 one
             };
-        }
-    }
-    // 인라인 워크플로 — 이름 키 없이 `script`뿐이다. 대본 규약상 머리의 **순수 리터럴**
-    // `export const meta = { name: '…' }`에서 이름을 집는다(실패하면 빈 대상 그대로).
-    if let Some(script) = input.get("script").and_then(Value::as_str) {
-        if let Some(n) = script_meta_name(script) {
-            return n;
         }
     }
     String::new()
@@ -953,7 +1056,13 @@ impl Wire {
 
         // ── 보통 도구 행 ────────────────────────────────────────────────────
         let (verb, kind) = tool_label(&name);
-        let target = tool_target(&input);
+        // ★TOOLROW — 대상: MCP는 이름에서(`서버_도구`), 파일 도구는 상대 경로, 나머지는 인자 한 줄
+        let target = match kind {
+            "mcp" => mcp_target(&name),
+            "read" | "write" | "edit" => file_target(&input, &self.cwd),
+            "search" => search_target(&input),
+            _ => tool_target(&input),
+        };
         let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: vec![] };
         let mut tool = Map::new();
         tool.insert("id".into(), json!(id));
@@ -961,6 +1070,14 @@ impl Wire {
         tool.insert("kind".into(), json!(kind));
         tool.insert("target".into(), json!(target));
         tool.insert("status".into(), json!("running"));
+        // 클릭 카드 재료 — 원 이름(MCP 카드 제목 `서버 · 도구`)과 입력(「요청」 섹션).
+        // 파일 도구·Bash는 카드가 아니라 파일/터미널 모달이 열리므로 안 싣는다.
+        if !matches!(kind, "read" | "write" | "edit" | "bash") {
+            tool.insert("name".into(), json!(name));
+            if let Some(a) = tool_args(&input) {
+                tool.insert("args".into(), json!(a));
+            }
+        }
         if let Some(p) = parent.filter(|p| !p.is_empty()) {
             tool.insert("parentToolId".into(), json!(p));
         }
@@ -1059,6 +1176,12 @@ impl Wire {
             return out;
         }
 
+        let name = row.as_ref().map(|r| r.name.clone()).unwrap_or_default();
+        let verb = row.as_ref().map(|r| r.verb.clone()).unwrap_or_default();
+        let kind = tool_label(&name).1;
+        let is_file = matches!(kind, "read" | "write" | "edit");
+        // 검색 출력은 줄 머리의 작업 폴더를 떼고 싣는다 — 카드 목록이 짧아지고 그대로 열린다
+        let content = if kind == "search" && !is_err { strip_cwd_lines(&self.cwd, &content) } else { content };
         let tail: String = if content.chars().count() > 4000 {
             content.chars().skip(content.chars().count() - 4000).collect()
         } else {
@@ -1069,7 +1192,10 @@ impl Wire {
         e.insert("runId".into(), json!(run));
         e.insert("id".into(), json!(id));
         e.insert("status".into(), json!(if is_err { "error" } else { "done" }));
-        // 편집 행의 요약은 +N −N이다(누적이 아니라 이 도구 한 번의 값 — `file.add/del`).
+        // ★TOOLROW(2026-09-02 사용자 결정) — 행 오른쪽 끝에는 **짧은 요약 토큰만**
+        // (`+N −N`·`N lines`·`N hits`·`done`), 결과 본문은 `output`으로 실어 클릭 카드가
+        // 보여 준다. 예전엔 본문 앞 160자를 `result`에 실어 행 오른쪽에 그대로 찍혔다.
+        // 토큰은 언어 중립 — 렌더러 `fmtToolResult`가 표시 언어로 푼다.
         let changed: Vec<&PendingChange> =
             if is_err { vec![] } else { row.iter().flat_map(|r| r.pending.iter()).collect() };
         if !changed.is_empty() {
@@ -1082,28 +1208,34 @@ impl Wire {
             e.insert(
                 "result".into(),
                 json!(match (one_new, changed.len()) {
-                    (true, _) => format!("새 파일 +{a}"),
+                    (true, _) => format!("new +{a}"),
                     (_, 1) => format!("+{a} −{d}"),
-                    (_, n) => format!("파일 {n}개 +{a} −{d}"),
+                    (_, n) => format!("{n} files +{a} −{d}"),
                 }),
             );
-        } else if !tail.is_empty() {
+        } else if is_err {
+            // 오류 본문은 카드로(행은 붉은 「오류」만). 파일 행도 오류일 땐 카드가 열린다.
+            if !tail.is_empty() {
+                e.insert("output".into(), json!(tail));
+            }
+        } else {
             // ★R4(§R3.8-K) — 웹 검색이 찾은 페이지 목록. 실려야 그 행이 펼쳐진다.
-            let links = if row.as_ref().is_some_and(|r| r.name == "WebSearch") && !is_err {
-                extract_web_links(&tail)
-            } else {
-                vec![]
-            };
-            if links.is_empty() {
+            let links = if name == "WebSearch" { extract_web_links(&tail) } else { vec![] };
+            if !links.is_empty() {
+                // 2.6.2와 같은 요약 문구(토큰) — 링크가 있으면 본문 대신 개수를 쓴다.
+                e.insert("result".into(), json!(format!("{} results", links.len())));
+                e.insert("links".into(), Value::Array(links));
+            } else if verb == "Skill" || verb == "Workflow" {
+                // Skill/Workflow 정착 행은 요약 **문장**이 동사 옆에 앉는다(2026-09-01 사용자
+                // 결정: 「Launching skill: …」 원문 유지) — 토큰이 아니라 본문 첫 160자다.
                 let one = tail.replace(['\r', '\n'], " ");
                 let short: String = one.chars().take(160).collect();
-                e.insert("result".into(), json!(short));
+                e.insert("result".into(), json!(if short.is_empty() { "done".to_string() } else { short }));
             } else {
-                // 2.6.2와 같은 요약 문구 — 링크가 있으면 본문 꼬리 대신 개수를 쓴다.
-                e.insert("result".into(), json!(format!("{}개 결과", links.len())));
-                e.insert("links".into(), Value::Array(links));
+                e.insert("result".into(), json!(result_token(kind, &name, &tail)));
             }
-            if row.as_ref().is_some_and(|r| r.verb == "Bash") {
+            // 본문: 파일 행은 클릭이 파일을 열므로 안 싣는다(Read 본문 4KB × 행 400 = 헛무게)
+            if !is_file && !tail.is_empty() {
                 e.insert("output".into(), json!(tail));
             }
         }
@@ -2032,7 +2164,7 @@ mod tests {
         assert_eq!(links.len(), 2);
         assert_eq!(links[0]["title"], "VecDeque");
         assert_eq!(links[1]["title"], "https://example.com/x", "제목이 없으면 url을 쓴다");
-        assert_eq!(end["result"], "2개 결과");
+        assert_eq!(end["result"], "2 results", "토큰 — 렌더러가 「2개 결과」로 푼다");
     }
 
     #[test]
@@ -2377,5 +2509,101 @@ mod tests {
         let tl = &evs.iter().find(|e| e["type"] == "tooling").expect("빈 환경도 스냅샷을 낸다")["tooling"];
         assert_eq!(tl["mcp"], json!([]));
         assert_eq!(tl["skills"], json!([]));
+    }
+
+
+    // ── ★TOOLROW(2026-09-02 사용자 결정) — 행 오른쪽은 요약 토큰만, 본문은 클릭 카드로 ──
+
+    #[test]
+    fn an_mcp_row_reads_mcp_then_server_tool_and_ships_its_body_to_the_card() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        let a = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "mcp__agentmon__status", "input": { "project": "Elmwood" } }] } }));
+        let st = a.iter().find(|e| e["type"] == "tool-start").unwrap();
+        assert_eq!(st["tool"]["verb"], "MCP", "동사 칸은 MCP — 원 이름이 아니다");
+        assert_eq!(st["tool"]["kind"], "mcp");
+        assert_eq!(st["tool"]["target"], "agentmon_status");
+        assert_eq!(st["tool"]["name"], "mcp__agentmon__status", "카드 제목(서버 · 도구) 재료");
+        assert_eq!(st["tool"]["args"], "{\"project\":\"Elmwood\"}", "카드 「요청」 재료");
+        let body = "ElmwoodOnline: 32 work (0 in progress)\nbugs: 0";
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "content": body }] } }));
+        let end = b.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["result"], "done", "행 오른쪽엔 본문이 아니라 토큰");
+        assert_eq!(end["output"], body, "본문은 카드로");
+        // 서버 이름에 `__`가 있어도 뒤에서 가른다(`read_init_env`와 같은 판정)
+        assert_eq!(mcp_target("mcp__srv__dbl__ping"), "srv__dbl_ping");
+        assert_eq!(mcp_target("mcp__solo"), "solo");
+    }
+
+    #[test]
+    fn a_read_row_shows_a_relative_path_and_a_line_count_but_no_body() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        let a = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "Read", "input": { "file_path": "c:\\w\\src\\a.h" } }] } }));
+        let st = a.iter().find(|e| e["type"] == "tool-start").unwrap();
+        assert_eq!(st["tool"]["target"], "src/a.h", "2.6.2 toRel 파리티 — 대소문자 달라도 상대");
+        assert!(st["tool"].get("args").is_none(), "파일 행은 카드가 아니라 파일을 연다");
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "content": "     1\tint a;\n     2\tint b;\n     3\t" }] } }));
+        let end = b.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["result"], "3 lines");
+        assert!(end.get("output").is_none(), "Read 본문은 안 싣는다(행 400 × 4KB 헛무게)");
+    }
+
+    #[test]
+    fn a_search_row_counts_hits_and_ships_cwd_relative_lines() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        let a = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "Grep", "input": { "pattern": "Foo", "path": "C:\\w\\src" } }] } }));
+        let st = a.iter().find(|e| e["type"] == "tool-start").unwrap();
+        assert_eq!(st["tool"]["verb"], "Search");
+        assert_eq!(st["tool"]["target"], "Foo");
+        assert!(st["tool"]["args"].as_str().unwrap().contains("\"pattern\":\"Foo\""));
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "content": "Found 2 files\nC:\\w\\src\\a.h\nc:/w/src/b.cpp\n" }] } }));
+        let end = b.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["result"], "2 hits", "머리말은 세지 않는다");
+        assert_eq!(end["output"], "Found 2 files\nsrc\\a.h\nsrc/b.cpp", "줄 머리의 cwd를 뗀다(대소문자·슬래시 무시)");
+        assert_eq!(search_hits("Grep", "No matches found"), 0);
+        assert_eq!(search_hits("Glob", "No files found"), 0);
+        assert_eq!(search_hits("Grep", "C:\\w\\a.h:12:foo\nC:\\w\\a.h:40:foo\n(Results are truncated…)"), 2);
+        // cwd 밖 줄·짧은 줄·접두만 같은 줄은 그대로
+        assert_eq!(strip_cwd_lines("C:\\w", "D:\\x\\a.h\nC:\\w\nC:\\wide\\b.h"), "D:\\x\\a.h\nC:\\w\nC:\\wide\\b.h");
+    }
+
+    #[test]
+    fn an_error_result_keeps_the_body_for_the_card_and_no_summary() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "Grep", "input": { "pattern": "[x" } }] } }));
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "is_error": true, "content": "regex parse error" }] } }));
+        let end = b.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["status"], "error");
+        assert!(end.get("result").is_none(), "행은 붉은 「오류」만 — 본문 조각을 싣지 않는다");
+        assert_eq!(end["output"], "regex parse error", "오류 본문은 카드로");
+    }
+
+    #[test]
+    fn skill_rows_keep_their_sentence_and_other_tools_get_done() {
+        let mut w = wire();
+        w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
+        w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "t1", "name": "Skill", "input": { "skill": "code-review" } },
+            { "type": "tool_use", "id": "t2", "name": "ToolSearch", "input": { "query": "+agentmon note" } }] } }));
+        let b = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "t1", "content": "Launching skill: code-review\n# Code review" },
+            { "type": "tool_result", "tool_use_id": "t2", "content": "<functions>…</functions>" }] } }));
+        let ends: Vec<&Value> = b.iter().filter(|e| e["type"] == "tool-end").collect();
+        // 2026-09-01 결정 유지 — Skill/Workflow 요약 문장은 원문 그대로 동사 옆에
+        assert_eq!(ends[0]["result"], "Launching skill: code-review # Code review");
+        assert_eq!(ends[0]["output"], "Launching skill: code-review\n# Code review");
+        assert_eq!(ends[1]["result"], "done");
+        assert_eq!(ends[1]["output"], "<functions>…</functions>");
     }
 }

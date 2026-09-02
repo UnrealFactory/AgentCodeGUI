@@ -18,6 +18,7 @@ import { Markdown } from './Markdown'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { t } from '../lib/i18n'
 import { settleText, useSettledReason } from '../lib/settled'
+import { fmtToolResult } from '../lib/toolResult'
 
 // 미완료 할 일의 원형 마커 (PoC pop-todo의 circle glyph — 전용 아이콘이 없어 인라인)
 function TodoCircle() {
@@ -265,7 +266,8 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
                     ) : tu.status === 'error' ? (
                       <span style={{ color: 'var(--red)' }}>{t('오류', 'Error')}</span>
                     ) : tu.result ? (
-                      tu.result
+                      // ★TOOLROW — 본채팅 행과 같은 토큰 해석(`145 lines`→「145줄」 등)
+                      fmtToolResult(tu.result)
                     ) : (
                       <span className="ok">
                         <IconCheck size={12} />

@@ -33,6 +33,7 @@ import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '..
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
+import { fmtToolResult, mcpParts, parseSearchOutput, parseToolArgs } from '../lib/toolResult'
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { Markdown } from './Markdown'
@@ -396,14 +397,8 @@ function ToolResult({ t: tl }: { t: ToolLogItem }) {
   // Skill/Workflow 정착 — 요약 원문이 오른쪽 끝이 아니라 **동사 옆**에 앉는다
   // (2026-09-01 사용자 결정: 원문은 그대로, 정렬만 왼쪽으로)
   if (resultBesideVerb(tl)) return <span className="t-res near">{tl.result}</span>
-  const diff = (tl.result ?? '').match(/^\+(\d+) -(\d+)$/)
-  if (diff)
-    return (
-      <span className="t-res">
-        <span className="add">+{diff[1]}</span> <span className="del">−{diff[2]}</span>
-      </span>
-    )
-  return <span className="t-res">{tl.result ?? ''}</span>
+  // ★TOOLROW — 엔진이 보낸 요약 토큰(`145 lines`·`12 hits`·`done`·`+3 −1`…)을 표시 언어로 푼다
+  return <span className="t-res">{fmtToolResult(tl.result)}</span>
 }
 
 // 실패 출력에서 에러로 읽히는 줄만 붉게 — 성공 출력은 설치 로그처럼 완전 무채색 유지
@@ -411,13 +406,25 @@ function bashErrLine(failed: boolean, ln: string): boolean {
   return failed && /(^|\s)(error|err!|fatal|exception|failed)\b/i.test(ln)
 }
 
-// Bash 전체 로그 모달 — 인라인 펼침은 좁아서 읽기 어렵다는 피드백으로 교체.
-// '명령'과 '출력'을 섹션으로 나눠 요청/결과가 한눈에 읽힌다. 채팅 스크롤러/가상화
-// 밖(body 포털)에 그려서 어느 화면(메인·멀티 패널·추가 채팅)에서 열어도 안전하다.
+// 도구 상세 카드 — Bash 로그 모달을 일반화한 것(★TOOLROW 2026-09-02 사용자 결정: 행 오른쪽엔
+// 요약만, 본문은 클릭 카드로). 종류별 섹션:
+//   Bash        「명령」·「출력」 (예전 BashLogModal 그대로)
+//   Search      「요청」(pattern·path·glob 표)·「결과」(파일 목록 — 항목 클릭 = 그 파일 열기)
+//   MCP·기타    「요청」(입력 인자 표)·「결과」(본문 터미널 웰)
+// 오류 행은 결과 섹션이 「오류」가 되고 줄이 붉다. 채팅 스크롤러/가상화 밖(body 포털)에
+// 그려서 어느 화면(메인·멀티 패널·추가 채팅)에서 열어도 안전하다.
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
-function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void }) {
-  // 복사 피드백 — 명령/출력 어느 쪽을 복사했는지 구분 (복사 → 복사됨 1.2s, 설정 CopyRow 이디엄)
-  const [copied, setCopied] = useState<'cmd' | 'out' | null>(null)
+function ToolLogModal({
+  t: tl,
+  onClose,
+  onOpenFile
+}: {
+  t: ToolLogItem
+  onClose: () => void
+  onOpenFile?: (path: string) => void
+}) {
+  // 복사 피드백 — 요청/결과 어느 쪽을 복사했는지 구분 (복사 → 복사됨 1.2s, 설정 CopyRow 이디엄)
+  const [copied, setCopied] = useState<'req' | 'out' | null>(null)
   // 마우스 제스처(↑/↓ 출력 스크롤 · ↓→ 닫기) 대상 — 카드 엘리먼트를 state로 추적
   const [card, setCard] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -433,8 +440,29 @@ function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void 
     }
   }, [onClose])
   const failed = tl.status === 'error'
-  const lines = (tl.output ?? '').split('\n')
-  const copy = (which: 'cmd' | 'out', text: string): void => {
+  const isBash = tl.kind === 'bash'
+  const isSearch = tl.kind === 'search'
+  const output = tl.output ?? ''
+  const lines = output.split('\n')
+  const req = parseToolArgs(tl.args)
+  const reqText = req.raw || tl.target
+  const search = isSearch && !failed && output ? parseSearchOutput(output) : null
+  const showFiles = !!search && search.hits.length > 0
+  const mcp = tl.kind === 'mcp' ? mcpParts(tl.name) : null
+  const title = mcp ? `${mcp.server} · ${mcp.tool}` : tl.target || tl.verb
+  const sub = [
+    mcp
+      ? t(`MCP · ${mcp.server} 서버 · ${mcp.tool} 도구`, `MCP · ${mcp.server} server · ${mcp.tool} tool`)
+      : isBash
+        ? t('Bash · 일회성 실행', 'Bash · one-off run')
+        : isSearch
+          ? t('검색', 'Search')
+          : t('도구', 'Tool') + ' · ' + tl.verb,
+    tl.durationMs != null ? fmtDur(tl.durationMs) : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const copy = (which: 'req' | 'out', text: string): void => {
     navigator.clipboard
       ?.writeText(text)
       .then(() => {
@@ -443,19 +471,23 @@ function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void 
       })
       .catch(() => {})
   }
+  // 결과 목록의 파일 — 카드를 닫고 연다(뷰어가 카드 아래에 열리면 가려진다)
+  const openHit = (p: string): void => {
+    if (!onOpenFile) return
+    onClose()
+    onOpenFile(p)
+  }
+  // 엔진이 끝 4,000자만 실어 보내는 캡은 '끝부분 4,000자'로 알린다
+  const capped = output.length >= 4000
+  const resultLabel = failed ? t('오류', 'Error') : isBash ? t('출력', 'Output') : t('결과', 'Result')
   return createPortal(
     <div className="sa-overlay" onMouseDown={onClose}>
       <div className="dc-card" ref={setCard} onMouseDown={(e) => e.stopPropagation()}>
         <div className="dc-head">
-          <div className="dc-tile">
-            <IconTerminal size={19} />
-          </div>
+          <div className="dc-tile">{toolIcon(tl.kind, 19)}</div>
           <div className="dc-tt">
-            <span className="dc-title mono">{tl.target}</span>
-            <div className="dc-sub">
-              {t('Bash · 일회성 실행', 'Bash · one-off run')}
-              {tl.durationMs != null ? ` · ${fmtDur(tl.durationMs)}` : ''}
-            </div>
+            <span className={'dc-title' + (mcp ? '' : ' mono')}>{title}</span>
+            <div className="dc-sub">{sub}</div>
           </div>
           <span className={'dc-badge' + (failed ? ' err' : '')}>
             <span className="d" />
@@ -467,32 +499,83 @@ function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void 
         </div>
         <div className="dc-body scroll">
           <div className="dc-sec">
-            <span>{t('명령', 'Command')}</span>
+            <span>{isBash ? t('명령', 'Command') : t('요청', 'Request')}</span>
             <i className="dc-ln" />
-            <button className={'dc-copy' + (copied === 'cmd' ? ' on' : '')} onClick={() => copy('cmd', tl.target)}>
-              <IconCopy size={12} />
-              {copied === 'cmd' ? t('복사됨 ✓', 'Copied ✓') : t('명령 복사', 'Copy command')}
-            </button>
+            {!!reqText && (
+              <button className={'dc-copy' + (copied === 'req' ? ' on' : '')} onClick={() => copy('req', reqText)}>
+                <IconCopy size={12} />
+                {copied === 'req' ? t('복사됨 ✓', 'Copied ✓') : isBash ? t('명령 복사', 'Copy command') : t('요청 복사', 'Copy request')}
+              </button>
+            )}
           </div>
-          <div className="dc-cmd">{tl.target}</div>
-          <div className="dc-sec">
-            <span>{t('출력', 'Output')}</span>
-            <i className="dc-ln" />
-            <button className={'dc-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', tl.output ?? '')}>
-              <IconCopy size={12} />
-              {copied === 'out' ? t('복사됨 ✓', 'Copied ✓') : t('출력 복사', 'Copy output')}
-            </button>
-          </div>
-          <div className="dc-term">
-            <div className="dc-term-body">
-            {lines.map((ln, i) => (
-              <div key={i} className={'bo-ln' + (bashErrLine(failed, ln) ? ' err' : '')}>
-                {/* 빈 줄은 NBSP로 높이 유지 — 일반 공백은 collapse돼 줄이 사라진다 */}
-                {ln || '\u00A0'}
-              </div>
-            ))}
+          {isBash || !req.rows ? (
+            <div className="dc-cmd">{reqText || t('(인자 없음)', '(no arguments)')}</div>
+          ) : (
+            <div className="dc-kv">
+              {req.rows.map(([k, v]) => (
+                <div key={k}>
+                  <span className="k">{k}</span>
+                  <span className="v">{v}</span>
+                </div>
+              ))}
             </div>
+          )}
+          <div className="dc-sec">
+            <span>
+              {resultLabel}
+              {showFiles && search ? ` · ${t(`${search.hits.length}건`, `${search.hits.length} hits`)}` : ''}
+            </span>
+            <i className="dc-ln" />
+            {!!output && (
+              <button className={'dc-copy' + (copied === 'out' ? ' on' : '')} onClick={() => copy('out', output)}>
+                <IconCopy size={12} />
+                {copied === 'out' ? t('복사됨 ✓', 'Copied ✓') : t('결과 복사', 'Copy result')}
+              </button>
+            )}
           </div>
+          {showFiles && search ? (
+            <>
+              <div className="dc-files">
+                {search.hits.map((h, i) => (
+                  <button
+                    key={i}
+                    className={'dc-file' + (onOpenFile ? ' openable' : '')}
+                    onClick={() => openHit(h.path)}
+                    title={onOpenFile ? t('파일 보기', 'View file') : undefined}
+                  >
+                    {h.line && <span className="ln">{h.line}</span>}
+                    <span className="p">{h.path}</span>
+                    {h.text && <span className="hit">{h.text}</span>}
+                  </button>
+                ))}
+                {search.truncated && <div className="dc-file-note">{t('결과가 잘렸어요', 'Results were truncated')}</div>}
+              </div>
+              {search.rest.length > 0 && (
+                <div className="dc-term dc-term-after">
+                  <div className="dc-term-body">
+                    {search.rest.map((ln, i) => (
+                      <div key={i} className="bo-ln">
+                        {ln}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : output ? (
+            <div className="dc-term">
+              <div className="dc-term-body">
+                {lines.map((ln, i) => (
+                  <div key={i} className={'bo-ln' + ((isBash ? bashErrLine(failed, ln) : failed) ? ' err' : '')}>
+                    {/* 빈 줄은 NBSP로 높이 유지 — 일반 공백은 collapse돼 줄이 사라진다 */}
+                    {ln || ' '}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="dc-cmd dc-empty">{t('(출력 없음)', '(no output)')}</div>
+          )}
         </div>
         <div className="dc-foot">
           {tl.durationMs != null && (
@@ -500,15 +583,18 @@ function BashLogModal({ t: tl, onClose }: { t: ToolLogItem; onClose: () => void 
               {t('소요', 'Took')} <b>{fmtDur(tl.durationMs)}</b>
             </span>
           )}
-          {/* 엔진이 끝 200줄/16KB만 실어 보내는 캡은 '끝부분 200줄'로 알린다 */}
-          <span className="dc-stat">
-            {t('출력', 'Output')}{' '}
-            <b>
-              {lines.length >= 200
-                ? t('끝부분 200줄', 'last 200 lines')
-                : t(`${lines.length}줄`, `${lines.length} lines`)}
-            </b>
-          </span>
+          {!!output && (
+            <span className="dc-stat">
+              {resultLabel}{' '}
+              <b>
+                {capped
+                  ? t('끝부분 4,000자', 'last 4,000 chars')
+                  : showFiles && search
+                    ? t(`${search.hits.length}건`, `${search.hits.length} hits`)
+                    : t(`${lines.length}줄`, `${lines.length} lines`)}
+              </b>
+            </span>
+          )}
         </div>
       </div>
       <MouseGestureLayer
@@ -546,7 +632,48 @@ function BashRow({ t: tl }: { t: ToolLogItem }) {
         </span>
         <ToolResult t={tl} />
       </div>
-      {open && tl.output && <BashLogModal t={tl} onClose={() => setOpen(false)} />}
+      {open && tl.output && <ToolLogModal t={tl} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+// 일반 도구 행(Read/Write/Edit/Search/MCP/기타) — ★TOOLROW(2026-09-02 사용자 결정):
+//   파일 행(read/write/edit)  클릭 = 파일 열기(2.6.2 그대로). 오류면 오류 본문 카드.
+//   나머지(search/mcp/other)  클릭 = 상세 카드(「요청」·「결과」). 실행 중엔 안 열린다.
+// 오른쪽 요약은 ToolResult가 토큰을 풀어 그린다 — 본문은 어느 행에도 안 나온다.
+// prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
+function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const fileRow = tl.kind === 'read' || tl.kind === 'write' || tl.kind === 'edit'
+  const errCard = tl.status === 'error' && !!tl.output
+  const toFile = fileRow && !errCard && !!onOpenFile && !!tl.target
+  const toCard = fileRow ? errCard : tl.status !== 'running' && (!!tl.output || !!tl.args)
+  const clickable = toFile || toCard
+  const tip = toFile
+    ? t('파일 보기', 'View file')
+    : errCard
+      ? t('오류 보기', 'View error')
+      : toCard
+        ? t('결과 보기', 'View output')
+        : undefined
+  return (
+    <>
+      <div
+        className={'t-row ' + tl.kind + ' ' + tl.status + (clickable ? ' openable' : '')}
+        onClick={toFile ? () => onOpenFile!(tl.target) : toCard ? () => setOpen(true) : undefined}
+      >
+        <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
+        <span className="t-verb">{tl.verb}</span>
+        {/* 툴팁은 넓은 행 전체가 아니라 대상에 달아, 대상 바로 아래에 뜨게 한다.
+            Skill/Workflow 정착 행은 요약 문장이 이 자리로 오므로 이름 대상은 접는다 */}
+        {!resultBesideVerb(tl) && (
+          <span className={'t-target' + (clickable ? ' has-tip' : '')} data-tip={tip}>
+            <span className="t-txt">{tl.target}</span>
+          </span>
+        )}
+        <ToolResult t={tl} />
+      </div>
+      {open && <ToolLogModal t={tl} onClose={() => setOpen(false)} onOpenFile={onOpenFile} />}
     </>
   )
 }
@@ -661,30 +788,7 @@ function ToolGroup({
       {rows.map((tl) => {
         if (tl.kind === 'web') return <WebRow t={tl} key={tl.id} />
         if (tl.kind === 'bash') return <BashRow t={tl} key={tl.id} />
-        const openable =
-          !!onOpenFile && (tl.kind === 'read' || tl.kind === 'write' || tl.kind === 'edit') && !!tl.target
-        return (
-          <Fragment key={tl.id}>
-            <div
-              className={'t-row ' + tl.kind + ' ' + tl.status + (openable ? ' openable' : '')}
-              onClick={openable ? () => onOpenFile!(tl.target) : undefined}
-            >
-              <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
-              <span className="t-verb">{tl.verb}</span>
-              {/* 툴팁은 넓은 행 전체가 아니라 파일명에 달아, 파일명 바로 아래에 뜨게 한다.
-                  Skill/Workflow 정착 행은 요약 문장이 이 자리로 오므로 이름 대상은 접는다 */}
-              {!resultBesideVerb(tl) && (
-                <span
-                  className={'t-target' + (openable ? ' has-tip' : '')}
-                  data-tip={openable ? t('파일 보기', 'View file') : undefined}
-                >
-                  <span className="t-txt">{tl.target}</span>
-                </span>
-              )}
-              <ToolResult t={tl} />
-            </div>
-          </Fragment>
-        )
+        return <ToolRow t={tl} onOpenFile={onOpenFile} key={tl.id} />
       })}
     </div>
   )
