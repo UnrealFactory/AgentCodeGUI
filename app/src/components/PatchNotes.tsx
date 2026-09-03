@@ -141,6 +141,168 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.4 — 2026-09-03 보고 다섯: ① 링크가 안 열림 — 3.0에 2.6.2 setWindowOpenHandler→shell.openExternal의
+  //   짝이 없었다 → shell:open-external + main.tsx 앵커 가로채기 + win.rs on_navigation 안전망 ② 재시작
+  //   뒤 내 메시지만 사라짐 — 렌더러가 연 턴의 user-echo를 expect_runs가 통째로 삼켜 같은 대화를 그리는
+  //   다른 창(팝아웃 그리드 유령 셀·자리 밖 수집기)이 말풍선을 못 받았고, 그 사본이 저장을 이겼다(실측
+  //   ma-…-2.json worked 33·assistant 36·user 6) → Op::Run이 echoText/echoFrom으로 보낸 창만 빼고 에코
+  //   ③ 워크플로 중지·한도 뒤 한참 멈춤 — T13 interrupt·한도 착지가 원장의 워크플로를 그대로 둬 90초
+  //   리스가 다 흐를 때까지 Resident(LiveItems) → land_turn이 중단·한도 턴의 워크플로/에이전트를 즉시
+  //   정착(settle_stranded_work) ④ 한도 뒤 「<synthetic>으로 전환」 → 계정 전환 → 재개 턴이 unrecognized
+  //   model로 사망 — CLI의 합성 프레임 model:"<synthetic>"을 모델 전환으로 읽었다 → is_placeholder_model로
+  //   차단 + 디스크의 오염 정체성 복구(ident.rs) + 종료 경로도 fallback_arms 정리 ⑤ 계정을 바꿔 보냈는데
+  //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
+  '3.0.4': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: '링크가 안 열리던 것, 재시작 뒤 내 메시지만 사라지던 것, 워크플로를 멈추거나 한도에 걸린 뒤 한참 굳던 것을 고쳤습니다.',
+      notes: [
+        {
+          tag: '채팅',
+          name: '링크를 눌러도 브라우저가 안 열리던 문제',
+          desc: (
+            <>
+              답변 속 마크다운 링크, 웹 검색 행을 펼쳤을 때의 페이지 목록, 설정의 로그인 링크가 눌러도 아무 일도
+              없었습니다. 2.6.2에서 링크를 OS 브라우저로 넘기던 자리가 3.0 재구축 때 빠져 있었습니다. 이제 외부
+              <b>http(s) 링크는 기본 브라우저</b>로 열리고, 앱 화면이 그 페이지로 바뀌는 일도 없습니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '껐다 켜면 AI 답은 남고 내 메시지만 사라지던 문제',
+          desc: (
+            <>
+              패널을 별도 창으로 띄워 대화하면, 메인 창의 그리드도 같은 대화를 몰래 따라 그리는데 그 사본에는
+              <b>사용자 말풍선이 한 번도 오지 않았습니다</b>(보낸 창이 직접 그리니 엔진이 에코를 생략했습니다). 저장은
+              그 사본이 이기므로 디스크에는 답만 남았습니다. 이제 엔진이 사용자 말풍선을 <b>보낸 창만 빼고</b> 같은
+              대화를 그리는 모든 창에 전달합니다.
+            </>
+          )
+        },
+        {
+          tag: '워크플로',
+          name: '워크플로를 중지하거나 한도에 걸리면 한참 「작업 중」으로 굳던 문제',
+          desc: (
+            <>
+              턴을 중지하거나 한도로 턴이 죽어도 그 턴이 띄운 워크플로는 목록에 그대로 남아, 더는 진행 신호가 오지
+              않는데도 <b>90초 리스가 다 흐를 때까지</b> 화면이 「작업 중」이었습니다 — 그 뒤에야 「진행 상태를 알 수
+              없어 표시를 정리했어요」가 떴습니다. 이제 중지·한도로 끝난 턴의 워크플로·백그라운드 에이전트는 그
+              자리에서 정리되고, 한도 안내도 바로 섭니다.
+            </>
+          )
+        },
+        {
+          tag: '한도',
+          name: '한도 뒤 「<synthetic>으로 전환」 → 계정 전환 → 재개 턴이 죽던 꼬임',
+          desc: (
+            <>
+              CLI는 한도 에러 문장을 모델 이름이 <code>&lt;synthetic&gt;</code>인 합성 메시지로 보내는데, 앱이 이걸
+              <b>모델 전환</b>으로 읽어 대화의 모델을 그 이름으로 바꿔 버렸습니다. 그 뒤 계정을 갈아타고 이어서 보낸 턴은
+              「There&apos;s an issue with the selected model」로 죽었고, 이 값이 파일에도 저장돼 재시작해도 반복됐습니다.
+              이제 자리표시자 모델은 전환으로 치지 않고, 이미 오염된 대화는 열 때 기본 모델로 되돌립니다.
+            </>
+          )
+        },
+        {
+          tag: '한도',
+          name: '계정을 바꿔 보냈는데 답이 없다가 /clear 뒤에야 되던 문제',
+          desc: (
+            <>
+              한도에 걸린 뒤 다른 계정을 골라 보내도, 화면의 한도 대기표가 <b>옛 계정 채로</b> 남아 새 전송을 붙들고
+              있었습니다. 이제 계정을 바꾸는 순간 그 대기표는 무효가 됩니다(엔진 쪽 규칙과 같습니다).
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '아직 아무 말도 안 한 채팅에서 계정을 골라도 경고 카드가 뜨던 문제',
+          desc: (
+            <>
+              계정 전환 확인 카드는 「이 대화의 프롬프트 캐시가 새 계정에 없다」는 비용을 경고하는 것인데, 주고받은
+              것이 없는 채팅에도 떴습니다. 이제 <b>대화가 시작된 채팅에서만</b> 묻고, 빈 채팅에서는 바로 바뀝니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: 'Links now open, your own messages no longer vanish after a restart, and stopping a workflow or hitting the limit no longer freezes the chat.',
+      notes: [
+        {
+          tag: 'Chat',
+          name: 'Clicking a link did nothing',
+          desc: (
+            <>
+              Markdown links in replies, the page list under a web-search row, and the login link in Settings did not
+              open. The piece that handed links to the OS browser in 2.6.2 was missing from the 3.0 rebuild. External{' '}
+              <b>http(s) links now open in your default browser</b>, and the app never navigates away to the page.
+            </>
+          )
+        },
+        {
+          tag: 'Chats',
+          name: 'After a restart the AI replies were there but your own messages were gone',
+          desc: (
+            <>
+              While a panel was popped out into its own window, the main-window grid kept a shadow copy of the same
+              conversation — and that copy <b>never received your bubbles</b> (the sending window drew them itself, so
+              the engine skipped the echo). The shadow copy wins on save, so only the replies reached disk. The engine
+              now delivers your message to every window showing that chat <b>except the one that sent it</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Workflow',
+          name: 'Stopping a workflow or hitting the limit left the chat stuck on "Working"',
+          desc: (
+            <>
+              When a turn was interrupted or killed by the usage limit, the workflows it had started stayed in the list
+              even though no progress could arrive, so the chat showed "Working" <b>until their 90-second lease ran
+              out</b> — only then did "cleaned up the display" appear. Workflows and background agents of a turn that
+              ended by interrupt or limit are now settled on the spot, and the limit notice shows immediately.
+            </>
+          )
+        },
+        {
+          tag: 'Limits',
+          name: 'Limit → "switched to <synthetic>" → account switch → resumed turn died',
+          desc: (
+            <>
+              The CLI reports a limit error as a synthetic message whose model is <code>&lt;synthetic&gt;</code>; the app
+              read that as a <b>model fallback</b> and rewrote the chat&apos;s model to that name. The account switch and
+              resume that followed then failed with "There&apos;s an issue with the selected model", and because the value
+              was persisted it repeated after restarts. Placeholder models are no longer treated as a switch, and an
+              already-poisoned chat is repaired to the default model when loaded.
+            </>
+          )
+        },
+        {
+          tag: 'Limits',
+          name: 'Sending on another account got no reply until /clear',
+          desc: (
+            <>
+              After a limit, picking a different account and sending still went nowhere: the on-screen limit hold was
+              still keyed to the <b>old account</b> and kept the new send queued. Changing the account now voids that
+              hold, matching the engine&apos;s rule.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'Picking an account in an empty chat showed the warning card',
+          desc: (
+            <>
+              The switch-account confirmation warns that the new account has no prompt cache for this conversation —
+              yet it appeared in chats with no messages at all. It now asks <b>only once a chat has started</b>; in an
+              empty chat the account changes immediately.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.3': {
     ko: {
       eyebrow: 'FIXES',

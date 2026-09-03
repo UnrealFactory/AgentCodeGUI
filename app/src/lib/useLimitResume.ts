@@ -305,6 +305,17 @@ export function useLimitResume(o: LimitResumeSurface): LimitResumeHandle {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.managed, o.holdKey])
 
+  // ★3.0.4 — 계정을 바꾸면 대기표는 즉시 무효다(엔진 `apply_identity` §7.3 "계정이 바뀌면
+  // 대기표는 즉시 무효"의 렌더러 짝). 옛 계정의 표가 남아 있으면 큐 드레인 가드
+  // (`holdRef.current?.key === activeChatId`)가 새 계정으로 보낸 전송까지 붙들어 「안녕」
+  // 한 줄에 답이 없고, /clear가 표를 걷어야 비로소 나갔다(2026-09-03 보고).
+  useEffect(() => {
+    const cur = holdRef.current
+    if (!cur || cur.key !== o.holdKey) return
+    if ((cur.account ?? '') !== (o.account ?? '')) setHold(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.account, o.holdKey])
+
   // ★R28c RCAP — 사용자가 누르는 출구. 자동이 접힌 표(`autoPaused`)의 **유일한** 발사구다.
   //
   // 계수를 0으로 되돌리는 것이 요점이다: 안 되돌리면 이 발사가 또 한도로 죽었을 때 새 표가

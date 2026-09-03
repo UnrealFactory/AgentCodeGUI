@@ -54,7 +54,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, EventTarget};
 
 /// IPC가 허브 응답을 기다리는 상한. 넘으면 안전값을 돌려준다(§ 락 규율 3).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(3);
@@ -496,6 +496,49 @@ impl Hub {
         }
     }
 
+    /// ★3.0.4 — `fanout`과 같은 봉투를 **한 창만 빼고** 보낸다.
+    ///
+    /// 렌더러가 연 턴의 사용자 말풍선(`user-echo`)이 쓴다. 보낸 창은 자기 `begin` 리듀서로
+    /// 이미 그렸으니 빼고, 같은 대화를 그리는 **다른** 창 — 팝아웃 패널의 그리드 유령 셀 ·
+    /// 자리 밖 수집기(App `bgSnapRef`) · 추가 채팅 창 — 은 받아야 한다. 3.0.3까지는
+    /// `sync_engine_run`이 `expect_runs`로 에코를 통째로 삼켜 그 창들이 말풍선을 영영 못
+    /// 받았고, 팝아웃 동안은 그리드 사본이 저장을 이기므로(MultiAgent `applyPanelFlush`의
+    /// "스레드는 라이브가 이긴다") **어시스턴트 답만 있고 내 말은 없는 대화**가 디스크에
+    /// 남았다(2026-09-03 보고: 재시작하면 AI 것은 다 있는데 내 것만 날아간다 — 실측
+    /// `chats-v3/ma-…-2.json`: worked 33 · assistant 36 · user 6).
+    fn fanout_except(&mut self, chat: &str, ev: Value, except: &str) {
+        let keep = |t: &EventTarget| {
+            !matches!(
+                t,
+                EventTarget::AnyLabel { label }
+                    | EventTarget::Window { label }
+                    | EventTarget::Webview { label }
+                    | EventTarget::WebviewWindow { label }
+                    if label == except
+            )
+        };
+        let _ = self.app.emit_filter(crate::ipc::ch::CHAT_EVENT, ChatEnvelope { chat_id: chat, event: &ev }, keep);
+        let active = match &self.route.active {
+            Some(a) => a.clone(),
+            None => {
+                let a = super::active_chat_id();
+                self.route.active = Some(a.clone());
+                a
+            }
+        };
+        if active == chat && except != crate::win::MAIN {
+            let _ = self.app.emit_to(crate::win::MAIN, crate::ipc::ch::ENGINE_EVENT, &ev);
+        }
+        if let Some(label) = crate::win::session_label_for_chat(chat) {
+            if label != except {
+                let _ = self.app.emit_to(label.as_str(), crate::ipc::ch::SESSION_EVENT, &ev);
+            }
+        }
+        if let Some(panel) = self.panel_alias(chat) {
+            let _ = self.app.emit_filter(crate::ipc::ch::MA_EVENT, PanelEnvelope { panel_id: &panel, event: &ev }, keep);
+        }
+    }
+
     /// 이 대화가 보드 자리에 앉아 있으면 그 자리 별칭(panelId) — fanout(MA_EVENT)과 같은
     /// 번역·같은 캐시를 쓴다. `chat:verdict`가 이 값을 함께 실어야 렌더러가 자리 키로
     /// 판별할 수 있다 — 안 실으면 **보이는 패널**에서 한 행동의 거부 사유가 패널 착지
@@ -687,6 +730,21 @@ impl Hub {
                 let _ = slot.rt.dispatch(Cmd::Send { text: prompt });
                 let chat_id = chat.clone();
                 self.fanout(&chat_id, first);
+                // ★3.0.4 — 사용자 말풍선을 **보낸 창만 빼고** 나머지 창에 에코한다
+                // (`fanout_except`). `echoText`는 화면에 그린 원문이다(멘션·첨부 안내가 붙은
+                // `prompt`가 아니다 — 그걸 그리면 다른 창의 말풍선에 안내문이 딸려 온다).
+                // `echoFrom`은 보낸 창의 라벨. 둘 중 하나라도 없는 옛 요청은 3.0.3처럼 침묵한다.
+                // 슬래시 명령은 렌더러가 `echoText`를 안 실으므로(카드로 그린다) 여기 안 온다.
+                let echo_text = req.get("echoText").and_then(Value::as_str).unwrap_or("").to_string();
+                let echo_from = req.get("echoFrom").and_then(Value::as_str).unwrap_or("").to_string();
+                if !echo_text.is_empty() && !echo_from.is_empty() {
+                    let images = req.get("echoImages").cloned().unwrap_or(Value::Null);
+                    let ev = json!({
+                        "type": "user-echo", "runId": run_id.clone(), "text": echo_text,
+                        "images": images, "origin": "user",
+                    });
+                    self.fanout_except(&chat_id, ev, &echo_from);
+                }
                 answer(json!(run_id));
             }
             Op::Cmd(cmd) => {

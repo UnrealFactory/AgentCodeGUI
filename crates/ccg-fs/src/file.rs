@@ -238,6 +238,70 @@ pub fn reveal_path(cwd: &str, rel: &str) {
     shell_reveal(&abs);
 }
 
+/// 외부 링크를 OS 기본 브라우저로 연다(2.6.2 `shell.openExternal`의 자리).
+///
+/// ★3.0.4 — 3.0에는 이 자리가 **없었다**. Electron은 `setWindowOpenHandler`/`will-navigate`가
+/// `target=_blank`·`window.open`을 가로채 `shell.openExternal`로 보냈는데, Tauri 재구축본은
+/// 그 짝을 안 옮겨 마크다운 링크·검색 결과 목록·로그인 링크가 눌러도 아무것도 안 했다
+/// (2026-09-03 보고). **http/https만** 연다 — `file:`·`javascript:` 같은 스킴은 셸 실행이
+/// 곧 임의 실행이라 여기서 거른다. 돌려주는 값은 "열어 볼 만한 URL이었나"다.
+pub fn open_external(url: &str) -> bool {
+    let u = url.trim();
+    let lower = u.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return false;
+    }
+    // 제어 문자·공백이 섞인 값은 ShellExecute가 인자로 쪼갤 수 있다 — 통째로 거절.
+    if u.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    shell_open_url(u);
+    true
+}
+
+#[cfg(windows)]
+fn shell_open_url(url: &str) {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let file: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    let op: Vec<u16> = "open\0".encode_utf16().collect();
+    unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(op.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn shell_open_url(_url: &str) {}
+
+#[cfg(test)]
+mod open_external_tests {
+    /// 스킴 판정만 잰다 — 실제 셸 실행은 windows 빌드에서만 있고 테스트가 브라우저를 띄우면 안 된다.
+    fn accepts(url: &str) -> bool {
+        let u = url.trim();
+        let lower = u.to_ascii_lowercase();
+        (lower.starts_with("http://") || lower.starts_with("https://"))
+            && !u.chars().any(|c| c.is_control() || c.is_whitespace())
+    }
+
+    #[test]
+    fn only_web_urls_reach_the_shell() {
+        assert!(accepts("https://example.com/a?b=c"));
+        assert!(accepts("HTTP://example.com"));
+        assert!(!accepts("file:///C:/Windows/System32/calc.exe"));
+        assert!(!accepts("javascript:alert(1)"));
+        assert!(!accepts("https://example.com/a b"));
+        assert!(!accepts(""));
+    }
+}
+
 #[cfg(windows)]
 fn wide(s: &Path) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt;

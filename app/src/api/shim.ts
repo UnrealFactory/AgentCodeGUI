@@ -373,7 +373,8 @@ const NO_AI_MSG: GitAiMessageResult = { ok: false, error: 'unimplemented' }
 const NO_PANEL_STATES: PanelPopStates = { open: [], leftovers: [] }
 
 const api: WindowApi = {
-  run: (req: RunRequest) => call(IPC.runStart, [req], ''),
+  // ★3.0.4 — 전송에 보낸 창의 라벨을 싣는다. 셸이 사용자 말풍선 에코를 이 창만 빼고 뿌린다.
+  run: (req: RunRequest) => call(IPC.runStart, [{ ...req, echoFrom: winLabel() }], ''),
   cancel: () => callVoid(IPC.runCancel),
   interrupt: () => callVoid(IPC.runInterrupt),
   respondPermission: (res: PermissionResponse) => callVoid(IPC.permissionRespond, [res]),
@@ -449,6 +450,7 @@ const api: WindowApi = {
   onUiLangChanged: (cb) => subscribe(IPC.uiLangChanged, cb),
   openPath: (cwd, relPath) => callVoid(IPC.shellOpenPath, [{ cwd, relPath }]),
   revealPath: (cwd, relPath) => callVoid(IPC.shellRevealPath, [{ cwd, relPath }]),
+  openExternal: (url) => call<boolean>(IPC.shellOpenExternal, [url], false),
   renamePath: (cwd, relPath, newName) => call(IPC.fsRename, [{ cwd, relPath, newName }], failed()),
   deletePath: (cwd, relPath) => call(IPC.fsDelete, [{ cwd, relPath }], failed()),
   createPath: (cwd, relPath, dir) => call(IPC.fsCreate, [{ cwd, relPath, dir }], failed()),
@@ -565,7 +567,7 @@ const api: WindowApi = {
   openSessionWindow: () => callVoid(IPC.openSessionWindow),
   btwOpen: (req: BtwOpenRequest) => callVoid(IPC.btwOpen, [req]),
   session: {
-    run: (req: RunRequest) => call(IPC.sessionRun, [req], ''),
+    run: (req: RunRequest) => call(IPC.sessionRun, [{ ...req, echoFrom: winLabel() }], ''),
     cancel: () => callVoid(IPC.sessionCancel),
     interrupt: () => callVoid(IPC.sessionInterrupt),
     respondPermission: (res: PermissionResponse) => callVoid(IPC.sessionPermissionRespond, [res]),
@@ -585,7 +587,7 @@ const api: WindowApi = {
     onChanged: (cb: (list: SessionWindowInfo[]) => void) => subscribe(IPC.sessionWindowsChanged, cb)
   },
   multi: {
-    run: (req: MultiRunRequest) => call(IPC.maRun, [req], ''),
+    run: (req: MultiRunRequest) => call(IPC.maRun, [{ ...req, echoFrom: winLabel() }], ''),
     cancel: (panelId: string) => callVoid(IPC.maCancel, [panelId]),
     interrupt: (panelId: string) => callVoid(IPC.maInterrupt, [panelId]),
     respondPermission: (res: MultiPermissionResponse) => callVoid(IPC.maPermissionRespond, [res]),

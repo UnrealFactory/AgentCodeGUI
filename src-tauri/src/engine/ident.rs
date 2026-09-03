@@ -101,7 +101,17 @@ pub fn raw_from_disk(chat_id: &str) -> Option<RawIdentity> {
     if !id.is_object() {
         return None;
     }
-    serde_json::from_value::<RawIdentity>(id.clone()).ok()
+    let mut raw = serde_json::from_value::<RawIdentity>(id.clone()).ok()?;
+    // ★3.0.4 — 디스크에 박힌 자리표시자 모델을 고친다. 3.0.3까지 CLI가 한도 에러 문장을
+    // `model:"<synthetic>"` assistant 프레임으로 내면 폴백 감지가 그걸 **모델 전환**으로 읽어
+    // 정체성을 `<synthetic>`으로 바꾸고 파일에 내렸다(`set_owned("identity")`). 그 채팅은
+    // 재시작 뒤에도 매 스폰이 "There's an issue with the selected model (<synthetic>)"로
+    // 죽는다. 감지 쪽은 `runtime.rs::is_placeholder_model`이 막고, 이미 오염된 파일은 여기서
+    // 기본 모델로 되돌린다(다른 축 — 계정·폴더·모드 — 은 그대로 둔다).
+    if ccg_engine::runtime::is_placeholder_model(&raw.engine.model) {
+        raw.engine.model = raw_default(&raw.cwd).engine.model;
+    }
+    Some(raw)
 }
 
 /// 전역값으로 물질화한 최소 정체성(§2.4) — 이 프로세스가 처음 보는 채팅의 출발점.

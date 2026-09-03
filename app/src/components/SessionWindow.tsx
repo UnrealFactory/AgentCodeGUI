@@ -667,7 +667,10 @@ export function SessionWindow(): React.ReactElement {
       useApi: apiMode || undefined,
       // 실행 계정 — 클로드는 격리 CLAUDE_CONFIG_DIR, Codex는 격리 CODEX_HOME (미지정=기본 계정)
       account: pk.account,
-      codexAccount: pk.codexAccount
+      codexAccount: pk.codexAccount,
+      // ★3.0.4 — 이 대화를 함께 그리는 다른 창(자리 밖 수집기)이 받을 사용자 말풍선 원문
+      echoText: cmd ? undefined : text,
+      echoImages: imgs.length ? imgs : undefined
     }
     if (!opts?.keepDraft) {
       setInput('')

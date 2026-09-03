@@ -199,6 +199,25 @@ fn shared_env<'a, R: tauri::Runtime, M: Manager<R>>(
         // 첨부 드롭·탐색기 드래그가 전부 죽는다. 경로가 필요한 자리는 심이
         // saveAttachmentData(바이트) 폴백으로 간다.
         .disable_drag_drop_handler()
+        // ★3.0.4 — 2.6.2 `will-navigate`의 거울. 앱 문서는 자기 오리진(`tauri.localhost` ·
+        // dev `localhost:5273` · `ccg-page.localhost` 미리보기) 밖으로 항해하지 않는다.
+        // 외부 http(s)로의 최상위 항해는 막고 OS 브라우저로 넘긴다 — 1차는 렌더러의
+        // 앵커 클릭 가로채기(`main.tsx`)이고 이건 그 그물을 빠져나온 경로의 안전망이다
+        // (target 없는 `<a href="https://…">`는 가로채기가 없으면 앱을 통째로 그 페이지로
+        // 바꿔 버린다). 다른 스킴(`tauri:`·`data:`·`blob:`·`about:`)은 그대로 둔다.
+        .on_navigation(|url| match url.scheme() {
+            "http" | "https" => {
+                let host = url.host_str().unwrap_or("");
+                let internal = host == "localhost" || host == "127.0.0.1" || host.ends_with(".localhost");
+                if internal {
+                    true
+                } else {
+                    ccg_fs::file::open_external(url.as_str());
+                    false
+                }
+            }
+            _ => true,
+        })
 }
 
 /// 창 아이콘을 exe 리소스(id 32512 = 멀티 프레임 `build/icon.ico`)에서 **크기별로** 다시 단다.

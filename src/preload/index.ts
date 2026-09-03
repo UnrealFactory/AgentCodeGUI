@@ -116,6 +116,7 @@ const api: WindowApi = {
   onUiLangChanged: (cb) => subscribe(IPC.uiLangChanged, cb),
   openPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellOpenPath, { cwd, relPath }),
   revealPath: (cwd, relPath) => ipcRenderer.invoke(IPC.shellRevealPath, { cwd, relPath }),
+  openExternal: (url) => ipcRenderer.invoke(IPC.shellOpenExternal, url),
   renamePath: (cwd, relPath, newName) => ipcRenderer.invoke(IPC.fsRename, { cwd, relPath, newName }),
   deletePath: (cwd, relPath) => ipcRenderer.invoke(IPC.fsDelete, { cwd, relPath }),
   createPath: (cwd, relPath, dir) => ipcRenderer.invoke(IPC.fsCreate, { cwd, relPath, dir }),

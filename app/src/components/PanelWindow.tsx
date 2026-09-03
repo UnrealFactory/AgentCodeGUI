@@ -278,7 +278,11 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
         resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,
         useApi: meta.api || undefined,
         account: pk.account,
-        codexAccount: pk.codexAccount
+        codexAccount: pk.codexAccount,
+        // ★3.0.4 — 그리드(메인 창)의 유령 셀이 받을 사용자 말풍선 원문. 이게 없으면 팝아웃
+        // 동안 그리드 사본에 내 말이 빠지고, 그 사본이 저장을 이겨 재시작 뒤 내 말만 사라진다.
+        echoText: cmd ? undefined : text,
+        echoImages: imgs.length ? imgs : undefined
       })
       .catch(() => {})
   })

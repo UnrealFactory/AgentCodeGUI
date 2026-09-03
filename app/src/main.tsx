@@ -29,6 +29,26 @@ document.addEventListener('contextmenu', (e) => {
   e.preventDefault()
 })
 
+// ★3.0.4 — 링크는 OS 브라우저로. 2.6.2는 메인의 `setWindowOpenHandler → shell.openExternal`이
+// `target=_blank`를 받았는데 3.0(WebView2)에는 그 짝이 없어 마크다운 링크·검색 결과 목록·
+// 로그인 링크가 눌러도 아무것도 안 했다(2026-09-03 보고). 모든 창이 이 번들을 지나므로
+// 여기 한 곳: 외부 http(s) 앵커의 왼쪽 클릭을 가로채 `shell:open-external`로 넘긴다.
+// 앱 자기 오리진(해시 링크·미리보기 iframe 바깥의 내부 이동)은 그대로 둔다.
+document.addEventListener('click', (e) => {
+  if (e.defaultPrevented || e.button !== 0) return
+  const a = e.target instanceof Element ? e.target.closest('a[href]') : null
+  if (!(a instanceof HTMLAnchorElement)) return
+  const href = a.href
+  if (!/^https?:\/\//i.test(href)) return
+  try {
+    if (new URL(href).origin === window.location.origin) return
+  } catch {
+    return
+  }
+  e.preventDefault()
+  void window.api.openExternal(href)
+})
+
 // load saved UI prefs (viewer size/zoom, chat zoom) before first paint so the
 // hooks read the persisted values synchronously and the UI doesn't flash a default
 // 뷰어 창 모드도 같은 자리에서 — 둘 다 부팅 페이로드(window.__CCG_BOOT)라 왕복이 없다.

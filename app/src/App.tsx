@@ -205,7 +205,11 @@ function buildRunRequest(a: {
     resume: a.session && sameCwd(a.session.cwd, a.cwd) ? a.session.sessionId : undefined,
     useApi: a.apiMode || undefined,
     account: pk.account,
-    codexAccount: pk.codexAccount
+    codexAccount: pk.codexAccount,
+    // ★3.0.4 — 다른 창(팝아웃·자리 밖 수집기)이 그릴 사용자 말풍선 원문. 슬래시 명령은
+    // 카드로 그리므로 안 싣는다(안 실으면 셸이 에코하지 않는다).
+    echoText: commandOf(a.text) ? undefined : a.text,
+    echoImages: a.images.length ? a.images : undefined
   }
 }
 

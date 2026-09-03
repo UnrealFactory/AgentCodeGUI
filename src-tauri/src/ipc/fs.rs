@@ -27,6 +27,7 @@ pub fn owns(channel: &str) -> bool {
             | ch::FS_MOVE
             | ch::SHELL_OPEN_PATH
             | ch::SHELL_REVEAL_PATH
+            | ch::SHELL_OPEN_EXTERNAL
             | ch::FS_HTML_PREVIEW_URL
             | ch::ATTACHMENT_SAVE_DATA
     )
@@ -131,6 +132,11 @@ pub fn dispatch(channel: &str, p: &Value) -> Option<Value> {
             let a = arg(p, 0);
             ccg_fs::file::reveal_path(s(a, "cwd"), s(a, "relPath"));
             Value::Null
+        }
+        // ★3.0.4 — 외부 링크(http/https만). 인자는 URL 문자열 하나.
+        ch::SHELL_OPEN_EXTERNAL => {
+            let url = arg(p, 0).as_str().unwrap_or("");
+            json!(ccg_fs::file::open_external(url))
         }
         _ => return None,
     })

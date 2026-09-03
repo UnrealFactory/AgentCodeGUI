@@ -161,6 +161,9 @@ pub mod ch {
     pub const FS_MOVE: &str = "fs:move";
     pub const SHELL_OPEN_PATH: &str = "shell:open-path";
     pub const SHELL_REVEAL_PATH: &str = "shell:reveal-path";
+    /// ★3.0.4 — 외부 링크를 OS 브라우저로(2.6.2 `shell.openExternal`). 3.0에는 이 채널이
+    /// 없어 마크다운·검색 결과·로그인 링크가 눌러도 안 열렸다. 판정은 `ccg_fs::file::open_external`.
+    pub const SHELL_OPEN_EXTERNAL: &str = "shell:open-external";
     /// 뷰어 HTML 미리보기 — 서빙 루트를 등록하고 `http://ccg-page.localhost/…` URL을
     /// 발급한다(M6 R3. 스킴 등록은 `main.rs`, 판정은 `ccg_fs::serve`).
     pub const FS_HTML_PREVIEW_URL: &str = "fs:html-preview-url";

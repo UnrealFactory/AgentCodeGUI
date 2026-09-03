@@ -11,7 +11,17 @@
  * ============================================================ */
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { ChatStatusLite, ChatTooling, EngineEvent, RunRequest } from '@shared/protocol'
+
+/** 이 창의 라벨 — 셸이 사용자 말풍선 에코를 보낸 창만 빼고 뿌릴 때 쓴다(shim `winLabel`과 같다). */
+function winLabel(): string {
+  try {
+    return getCurrentWindow().label || ''
+  } catch {
+    return ''
+  }
+}
 
 const CHATS_SET_ACTIVE = 'chats:set-active'
 const CHAT_EVENT = 'chat:event'
@@ -130,7 +140,7 @@ export async function getChatTooling(chatId: string): Promise<ChatTooling | null
 export async function runChat(chatId: string, req: RunRequest): Promise<string> {
   if (!chatId) return ''
   try {
-    const v = await invoke('ipc_call', { channel: CHAT_RUN, payload: [{ chatId, ...req }] })
+    const v = await invoke('ipc_call', { channel: CHAT_RUN, payload: [{ chatId, ...req, echoFrom: winLabel() }] })
     return typeof v === 'string' ? v : ''
   } catch {
     return ''

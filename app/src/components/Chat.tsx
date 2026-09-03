@@ -719,7 +719,7 @@ function WebRow({ t: tl }: { t: ToolLogItem }) {
     <>
       <div
         className={'t-row ' + tl.kind + ' ' + tl.status + (clickable ? ' openable' : '')}
-        onClick={links.length ? () => setOpen((o) => !o) : direct ? () => window.open(direct) : undefined}
+        onClick={links.length ? () => setOpen((o) => !o) : direct ? () => void window.api.openExternal(direct) : undefined}
       >
         <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
         <span className="t-verb">{tl.verb}</span>
@@ -3195,6 +3195,14 @@ export function PickerChip({
   const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
     if (fromEmail === toEmail) {
       // 같은 계정을 다시 고른 것(따라가던 계정을 고정) — 전환이 아니라 확인 불요
+      setPicker({ ...pickerRef.current, [key]: next })
+      return
+    }
+    // ★3.0.4 — 대화가 아직 시작되지 않은 채팅은 묻지 않는다(2026-09-03 보고: 빈 채팅에서
+    // 계정을 고르는데도 경고 카드). 카드가 경고하는 비용은 「이 대화의 프롬프트 캐시가
+    // 새 계정에 없다」인데, 주고받은 것이 없으면 식을 캐시도 없다 — `engineLocked`가 곧
+    // 「대화가 시작됐다」이다(엔진 세그먼트 잠금과 같은 신호).
+    if (!engineLocked) {
       setPicker({ ...pickerRef.current, [key]: next })
       return
     }

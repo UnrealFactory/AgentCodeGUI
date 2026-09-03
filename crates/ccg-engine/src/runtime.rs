@@ -192,6 +192,10 @@ struct Turn {
     from_cli: bool,
     compact_pending: Option<String>,
     result_text: Option<String>,
+    /// ★3.0.4 — 이 턴이 **한도로** 죽었다(`on_result`의 `limited`). `land_turn`이 이 턴에
+    /// 매달린 워크플로·백그라운드 에이전트를 정착시킬 근거다 — 같은 계정·같은 한도라
+    /// 그것들도 더 나아갈 수 없다.
+    limited: bool,
 }
 
 impl Turn {
@@ -212,6 +216,7 @@ impl Turn {
             from_cli,
             compact_pending: None,
             result_text: None,
+            limited: false,
         }
     }
 }
@@ -1764,6 +1769,13 @@ impl<D: CliDriver> ChatRuntime<D> {
     /// 그래서 ① 별칭 공간으로 접고 ② **첫 관측은 기준선**으로 삼는다(2.6.2 `curModelDisplay`가
     /// 세션 시작값으로 초기화되고 *변화*에서만 `model-fallback`을 내는 것과 같은 규약).
     fn observe_model(&mut self, wire_model: &str) {
+        // ★3.0.4 — `<synthetic>`은 모델이 아니다(`is_placeholder_model`). 한도 에러 문장을
+        // 실은 assistant 프레임이 그 값으로 오는데, 3.0.3까지 이걸 **모델 전환**으로 읽어
+        // 정체성이 `<synthetic>`이 됐고 이어진 계정 전환·재개 턴이 전부 "There's an issue
+        // with the selected model (<synthetic>)"로 죽었다(2026-09-03 보고 화면).
+        if is_placeholder_model(wire_model) {
+            return;
+        }
         let alias = model_alias(wire_model);
         match self.observed_model.clone() {
             None => self.observed_model = Some(alias),
@@ -1786,6 +1798,11 @@ impl<D: CliDriver> ChatRuntime<D> {
         // 별칭으로 접어 비교하는 이유는 입구마다 어휘가 다르기 때문이다 — `ModelDelta`는
         // 이미 별칭(`observe_model`)이지만 `RefusalFrame`·`Dialog`는 프레임이 준 값을
         // 그대로 넘긴다(해석된 id일 수 있다).
+        // ★3.0.4 — 자리표시자로는 절대 갈아타지 않는다(`observe_model` 주석). `RefusalFrame`·
+        // `Dialog` 입구도 같은 문을 지난다 — 프레임이 준 값을 그대로 넘기는 자리라서다.
+        if is_placeholder_model(to_model) {
+            return;
+        }
         if model_alias(self.identity.model()) == model_alias(to_model) {
             self.observed_model = Some(to_model.to_string());
             return;
@@ -2134,6 +2151,10 @@ impl<D: CliDriver> ChatRuntime<D> {
             to: StateTag::Idle,
         });
         self.ledger.borrow_mut().confidence = Confidence::Observed;
+        // ★3.0.4 — 턴이 착지 없이 끝난 경로(크래시·강제 종료)도 arm을 걷는다. `land_turn`만
+        // 걷으면 죽은 턴의 폴백 arm이 살아남아, 다음 전송의 picker 모델(사용자 손)을
+        // `resolve_fallback_conflicts`가 「폴백이 이긴다」로 지운다 — 폴백 모델이 안 풀린다.
+        self.fallback_arms.clear();
         self.emit_run_state(vec![]);
         // T26 — 예약분이 남아 있으면 여기서 적용된다.
         self.land_pending();
@@ -2248,6 +2269,29 @@ impl<D: CliDriver> ChatRuntime<D> {
                 }
             }
         }
+        // ★3.0.4 — **중단·한도로 죽은 턴**의 워크플로·백그라운드 에이전트는 여기서 정착한다.
+        //
+        // 3.0.3까지 이 자리는 원장을 그대로 두고 `Resident(LiveItems)`로 내려갔다. 그런데
+        // 그 항목들은 더 이상 진행 프레임을 낼 수 없다 — 워크플로는 방금 끊긴 턴의 도구
+        // 호출이고(T13 `interrupt`는 턴만 끊지 `stop_task`를 안 보냈다 · T23만 보냈다),
+        // 한도로 죽은 턴의 에이전트는 같은 계정·같은 한도에 막혀 있다. 정착 신호가 영영 안
+        // 오니 리스(워크플로 90초 · 에이전트 10분)가 다 흐를 때까지 화면은 '작업 중'으로
+        // 굳고, 그 뒤에야 워치독이 「진행 상태를 알 수 없어 표시를 정리했어요」로 걷었다.
+        // 사용자가 본 것이 정확히 그것이다(2026-09-03 보고: "중지·한도 뒤에 한참 멈춰 있다가
+        // 나중에 뭔가 된다"). 셸 종류(`BgShell`)는 안 건드린다 — 로컬 프로세스라 턴과 무관하게
+        // 실제로 계속 돈다(§3.4-b 유예가 그 몫).
+        let limited = self
+            .stream
+            .as_ref()
+            .and_then(|s| s.turn.as_ref())
+            .is_some_and(|t| t.limited);
+        if aborted || limited {
+            self.settle_stranded_work(if aborted {
+                SettleReason::Cancelled
+            } else {
+                SettleReason::TurnEnded
+            });
+        }
 
         let drainable = !self.queue.is_empty() && self.hold_gate_open();
         let empty = self.ledger.borrow().is_empty();
@@ -2289,6 +2333,33 @@ impl<D: CliDriver> ChatRuntime<D> {
                     self.set_state("§3.4", StateTag::Resident, Some(ResidentWhy::KeepOpen));
                 }
             },
+        }
+    }
+
+    /// ★3.0.4 — 죽은 턴에 매달린 API 의존 항목(워크플로·백그라운드 에이전트)을 정착시킨다.
+    /// 스트림이 살아 있으면 CLI에도 `stop_task`를 보낸다(T35와 같은 문) — 혹시 진짜로 아직
+    /// 돌고 있다면 이쪽이 정직한 중지다. 원장에서는 즉시 뺀다(T23 `stop_all`과 같은 규약).
+    fn settle_stranded_work(&mut self, reason: SettleReason) {
+        let Some(sid) = self.stream.as_ref().map(|s| s.id) else {
+            return;
+        };
+        let alive = self.stream.as_ref().is_some_and(|s| !s.closing);
+        let ids: Vec<LiveId> = self.ledger.borrow().owned_by(sid);
+        for id in ids {
+            let kind = match self.ledger.borrow().get(&id) {
+                Some(i) => i.kind,
+                None => continue,
+            };
+            if !matches!(kind, LiveKind::Workflow | LiveKind::BgAgent) {
+                continue;
+            }
+            if alive {
+                self.send_control("stop_task", json!({ "task_id": id }));
+            }
+            let it = self.ledger.borrow_mut().remove(&id, false);
+            if let Some(it) = it {
+                self.settle_emit(&it, reason.clone());
+            }
         }
     }
 
@@ -2533,7 +2604,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             Frame::SystemInit { session_id, model } => {
                 // 세션 시작 모델 = **기준선**. 이걸 안 잡으면 첫 assistant 프레임이 폴백으로 오인된다.
                 if let Some(m) = &model {
-                    if self.observed_model.is_none() {
+                    if self.observed_model.is_none() && !is_placeholder_model(m) {
                         self.observed_model = Some(model_alias(m));
                     }
                 }
@@ -3169,6 +3240,12 @@ impl<D: CliDriver> ChatRuntime<D> {
                     let at = found.resets_at.map(|s| self.epoch_secs_to_runtime(s));
                     self.arm_hold(at);
                 }
+            }
+        }
+        // ★3.0.4 — 착지(`land_turn`)가 읽는다: 한도로 죽은 턴의 워크플로는 정착 대상이다.
+        if let Some(s) = &mut self.stream {
+            if let Some(t) = &mut s.turn {
+                t.limited = limited;
             }
         }
         // 한도 없이 착지한 턴 = 이 에피소드는 끝났다. 헛 재개 카운터를 되돌린다.
@@ -4018,6 +4095,17 @@ pub fn model_alias(wire: &str) -> String {
     wire.to_string()
 }
 
+/// ★3.0.4 — 모델 자리가 **자리표시자**인가. CLI는 한도·거부 같은 합성 메시지를
+/// `model:"<synthetic>"`로 낸다 — 진짜 모델 전환이 아니다. 이 값이 정체성에 들어가면
+/// 다음 스폰이 `--model <synthetic>`로 나가 "There's an issue with the selected model"로
+/// 죽는다(2026-09-03 보고 화면의 연쇄: 한도 → `<synthetic>` 폴백 배너 → 계정 전환 →
+/// 재개 턴 사망). 빈 값도 같은 취급이다. 셸(`ident.rs::raw_from_disk`)이 오염된 파일을
+/// 고칠 때도 같은 판정을 쓴다.
+pub fn is_placeholder_model(wire: &str) -> bool {
+    let t = wire.trim();
+    t.is_empty() || (t.starts_with('<') && t.ends_with('>'))
+}
+
 fn respawn_text(identity: &[IdentityField], thread: bool, kills: &[(LiveKind, usize)]) -> String {
     let mut parts: Vec<String> = vec![];
     if identity.iter().any(|f| *f == IdentityField::EngineModel) {
@@ -4482,6 +4570,93 @@ mod t22_tests {
             })
             .collect();
         assert_eq!(statuses, vec![TerminalStatus::Aborted], "중단은 Done이 아니다: {statuses:?}");
+    }
+
+    /// 워크플로 하나가 원장에 오른 스트리밍 턴 — 3.0.4 정착 테스트 둘의 공통 서두.
+    fn streaming_with_workflow(r: &mut ChatRuntime<EofCli>) {
+        r.dispatch(Cmd::Send { text: "워크플로 돌려줘".into() });
+        r.on_frame(&json!({ "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} } }));
+        r.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        r.on_frame(&json!({ "type": "system", "subtype": "task_progress", "task_id": "w1",
+            "description": "리뷰", "workflow_progress": [] }));
+        assert_eq!(r.state(), StateTag::Streaming);
+        assert!(r.ledger().has("w1"), "워크플로가 원장에 올랐다");
+    }
+
+    fn settled_of(evs: Vec<Event>) -> Vec<(String, SettleReason)> {
+        evs.into_iter()
+            .filter_map(|e| match e {
+                Event::Settled { id, reason, .. } => Some((id, reason)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// ★3.0.4 — 중지한 턴의 워크플로는 리스(90초)를 기다리지 않고 그 자리에서 정착한다.
+    /// (2026-09-03 보고: "워크플로 중간에 취소하면 한참 멈춰 있다가 나중에 뭔가 된다")
+    #[test]
+    fn an_interrupted_workflow_turn_settles_its_workflow_at_once() {
+        let mut r = rt();
+        streaming_with_workflow(&mut r);
+        r.dispatch(Cmd::Interrupt);
+        assert_eq!(r.state(), StateTag::Interrupting);
+        let _ = r.drain_events();
+        r.on_frame(&json!({ "type": "result", "subtype": "error_during_execution", "is_error": false,
+            "result": "", "terminal_reason": "aborted_by_user", "session_id": "S1" }));
+        assert!(!r.ledger().has("w1"), "중단된 턴의 워크플로는 즉시 정착한다: {:?}", r.ledger().items());
+        assert_eq!(settled_of(r.drain_events()), vec![("w1".to_string(), SettleReason::Cancelled)]);
+        assert_ne!(r.state(), StateTag::Resident, "상주(LiveItems)로 굳지 않는다: {:?}", r.state());
+    }
+
+    /// ★3.0.4 — 한도로 죽은 턴의 워크플로도 같은 자리에서 정착한다 — 그래야 한도 표시가
+    /// '작업 중' 뒤에 숨지 않고 바로 선다.
+    #[test]
+    fn a_limit_killed_workflow_turn_settles_its_workflow_at_once() {
+        let mut r = rt();
+        streaming_with_workflow(&mut r);
+        let _ = r.drain_events();
+        r.on_frame(&json!({ "type": "result", "subtype": "error_during_execution", "is_error": true,
+            "result": "You've hit your usage limit · resets 5:40pm (Asia/Seoul)", "session_id": "S1" }));
+        assert!(!r.ledger().has("w1"), "한도로 죽은 턴의 워크플로는 즉시 정착한다: {:?}", r.ledger().items());
+        assert_eq!(settled_of(r.drain_events()), vec![("w1".to_string(), SettleReason::TurnEnded)]);
+        assert_ne!(r.state(), StateTag::Resident, "상주(LiveItems)로 굳지 않는다: {:?}", r.state());
+    }
+
+    /// ★3.0.4 — 정상 종료(`is_error:false`)한 턴의 워크플로는 **그대로 둔다** — 백그라운드에서
+    /// 계속 돌고 CLI가 정착 통지를 낸다(기존 `a_workflow_settling_mid_turn…` 규약).
+    #[test]
+    fn a_normally_ended_workflow_turn_keeps_its_workflow_resident() {
+        let mut r = rt();
+        streaming_with_workflow(&mut r);
+        r.on_frame(&json!({ "type": "result", "subtype": "success", "is_error": false,
+            "terminal_reason": "completed", "result": "돌리는 중이에요", "num_turns": 1 }));
+        assert!(r.ledger().has("w1"), "정상 턴 종료는 워크플로를 정착시키지 않는다");
+        assert_eq!(r.state(), StateTag::Resident);
+    }
+
+    /// ★3.0.4 — `<synthetic>`은 모델 전환이 아니다(2026-09-03 보고 화면: 한도 → 「Fable 5.1 대신
+    /// <synthetic>으로 답했어요」 → 계정 전환 → 재개 턴이 "issue with the selected model"로 사망).
+    #[test]
+    fn a_synthetic_model_frame_is_not_a_fallback() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "안녕".into() });
+        r.on_frame(&json!({ "type": "control_response",
+            "response": { "subtype": "success", "request_id": "init-1", "response": {} } }));
+        r.on_frame(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "model": "claude-haiku" }));
+        r.on_frame(&json!({ "type": "assistant", "parent_tool_use_id": null,
+            "message": { "role": "assistant", "model": "<synthetic>",
+                         "content": [{ "type": "text", "text": "You've hit your session limit" }] } }));
+        assert!(banners_of(&r).is_empty(), "자리표시자로는 폴백 배너가 없다");
+        assert_eq!(r.identity().model(), "haiku", "정체성 모델이 그대로다");
+        // 거부 프레임·대화상자 입구도 같은 문을 지난다
+        r.on_frame(&json!({ "type": "system", "subtype": "model_refusal_fallback",
+            "fallback_model": "<synthetic>", "original_model": "haiku", "session_id": "S1" }));
+        assert!(banners_of(&r).is_empty());
+        assert_eq!(r.identity().model(), "haiku");
+        assert!(is_placeholder_model("<synthetic>"));
+        assert!(is_placeholder_model("  "));
+        assert!(!is_placeholder_model("claude-opus-5"));
     }
 }
 

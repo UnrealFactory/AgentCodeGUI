@@ -182,6 +182,8 @@ export interface WindowApi {
   openPath(cwd: string, relPath: string): Promise<void>
   /** reveal (highlight) a file/folder in the OS file manager — explorer "파일 탐색기에서 보기" */
   revealPath(cwd: string, relPath: string): Promise<void>
+  /** ★3.0.4 open an http(s) link in the OS default browser — resolves false for any other scheme */
+  openExternal(url: string): Promise<boolean>
   /** rename a file/folder within its parent — explorer context menu */
   renamePath(cwd: string, relPath: string, newName: string): Promise<{ ok: boolean; error?: string }>
   /** move a file/folder to the OS trash (recycle bin) — explorer context menu */

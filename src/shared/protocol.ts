@@ -600,6 +600,12 @@ export interface RunRequest {
   // Codex 실행이 소비할 OpenAI 계정 — 미지정이면 기본 계정. 엔진이 그 계정의 격리
   // CODEX_HOME으로 app-server를 띄운다 (engine==='codex'일 때만 의미).
   codexAccount?: string
+  // ★3.0.4 — 화면에 그린 사용자 말풍선 원문·첨부와 보낸 창의 라벨. 셸이 `user-echo`를
+  // **보낸 창만 빼고** 같은 대화를 그리는 다른 창(팝아웃 그리드·자리 밖 수집기)에 뿌릴 때
+  // 쓴다 — 없으면 에코하지 않는다. `prompt`(멘션·첨부 안내가 붙은 전송분)와 다르다.
+  echoText?: string
+  echoImages?: string[]
+  echoFrom?: string
 }
 
 // ── Multi-agent (N independent panels, one engine each) ──────
@@ -1229,6 +1235,7 @@ export const IPC = {
   mcpSetEnabled: 'mcp:set-enabled', // turn an MCP server on/off (persisted to the app home)
   shellOpenPath: 'shell:open-path', // open a file with the OS default app
   shellRevealPath: 'shell:reveal-path', // reveal a file/folder in the OS file manager (Explorer/Finder)
+  shellOpenExternal: 'shell:open-external', // ★3.0.4 open an http(s) URL in the OS browser (2.6.2 shell.openExternal)
   fsRename: 'fs:rename', // rename a file/folder within its parent (explorer context menu)
   fsDelete: 'fs:delete', // move a file/folder to the OS trash / recycle bin (explorer context menu)
   fsCreate: 'fs:create', // create a new empty file or folder (explorer context menu)
