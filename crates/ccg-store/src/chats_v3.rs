@@ -158,8 +158,9 @@ pub fn chat_heads() -> Vec<ChatHead> {
 
 /// 지금 활성 채팅 id(§6.2의 `activeChat()` 진실 소스).
 pub fn active_chat_id() -> String {
+    // ★3.0.3 — 캐시판. 허브의 fanout이 라우팅 캐시가 비는 틱마다 여기를 지난다.
     STORE
-        .read_index()
+        .read_index_cached()
         .and_then(|i| i.get("activeChatId").and_then(Value::as_str).map(str::to_string))
         .unwrap_or_default()
 }

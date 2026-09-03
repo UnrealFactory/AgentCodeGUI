@@ -252,8 +252,9 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
     void listen<unknown>(
       channel,
       (ev) => {
-        // 구독자가 디스패치 도중 해지/예외를 내도 루프가 깨지지 않게 사본을 돈다
-        for (const fn of [...set]) {
+        // 구독자가 디스패치 도중 예외를 내도 루프가 깨지지 않게 try로 감싼다. Set은 순회 중
+        // 삭제가 안전하다(토큰마다 사본 배열을 만들던 자리 — 3.0.3).
+        for (const fn of set) {
           try {
             fn(ev.payload)
           } catch (err) {

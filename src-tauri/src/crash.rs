@@ -575,6 +575,107 @@ fn wait_recovered(since: u64) -> Option<u64> {
     }
 }
 
+// ── ★3.0.3 UI 스레드 정지 감시 (AppHangB1의 증거 수집) ────────────────────────
+//
+// 3.0.0·3.0.1의 「작업없음」은 WER에 `AppHangB1`(호스트 메인 스레드가 메시지를 안 받음)로
+// 남았고 이 로그에는 아무것도 없었다 — 렌더러가 죽은 게 아니라 **tao 이벤트 루프가 막힌
+// 것**이라 위 감시자는 볼 수 없다. 여기서는 1초마다 메인 스레드에 핑을 보내고 응답이
+// `UI_HANG_MS` 넘게 없으면 로그 한 줄 + **미니덤프 한 장**(프로세스당 1회)을 앱 홈에 남긴다.
+// 다음 정지는 `hang-<pid>-<ts>.dmp`를 WinDbg로 열어 메인 스레드 스택으로 원인을 특정한다.
+
+static UI_PONG_AT: AtomicU64 = AtomicU64::new(0);
+static UI_WATCHDOG: AtomicBool = AtomicBool::new(false);
+static UI_STALLED: AtomicBool = AtomicBool::new(false);
+static HANG_DUMPED: AtomicBool = AtomicBool::new(false);
+
+/// 이만큼 핑에 답이 없으면 정지로 본다. WER 기준(5초)보다 살짝 길게 — 창 생성·복구처럼
+/// 메인 스레드가 정당하게 바쁜 구간을 오탐하지 않게.
+const UI_HANG_MS: u64 = 6000;
+const UI_PING_MS: u64 = 1000;
+
+pub fn arm_ui_watchdog(app: &AppHandle) {
+    if UI_WATCHDOG.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    UI_PONG_AT.store(now_ms(), Ordering::SeqCst);
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("ccg-ui-watchdog".into()).spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(UI_PING_MS));
+        if shutting_down() {
+            break;
+        }
+        let _ = app.run_on_main_thread(|| UI_PONG_AT.store(now_ms(), Ordering::SeqCst));
+        let stall = now_ms().saturating_sub(UI_PONG_AT.load(Ordering::SeqCst));
+        if stall >= UI_HANG_MS {
+            if !UI_STALLED.swap(true, Ordering::SeqCst) {
+                let dump = write_hang_dump();
+                log(
+                    "ui-hang",
+                    serde_json::json!({ "stallMs": stall, "recovering": is_recovering(), "dump": dump }),
+                );
+            }
+        } else if UI_STALLED.swap(false, Ordering::SeqCst) {
+            log("ui-hang-recovered", serde_json::json!({ "stallMs": stall }));
+        }
+    });
+}
+
+/// 자기 프로세스의 미니덤프(스레드 스택 + 모듈 목록). 프로세스당 한 번만.
+#[cfg(windows)]
+fn write_hang_dump() -> Option<String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Diagnostics::Debug::{
+        MiniDumpWithHandleData, MiniDumpWithThreadInfo, MiniDumpWithUnloadedModules, MINIDUMP_TYPE,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId};
+    // windows 0.61의 `MiniDumpWriteDump` 래퍼는 Storage_FileSystem·System_Kernel·System_Memory
+    // 세 feature를 더 요구한다 — 시그니처 하나를 위해 그만큼을 켜지 않고 직접 묶는다.
+    #[link(name = "dbghelp")]
+    extern "system" {
+        fn MiniDumpWriteDump(
+            hprocess: HANDLE,
+            processid: u32,
+            hfile: HANDLE,
+            dumptype: MINIDUMP_TYPE,
+            exceptionparam: *const core::ffi::c_void,
+            userstreamparam: *const core::ffi::c_void,
+            callbackparam: *const core::ffi::c_void,
+        ) -> BOOL;
+    }
+    if HANG_DUMPED.swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    let path = ccg_store::app_home().join(format!("hang-{}-{}.dmp", std::process::id(), now_ms()));
+    let file = std::fs::File::create(&path).ok()?;
+    let kind = MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules | MiniDumpWithHandleData;
+    let ok = unsafe {
+        MiniDumpWriteDump(
+            GetCurrentProcess(),
+            GetCurrentProcessId(),
+            HANDLE(file.as_raw_handle()),
+            kind,
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    }
+    .as_bool();
+    if ok {
+        Some(path.to_string_lossy().into_owned())
+    } else {
+        drop(file);
+        let _ = std::fs::remove_file(&path);
+        None
+    }
+}
+
+#[cfg(not(windows))]
+fn write_hang_dump() -> Option<String> {
+    None
+}
+
 /// 유령 창을 남기지 않고 진다 — 창을 전부 부수고 프로세스를 끝낸다.
 fn teardown_and_exit(app: &AppHandle) {
     log("teardown", serde_json::json!({}));

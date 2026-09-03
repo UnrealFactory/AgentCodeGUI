@@ -277,8 +277,10 @@ input,textarea{ font-family:inherit; }
    전환에 공간감을 준다. 두 패널이 242px로 똑같아진 뒤 페이드만으론 구분이 안 돼서. */
 .lcol > .sidebar{ animation:lswap-back .22s cubic-bezier(.2,.8,.2,1); }
 .lcol > .explorer{ animation:lswap-fwd .22s cubic-bezier(.2,.8,.2,1); }
-@keyframes lswap-back{ from{ opacity:0; margin-left:-14px; } }
-@keyframes lswap-fwd{ from{ opacity:0; margin-left:14px; } }
+/* 3.0.3: margin-left → transform. margin 키프레임은 프레임마다 칼럼 전체를 재배치(layout)했다.
+   fill이 없으니 끝나면 transform도 걷혀 위 주석의 containing block 함정에 안 걸린다. */
+@keyframes lswap-back{ from{ opacity:0; transform:translateX(-14px); } }
+@keyframes lswap-fwd{ from{ opacity:0; transform:translateX(14px); } }
 
 /* ---- 자동 숨김(설정 › Display) — 오버레이 방식(B). 왼쪽 칼럼을 흐름에서 빼(position:absolute)
    본문(.chat/.multi)이 폭을 가득 쓰고, 사이드바만 본문 위로 transform 슬라이드해 들고난다.
@@ -291,9 +293,19 @@ input,textarea{ font-family:inherit; }
   background:rgba(28,28,28,.72); border-right:1px solid rgba(255,255,255,.10);
   -webkit-backdrop-filter:blur(32px) saturate(1.25); backdrop-filter:blur(32px) saturate(1.25);
   transform:translateX(-101%);
-  transition:transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s cubic-bezier(.2,.8,.2,1);
+  /* 3.0.3: 레이어를 상주시킨다 — 숨김/펼침마다 블러 서피스와 래스터를 새로 만들지 않게 */
+  will-change:transform;
+  transition:transform .26s cubic-bezier(.2,.8,.2,1);
 }
-.lcol.autohide.revealed{ transform:translateX(0); box-shadow:18px 0 50px -12px rgba(0,0,0,.75); }
+/* 그림자는 ::after의 opacity로 — box-shadow 전환은 프레임마다 50px 블러 그림자를 다시
+   칠한다(paint). opacity는 컴포지터만 움직인다(3.0.3). */
+.lcol.autohide::after{
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:-1;
+  box-shadow:18px 0 50px -12px rgba(0,0,0,.75); opacity:0;
+  transition:opacity .26s cubic-bezier(.2,.8,.2,1);
+}
+.lcol.autohide.revealed{ transform:translateX(0); }
+.lcol.autohide.revealed::after{ opacity:1; }
 /* 펼쳐진 동안: 뒤에 깔린 본문 헤더의 창 드래그 띠를 끈다. Electron 드래그 영역은 z-순서가
    아니라 DOM 순서로 합/차감되는 평면 집합이라, DOM상 나중인 .chat-head(전폭 drag)가 앞서
    뚫어둔 .fxh 버튼(no-drag) 구멍을 도로 덮어 새로고침·숨김보기 버튼이 비클라이언트(호버·클릭
@@ -1019,7 +1031,7 @@ button.hsec:hover{ color:var(--text-3); }
 .t-row:hover{ background:var(--hover); }
 .t-ic{ width:17px; flex:0 0 17px; color:rgba(255,255,255,.45); display:grid; place-items:center; }
 .t-verb{ font-size:14px; font-weight:600; color:rgba(255,255,255,.82); flex:0 0 auto; }
-/* 말줄임은 안쪽 .t-txt가 담당 — .t-target에 overflow:hidden을 걸면 has-tip ::after가 잘린다 */
+/* 말줄임은 안쪽 .t-txt가 담당 */
 .t-target{ font-family:var(--font-mono); font-size:12.5px; color:rgba(255,255,255,.56); min-width:0; flex:1; display:flex; }
 .t-target .t-txt{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* max-width+말줄임 — 결과가 문장인 도구가 행을 밀어내지 않게
@@ -1053,11 +1065,8 @@ button.hsec:hover{ color:var(--text-3); }
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wl-item:hover .wl-title{ color:var(--accent-2); }
 .wl-host{ flex:0 0 auto; font-size:11px; color:var(--text-4); }
-/* 파일 줄 툴팁("파일 보기")은 파일명(.t-target) 시작점 바로 위에 띄운다 — 행 전체에
-   달면 .t-target(flex:1) 탓에 행이 칼럼 폭만큼 넓어 툴팁이 가운데(≈오른쪽)에 떴다.
-   기본 위치(bottom:100%, 위)는 그대로 두고 left만 파일명 텍스트 시작점(0)에 맞춘다. */
-.t-target.has-tip::after{ left:0; transform:translate(0, 3px); }
-.t-target.has-tip:hover::after{ transform:translate(0, 0); }
+/* 도구 행의 호버 툴팁(「결과 보기」 등)은 2026-09-03 사용자 결정으로 뺐다 — 호버 안내는
+   위 .openable의 밑줄뿐이다. */
 
 /* ── bash 로그 줄(.bo-ln) — 상세 카드 터미널(.dc-term)이 쓴다. 인라인 출력 블록은
    성공·실패 모두 없음 — 실패도 행 우측 '오류' 요약만 남고, 행 클릭 = 전체 로그 모달. */

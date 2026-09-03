@@ -135,6 +135,121 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //     (채팅 엔진·도구 행·MCP & Skill 칩·뷰어 창·한도 두 갈래·계정·다이얼 1·사이드바/알림·
   //     채팅 손맛·Git·창/트레이·휴지통·홈 분리·Verse 제거). 문구의 UI 문자열은 전부 app/src에서
   //     실재를 확인한 것(「한도 소진 시」·「별도 창으로」·「사용 중」·COUNT_OPTIONS 1~6·tray.rs).
+  // 3.0.3 — 「쓰다 보면 느려지다 응답 없음」(2026-09-03, WER AppHangB1 ×2): ① 허브가 스트리밍 중
+  //   20ms 틱마다 슬롯마다 boards 인덱스+파일을 디스크에서 재읽기(lite::build → panel_seat_for_chat)
+  //   → fanout Store에 세대+지문 캐시 ② chat:*·chats:* IPC가 async 워커에서 hub::call 3초 대기
+  //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
+  //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
+  //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  '3.0.3': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: '쓰다 보면 느려지다 「응답 없음」으로 멈추던 문제를 고쳤습니다 — 그리고 뷰어 등장 버벅임, 도구 행 툴팁.',
+      notes: [
+        {
+          tag: '성능',
+          name: '쓰다 보면 점점 느려지던 문제',
+          desc: (
+            <>
+              답변이 흐르는 동안 엔진이 <b>20ms마다, 열린 채팅마다</b> 보드 파일을 디스크에서 다시 읽고 있었습니다(초당
+              수백 번). 화면 쪽도 글자가 올 때마다 대화 전체를 다시 훑고, 도구 하나가 끝날 때마다 그 묶음의 도구 행을
+              전부 다시 그렸습니다. 이제 보드는 바뀔 때만 읽고, 검사는 이번 턴만 보며, 도구 행은 바뀐 것만 다시
+              그립니다. 끝없이 자라던 기록(백그라운드 작업·stderr 알림·보낸 문장·모델 전환 이력)에도 상한을 두었습니다.
+            </>
+          )
+        },
+        {
+          tag: '안정성',
+          name: '「응답 없음」으로 멈추던 문제',
+          desc: (
+            <>
+              채팅·저장 요청이 엔진의 답을 <b>최대 3초</b> 기다리는데, 그 대기가 모든 창이 함께 쓰는 작은 작업자 풀에서
+              일어나 엔진이 잠깐 느려지면 <b>모든 창의 요청이 같이 멈췄습니다</b>. 전용 풀로 옮겼습니다. 답변 중
+              0.6초마다 돌던 대화 저장(대화 전체를 다시 직렬화)도 답변 중에는 2초 간격으로 늦췄습니다. 그래도 멈추면
+              원인을 남기도록, 화면이 6초 넘게 답이 없으면 앱 폴더에 <code>hang-*.dmp</code> 진단 파일을 자동으로
+              씁니다.
+            </>
+          )
+        },
+        {
+          tag: '뷰어',
+          name: '파일 뷰어·사이드바가 스르륵 뜰 때 버벅이던 문제',
+          desc: (
+            <>
+              파일을 열면 내용이 <b>등장 애니메이션 도중</b>에 도착해, 구문 강조와 수천 줄 그리기가 애니메이션의
+              프레임을 먹었습니다 — 같은 파일을 다시 열면 캐시라 부드럽고, 처음 여는 큰 파일만 버벅이던 이유입니다.
+              이제 애니메이션이 끝난 뒤에 내용을 붙입니다. 자동 숨김 사이드바는 펼칠 때마다 다시 칠하던 그림자와 블러
+              레이어를 상주시켜 컴포지터만 움직입니다.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '도구 행의 「결과 보기」 툴팁 제거',
+          desc: (
+            <>
+              Bash·Write·Web 같은 도구 행에 마우스를 올리면 뜨던 「결과 보기 / 파일 보기 / 찾은 페이지 보기」 툴팁을
+              뺐습니다. 호버 안내는 <b>밑줄</b>만 남고, 클릭 동작은 그대로입니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: 'Fixed the slowdown that ended in "Not responding" — plus the stuttering viewer entrance and the tool-row tooltips.',
+      notes: [
+        {
+          tag: 'Performance',
+          name: 'The app got slower the longer you used it',
+          desc: (
+            <>
+              While a reply streamed, the engine re-read the board files from disk <b>every 20 ms, for every open
+              chat</b> (hundreds of reads per second). The UI also rescanned the whole conversation on every token and
+              redrew every tool row in a group each time one tool finished. Boards are now read only when they change,
+              the check looks at the current turn only, and only changed rows redraw. Records that grew without bound
+              (background tasks, stderr notices, sent prompts, model-switch history) are now capped.
+            </>
+          )
+        },
+        {
+          tag: 'Stability',
+          name: 'The app froze with "Not responding"',
+          desc: (
+            <>
+              Chat and save requests wait up to <b>3 seconds</b> for the engine, and that wait ran on the small worker
+              pool every window shares — so a brief engine stall <b>froze every window's requests at once</b>. They now
+              run on a dedicated pool. The conversation save that fired every 0.6 s during a reply (re-serialising the
+              whole chat) now waits 2 s while a reply is streaming. Should the UI still stall for more than 6 seconds,
+              the app writes a <code>hang-*.dmp</code> diagnostic file into its home folder.
+            </>
+          )
+        },
+        {
+          tag: 'Viewer',
+          name: 'The file viewer and sidebar stuttered while sliding in',
+          desc: (
+            <>
+              File contents arrived <b>in the middle of the entrance animation</b>, so syntax highlighting and
+              thousands of rows ate the animation's frames — which is why reopening the same file (cached) was smooth
+              and only the first open of a big file stuttered. Contents now mount after the animation ends. The
+              auto-hide sidebar keeps its shadow and blur layer resident instead of repainting them on every reveal.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Removed the "View output" tooltip on tool rows',
+          desc: (
+            <>
+              The "View output / View file / View found pages" tooltip that appeared when hovering Bash, Write or Web
+              rows is gone. Hover shows the <b>underline</b> only; clicking works as before.
+            </>
+          )
+        }
+      ]
+    }
+  },
   // 3.0.2 — 3.0.1 보고 넷(2026-09-02): ① 업데이트 설치가 NSIS 기본 마법사(installMode
   //   passive)로 떠 2.6.2의 스플래시가 사라짐 → quiet(/S) + PowerShell·WPF 스플래시 복귀
   //   ② Git 스트립 중복 — cwd 표기와 `rev-parse --show-toplevel` 표기의 대소문자가 달라

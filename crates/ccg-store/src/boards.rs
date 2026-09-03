@@ -29,10 +29,12 @@ pub fn invalidate() {
 }
 
 pub fn read_boards() -> Value {
-    let Some((index, boards)) = STORE.read_all() else { return Value::Null };
+    // ★3.0.3 — 캐시판. 허브가 슬롯마다 20ms 틱에서 부르는 자리(`panel_seat_for_chat`)라
+    // 매 호출이 index + 보드 파일 전부를 읽고 파싱하던 것이 「점점 느려짐」의 첫 원인이었다.
+    let Some((index, boards)) = STORE.read_all_cached() else { return Value::Null };
     json!({
         "version": version_or_1(&index),
-        "boards": boards,
+        "boards": Value::Array(boards.as_ref().clone()),
         "activeBoardId": index.get("activeBoardId").and_then(Value::as_str).unwrap_or(""),
     })
 }

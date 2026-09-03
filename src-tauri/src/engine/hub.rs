@@ -240,6 +240,33 @@ struct RouteCache {
     panel: HashMap<String, Option<String>>,
 }
 
+/// `chat:event` 봉투 — 참조로 직렬화한다(★3.0.3, `fanout` 참조).
+#[derive(serde::Serialize, Clone, Copy)]
+struct ChatEnvelope<'a> {
+    #[serde(rename = "chatId")]
+    chat_id: &'a str,
+    event: &'a Value,
+}
+
+/// `ma:event` 봉투.
+#[derive(serde::Serialize, Clone, Copy)]
+struct PanelEnvelope<'a> {
+    #[serde(rename = "panelId")]
+    panel_id: &'a str,
+    event: &'a Value,
+}
+
+/// `updatedAt`만 다른 lite는 같은 것으로 본다 — 매 틱 두 벌을 복제해 비교하던 자리(★3.0.3).
+fn lite_same(a: &Value, b: &Value) -> bool {
+    match (a.as_object(), b.as_object()) {
+        (Some(a), Some(b)) => {
+            let n = |m: &serde_json::Map<String, Value>| m.len() - usize::from(m.contains_key("updatedAt"));
+            n(a) == n(b) && a.iter().filter(|(k, _)| k.as_str() != "updatedAt").all(|(k, v)| b.get(k) == Some(v))
+        }
+        _ => a == b,
+    }
+}
+
 impl RouteCache {
     fn clear(&mut self) {
         self.active = None;
@@ -438,10 +465,9 @@ impl Hub {
     /// 창 라우팅(§6.1 "창 라우팅은 `chatId → label` 역인덱스"): 본채팅은 메인 창,
     /// 추가 채팅은 그 창, 멀티 패널은 `panelId` 봉투. 어느 것도 아니면 봉투만 나간다.
     fn fanout(&mut self, chat: &str, ev: Value) {
-        let _ = self.app.emit(
-            crate::ipc::ch::CHAT_EVENT,
-            json!({ "chatId": chat, "event": ev.clone() }),
-        );
+        // ★3.0.3 — 봉투는 참조로 직렬화한다. 토큰마다 `ev.clone()` 셋(봉투 둘 + 창별 하나)이
+        // 허브 스레드 할당의 대부분이었다. Tauri의 emit은 직렬화만 하고 값을 붙들지 않는다.
+        let _ = self.app.emit(crate::ipc::ch::CHAT_EVENT, ChatEnvelope { chat_id: chat, event: &ev });
         let active = match &self.route.active {
             Some(a) => a.clone(),
             None => {
@@ -451,13 +477,11 @@ impl Hub {
             }
         };
         if active == chat {
-            let _ = self
-                .app
-                .emit_to(crate::win::MAIN, crate::ipc::ch::ENGINE_EVENT, ev.clone());
+            let _ = self.app.emit_to(crate::win::MAIN, crate::ipc::ch::ENGINE_EVENT, &ev);
         }
         // 창 레지스트리는 메모리 `Mutex<Vec<_>>`라 디스크를 안 탄다 — 캐시 대상이 아니다.
         if let Some(label) = crate::win::session_label_for_chat(chat) {
-            let _ = self.app.emit_to(label.as_str(), crate::ipc::ch::SESSION_EVENT, ev.clone());
+            let _ = self.app.emit_to(label.as_str(), crate::ipc::ch::SESSION_EVENT, &ev);
         }
         let panel = match self.route.panel.get(chat) {
             Some(p) => p.clone(),
@@ -468,9 +492,7 @@ impl Hub {
             }
         };
         if let Some(panel) = panel {
-            let _ = self
-                .app
-                .emit(crate::ipc::ch::MA_EVENT, json!({ "panelId": panel, "event": ev }));
+            let _ = self.app.emit(crate::ipc::ch::MA_EVENT, PanelEnvelope { panel_id: &panel, event: &ev });
         }
     }
 
@@ -1267,17 +1289,7 @@ impl Hub {
         let Some(slot) = self.slots.get_mut(chat) else { return };
         let mut next = lite::build(&slot.rt, slot.terminal, now);
         // updatedAt만 다른 것은 "바뀐 것"이 아니다(매 틱 브로드캐스트 방지).
-        let same = {
-            let mut a = next.clone();
-            let mut b = slot.last_lite.clone();
-            for v in [&mut a, &mut b] {
-                if let Some(o) = v.as_object_mut() {
-                    o.remove("updatedAt");
-                }
-            }
-            a == b
-        };
-        if same {
+        if lite_same(&next, &slot.last_lite) {
             return;
         }
         if let Some(o) = next.as_object_mut() {

@@ -274,6 +274,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {
             win::create_main(app.handle())?;
+            // ★3.0.3 — UI 스레드 정지 감시(AppHangB1의 증거 수집 · crash.rs).
+            crash::arm_ui_watchdog(app.handle());
             // 엔진 허브 — 창이 선 뒤에 띄운다(첫 브로드캐스트가 갈 곳이 있어야 한다).
             engine::boot(app.handle());
             // ★R28 T1T2 R2 — 부팅 엔진 자동 업데이트(2.6.2 `index.ts:2046`). 자기 스레드에서

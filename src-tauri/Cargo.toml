@@ -109,4 +109,6 @@ windows = { version = "0.61", features = [
   # `kill_wrapped_child`). `cmd /C`를 거쳐 띄운 `.cmd` 셰임은 우리 자식이 cmd.exe라
   # `Child::kill()`이 정작 CLI를 못 죽인다 — 스냅샷으로 **직속 자식만** 찾아 죽인다.
   "Win32_System_Diagnostics_ToolHelp",
+  # ★3.0.3 — UI 스레드 정지(AppHangB1) 때 미니덤프 한 장(crash.rs `arm_ui_watchdog`).
+  "Win32_System_Diagnostics_Debug",
 ] }

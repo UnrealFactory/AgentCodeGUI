@@ -345,6 +345,9 @@ const MAX_SUBAGENT_LOG = 100
 // 서브에이전트 칩 배열 자체의 상한 — 개별 칩(tools 200·log 100)은 캡이 있는데 배열은
 // 무캡이라 대량 스폰 자율 턴에서 이것만 무한히 자랐다. 오래된 칩부터 떨어진다.
 const MAX_SUBAGENTS = 100
+// 백그라운드 작업(셸·에이전트) 기록 상한 — 끝난 항목을 기록으로 남기는 유일한 무캡 배열이었다.
+// 밤샘 자율 실행(엔진이 여는 턴)에서 무한히 자라 매 저장 페이로드에 실렸다(3.0.3).
+const MAX_BG_TASKS = 200
 const MAX_TERMINAL_LINES = 500
 // 파일 하나의 diff 라인 상한. 4000이던 시절은 훙크 조각이 편집마다 concat되던 보험이었고
 // (지금은 엔진이 whole=true 전체 diff로 교체 방출), 크래시 원인이던 diff DP는 셀 캡
@@ -358,7 +361,8 @@ const MAX_CHANGED_FILES = 200
 // 풀 diff 라인을 유지하는 파일 수 — 그 밖(오래 안 만진) 파일의 diff는 요약 행으로 접는다.
 // +N/−N 칩·목록·파일 열람은 그대로고 뷰어의 변경 마킹만 접힘. 개당 최대 수 MB(30k줄)가
 // 파일 수만큼 상주·스냅샷에 실리는 걸 막는 렌더러 힙 예산.
-const MAX_FULL_DIFF_FILES = 40
+// 3.0.3: 40 → 16. 40 × 30k줄 = 최악 120만 개의 라인 객체가 상주하고 저장마다 직렬화됐다.
+const MAX_FULL_DIFF_FILES = 16
 
 // 실행 1건분의 모델별 토큰(result.tokenUsage)을 대화 누적(tokenTotals)에 더한다.
 // 보고가 없으면(생략·빈 배열) 기존 객체를 그대로 돌려줘 불필요한 리렌더를 만들지 않는다.
@@ -675,6 +679,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 어긋남이 곧 크리틱 R1·R2가 두 번 실패시킨 「엔진 71발 / 렌더러 2발」이다.
       // 「이 턴이 연 도구 그룹」이라는 공통 정의는 **누가 턴을 열었는지와 무관**해야 한다.
       openGroupId: null,
+      // 새 턴 — 지난 턴에 끝난 백그라운드 항목을 걷는다(`begin`과 같은 규칙, 3.0.3)
+      bgTasks: state.bgTasks.filter((t) => t.status === 'running'),
       messages: capThread([
         ...state.messages.filter((m) => m.id !== THINKING_ID),
         {
@@ -811,7 +817,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
         // 거기서 다시 놓으면 그 턴이 방금 낸 산출을 스스로 지우게 된다.
         if (e.runId === state.curRunId) return adopt
         const prior = state.messages.filter((m) => m.id !== THINKING_ID)
-        return { ...adopt, openGroupId: null, turnAt: Date.now(), turnMark: prior[prior.length - 1]?.id ?? null }
+        return {
+          ...adopt,
+          openGroupId: null,
+          turnAt: Date.now(),
+          turnMark: prior[prior.length - 1]?.id ?? null,
+          // 새 턴 — 지난 턴에 끝난 백그라운드 항목을 걷는다(`begin`과 같은 규칙, 3.0.3)
+          bgTasks: state.bgTasks.filter((t) => t.status === 'running')
+        }
       }
       if (staleRun(e.runId)) return state
       // 같은 실행의 재점등(done→working: 무음 오판 뒤 진짜 턴 재개) — 방금 붙인
@@ -1055,6 +1068,16 @@ export function reducer(state: SessionState, action: Action): SessionState {
         return t.status === 'running' ? { ...t, status: 'completed' as const } : t
       })
       for (const t of live.values()) next.push({ id: t.id, kind: t.kind, description: t.description, outputFile: t.outputFile, status: 'running' })
+      // 상한 — 끝난 항목부터(오래된 순) 떨어뜨린다. 실행 중인 것은 세지 않는다.
+      if (next.length > MAX_BG_TASKS) {
+        let over = next.length - MAX_BG_TASKS
+        for (let i = 0; i < next.length && over > 0; ) {
+          if (next[i].status !== 'running') {
+            next.splice(i, 1)
+            over--
+          } else i++
+        }
+      }
       return { ...state, bgTasks: next }
     }
 

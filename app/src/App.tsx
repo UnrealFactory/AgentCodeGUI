@@ -259,6 +259,12 @@ function takeChatCrash(): string {
   }
 }
 
+// 워크스페이스 저장 디바운스 — 유휴 600ms, 턴 중 2초(3.0.3). 저장 한 번은 로드된 채팅 전부의
+// 스냅샷(diff 포함)을 JSON으로 IPC에 싣고 셸이 UI 스레드에서 파싱한다. 도구 사이 600ms 공백마다
+// 그게 돌면 장기 자율 턴에서 UI 스레드가 저장 파싱으로 막힌다. 턴이 끝나면 600ms 안에 저장된다.
+const SAVE_DEBOUNCE_MS = 600
+const SAVE_DEBOUNCE_BUSY_MS = 2000
+
 function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
   const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted } = useAgentSession()
@@ -866,9 +872,9 @@ function MainApp({ user }: { user: AppUser }) {
           })
         })
         .catch(() => {})
-    }, 600)
+    }, busy ? SAVE_DEBOUNCE_BUSY_MS : SAVE_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [hydrated, chats, activeChatId, state, manualCwd, refDirs, picker, input, images])
+  }, [hydrated, chats, activeChatId, state, manualCwd, refDirs, picker, input, images, busy])
 
   const addImagePaths = (paths: string[]): void => {
     if (paths.length) setImages((a) => Array.from(new Set([...a, ...paths])))

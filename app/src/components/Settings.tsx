@@ -1805,7 +1805,7 @@ function LspView() {
       // stream download lines + percent into the open card (only the matching op's)
       setCard((c) =>
         c && c.id === p.server && c.status === 'running'
-          ? { ...c, log: p.line ? [...c.log, p.line] : c.log, percent: p.percent ?? c.percent }
+          ? { ...c, log: p.line ? [...c.log.slice(-799), p.line] : c.log, percent: p.percent ?? c.percent }
           : c
       )
       if (p.done) refresh()

@@ -21,7 +21,8 @@
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// id 문자 집합 — uuid / `ma-<sid>-<i>` / `sc-<uuid>` / `chat-<n>-<base36>`.
 /// 그 밖은 거부한다(경로 탈출 방지). 2.6.2 `safeId`와 같은 정규식.
@@ -54,11 +55,87 @@ pub struct Fanout {
     index_cache: Mutex<Option<String>>,
     /// prune이 절대 건드리면 안 되는 파일 이름(인덱스·Rust 전용 사이드카)
     reserved: &'static [&'static str],
+    /// ★3.0.3 변경 세대 — 이 스토어를 거친 모든 쓰기·무효화가 올린다. 아래 읽기 스냅샷의 키.
+    gen: AtomicU64,
+    /// 마지막 `read_*_cached`의 결과 — (세대, index.json 지문)이 같으면 디스크를 안 탄다.
+    snap: Mutex<Option<Snap>>,
+}
+
+/// 읽기 스냅샷(★3.0.3) — `read_index_cached`/`read_all_cached`의 캐시 항목.
+///
+/// 허브가 **스트리밍 중 20ms마다 슬롯마다** `active_chat_id`·`panel_seat_for_chat`을 부르는데,
+/// 3.0.2까지 그 둘이 매번 index.json + 보드 파일 전부를 읽고 파싱했다(초당 수백 번의 디스크
+/// 왕복 × 열린 채팅 수). 「쓰다 보면 점점 느려진다」의 첫 원인이다.
+struct Snap {
+    gen: u64,
+    stamp: Option<(u128, u64)>,
+    index: Arc<Value>,
+    /// `read_all_cached`가 채운다. `read_index_cached`만 지났으면 None.
+    items: Option<Arc<Vec<Value>>>,
 }
 
 impl Fanout {
     pub const fn new(dir: &'static str, reserved: &'static [&'static str]) -> Self {
-        Self { dir, cache: Mutex::new(None), index_cache: Mutex::new(None), reserved }
+        Self {
+            dir,
+            cache: Mutex::new(None),
+            index_cache: Mutex::new(None),
+            reserved,
+            gen: AtomicU64::new(0),
+            snap: Mutex::new(None),
+        }
+    }
+
+    /// 변경 세대를 올린다 — 디스크를 바꾼 모든 경로가 부른다(읽기 스냅샷 무효화의 신호).
+    fn bump(&self) {
+        self.gen.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// index.json 지문(수정 시각·크기) — 스토어를 거치지 않은 쓰기(테스트 시드 등)의 보험.
+    fn index_stamp(&self) -> Option<(u128, u64)> {
+        let m = std::fs::metadata(self.index_path()).ok()?;
+        let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+        Some((t, m.len()))
+    }
+
+    /// ★3.0.3 — `read_index`의 캐시판. 세대·지문이 같으면 파싱해 둔 값을 돌려준다.
+    pub fn read_index_cached(&self) -> Option<Arc<Value>> {
+        let gen = self.gen.load(Ordering::SeqCst);
+        let stamp = self.index_stamp();
+        {
+            let g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(s) = g.as_ref() {
+                if s.gen == gen && s.stamp == stamp {
+                    return Some(s.index.clone());
+                }
+            }
+        }
+        let index = Arc::new(self.read_index()?);
+        let mut g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
+        *g = Some(Snap { gen, stamp, index: index.clone(), items: None });
+        Some(index)
+    }
+
+    /// ★3.0.3 — `read_all`의 캐시판. **작은 스토어(boards) 전용** — chats-v3에 쓰면 전 대화
+    /// 전문이 메모리에 상주한다.
+    pub fn read_all_cached(&self) -> Option<(Arc<Value>, Arc<Vec<Value>>)> {
+        let gen = self.gen.load(Ordering::SeqCst);
+        let stamp = self.index_stamp();
+        {
+            let g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(s) = g.as_ref() {
+                if s.gen == gen && s.stamp == stamp {
+                    if let Some(items) = s.items.as_ref() {
+                        return Some((s.index.clone(), items.clone()));
+                    }
+                }
+            }
+        }
+        let (index, items) = self.read_all()?;
+        let (index, items) = (Arc::new(index), Arc::new(items));
+        let mut g = self.snap.lock().unwrap_or_else(|e| e.into_inner());
+        *g = Some(Snap { gen, stamp, index: index.clone(), items: Some(items.clone()) });
+        Some((index, items))
     }
 
     pub fn dir_path(&self) -> PathBuf {
@@ -82,6 +159,7 @@ impl Fanout {
         self.with_cache(|c| {
             c.remove(id);
         });
+        self.bump();
     }
 
     /// 캐시를 통째로 버린다 — 마이그레이션처럼 파일을 밖에서 갈아치운 뒤 부른다.
@@ -89,12 +167,14 @@ impl Fanout {
     pub fn invalidate(&self) {
         *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
         *self.index_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.bump();
     }
 
     /// 인덱스 캐시만 버린다 — 인덱스를 팬아웃 밖에서 고쳐 쓴 뒤(예: `chats:set-active`)
     /// 다음 저장이 "안 바뀌었다"로 판정해 옛 값을 남기지 않게.
     pub fn invalidate_index_only(&self) {
         *self.index_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.bump();
     }
 
     pub fn read_index(&self) -> Option<Value> {
@@ -204,6 +284,7 @@ impl Fanout {
         }
         if crate::write_atomic(&self.file(id), &text).is_ok() {
             self.with_cache(|c| c.insert(id.to_string(), text));
+            self.bump();
             true
         } else {
             false
@@ -272,6 +353,7 @@ impl Fanout {
                 *self.index_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(text);
             }
         }
+        self.bump();
         order
     }
 }
@@ -335,5 +417,36 @@ mod tests {
         T.write_all(&[json!({ "id": "..\\..\\evil" }), json!({ "id": "ok" })], &Map::new(), |_, v| v.clone());
         assert!(!h.dir.parent().unwrap().join("evil.json").exists());
         assert_eq!(h.files("t-store"), vec!["index.json", "ok.json"]);
+    }
+
+    /// ★3.0.3 — 캐시판 읽기는 (스토어를 거친 쓰기 · 스토어 밖 index.json 편집) 둘 다 뒤에
+    /// 새 값을 보고, 아무것도 안 바뀌었으면 같은 Arc를 돌려준다(디스크를 안 탄다).
+    #[test]
+    fn cached_reads_follow_store_writes_and_external_index_edits() {
+        let h = temp_home("fanout-cache");
+        seed(&h, &["a", "b"]);
+        let (i1, items1) = T.read_all_cached().expect("첫 읽기");
+        assert_eq!(items1.len(), 2);
+        let (i2, items2) = T.read_all_cached().expect("두 번째 읽기");
+        assert!(Arc::ptr_eq(&i1, &i2) && Arc::ptr_eq(&items1, &items2), "안 바뀌었으면 같은 스냅샷");
+
+        // 스토어를 거친 쓰기 → 세대가 올라 다음 읽기가 새 값을 본다
+        T.write_all(
+            &[json!({ "id": "a" }), json!({ "id": "b" }), json!({ "id": "c" })],
+            &Map::new(),
+            |_, v| v.clone(),
+        );
+        let (_, items3) = T.read_all_cached().expect("쓰기 뒤 읽기");
+        assert_eq!(items3.len(), 3, "write_all 뒤에는 새 목록");
+
+        // 스토어 밖에서 index.json만 고쳐도(지문: 수정 시각·크기) 새로 읽는다
+        h.write(
+            "t-store/index.json",
+            &json!({ "version": 1, "order": ["c"], "activeChatId": "c-external" }).to_string(),
+        );
+        let idx = T.read_index_cached().expect("외부 편집 뒤 인덱스");
+        assert_eq!(idx["activeChatId"], "c-external");
+        let (_, items4) = T.read_all_cached().expect("외부 편집 뒤 목록");
+        assert_eq!(items4.len(), 1, "인덱스가 c만 나열한다");
     }
 }

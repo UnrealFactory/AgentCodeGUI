@@ -112,7 +112,8 @@ export function EngineGate() {
   // accumulate npm output while our own install runs
   useEffect(() => {
     return window.api.engine.onInstallProgress((p) => {
-      if (p.line && installingRef.current) setLog((l) => [...l, p.line as string])
+      // 꼬리 800줄만 — npm 출력은 수천 줄이고 카드는 끝부분만 보인다(3.0.3)
+      if (p.line && installingRef.current) setLog((l) => [...l.slice(-799), p.line as string])
     })
   }, [])
 

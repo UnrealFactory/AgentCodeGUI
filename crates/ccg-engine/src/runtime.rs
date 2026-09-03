@@ -317,8 +317,10 @@ pub struct ChatRuntime<D: CliDriver> {
     suspend_drain: bool,
     /// F14의 `tool_use_id → task_id` 매핑.
     task_by_tool_use: std::collections::BTreeMap<String, String>,
-    /// stdin으로 나간 프롬프트 — 불변식 7(이중 전송 없음)이 읽는다.
+    /// stdin으로 나간 프롬프트 — 불변식 7(이중 전송 없음)이 읽는다. 꼬리 `SENT_TEXTS_CAP`개만.
     sent_user_texts: Vec<String>,
+    /// ★3.0.3 — 이 턴에 UI로 흘린 stderr 줄 수(`STDERR_NOTICE_CAP`을 넘으면 접는다).
+    stderr_lines: u32,
     /// `request_id` → 그 카드의 **응답 본문 오버라이드**(1회 소비). 비어 있는 것이 기본이다.
     staged_payloads: std::collections::BTreeMap<String, Value>,
     /// **한도 해제를 스스로 발사해도 되는가**(스펙 ⑤ 기본값 — ux-chat-unify §8-5).
@@ -537,6 +539,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             suspend_drain: false,
             task_by_tool_use: Default::default(),
             sent_user_texts: vec![],
+            stderr_lines: 0,
             staged_payloads: Default::default(),
             auto_resume: true,
             last_echo: None,
@@ -1246,14 +1249,36 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.staged_payloads.insert(request_id.to_string(), payload);
     }
     /// 프롬프트 송신의 유일 경로 — 불변식 7(이중 전송 없음)이 이 목록을 읽는다.
+    /// ★3.0.3 — 아래 세 기록은 삽입만 있고 지우는 자리가 없었다. 슬롯은 앱이 사는 동안
+    /// 남으므로(`chat:dispose`는 삭제 때만) 장기 세션에서 채팅마다 무한히 자랐다.
+    const SENT_TEXTS_CAP: usize = 32;
+    const REVISIONS_CAP: usize = 64;
+    const STDERR_NOTICE_CAP: u32 = 200;
+
     fn send_user(&mut self, text: &str) {
         self.sent_user_texts.push(text.to_string());
+        if self.sent_user_texts.len() > Self::SENT_TEXTS_CAP {
+            let drop = self.sent_user_texts.len() - Self::SENT_TEXTS_CAP;
+            self.sent_user_texts.drain(..drop);
+        }
         self.driver.send(user_message(text));
     }
 
     /// F20 — stderr 줄. **리스 증거가 아니다**(죽어 가는 프로세스도 stderr를 뱉는다).
     pub fn on_stderr(&mut self, line: &str) {
         self.fire("F20");
+        // ★3.0.3 — 수다스러운 CLI(node 경고·MCP 서버 로그)는 줄마다 통지 이벤트가 되어
+        // 창마다 팬아웃되고 스레드에 영구히 쌓인다. 턴당 상한을 넘으면 한 줄로 접는다.
+        self.stderr_lines = self.stderr_lines.saturating_add(1);
+        if self.stderr_lines > Self::STDERR_NOTICE_CAP {
+            if self.stderr_lines == Self::STDERR_NOTICE_CAP + 1 {
+                self.emit(Event::Notice(format!(
+                    "[stderr] … ({}줄을 넘겨 이 턴의 나머지 출력은 접습니다)",
+                    Self::STDERR_NOTICE_CAP
+                )));
+            }
+            return;
+        }
         self.emit(Event::Notice(format!("[stderr] {line}")));
     }
 
@@ -1679,6 +1704,12 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.identity = next.clone();
         self.revision += 1;
         self.revisions.push((self.revision, next.clone()));
+        // ★3.0.3 — 되돌리기(`revert_identity`)가 닿는 범위만 남긴다(0번 원본은 고정). 폴백·자동
+        // 계정 전환이 리비전을 올릴 때마다 정체성 전체가 복제돼 남았다.
+        if self.revisions.len() > Self::REVISIONS_CAP {
+            let drop = self.revisions.len() - Self::REVISIONS_CAP;
+            self.revisions.drain(1..1 + drop);
+        }
         self.emit(Event::Identity {
             origin,
             revision: self.revision,
@@ -2202,6 +2233,9 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         self.land_pending();
         self.fallback_arms.clear();
+        // ★3.0.3 — 턴 단위 기록을 걷는다(F14 매핑은 삽입만 있었고, stderr 상한은 턴마다 새로).
+        self.task_by_tool_use.clear();
+        self.stderr_lines = 0;
 
         // 턴 종료 시 백그라운드 셸에 5s 유예를 건다(§3.4-b).
         {

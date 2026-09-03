@@ -423,7 +423,15 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
         lsp::after_fs_change(&app, changed, &out);
         return out;
     }
-    dispatch(&app, &window, &channel, &payload)
+    // ★3.0.3 — 나머지(chat:*·chats:*·ma:*·session:*·win:*…)도 전용 블로킹 풀로 내린다.
+    // `hub::call`은 허브 답을 **최대 3초** 동기로 기다리고(`REPLY_TIMEOUT`), `chats:save`는
+    // 디스크를 쓴다. async 워커(코어 수)에서 그걸 자면 허브가 느려진 순간 워커가 전부
+    // 잠들어 **모든 창의 IPC가 통째로 죽는다** — 3.0.0·3.0.1의 「작업없음」이 이 모양이었다.
+    let a = app.clone();
+    let w = window.clone();
+    tauri::async_runtime::spawn_blocking(move || dispatch(&a, &w, &channel, &payload))
+        .await
+        .unwrap_or_else(|_| unimplemented())
 }
 
 fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {

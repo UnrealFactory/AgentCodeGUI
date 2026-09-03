@@ -370,6 +370,13 @@ function resultBesideVerb(tl: ToolLogItem): boolean {
   return (tl.verb === 'Skill' || tl.verb === 'Workflow') && tl.status === 'done' && !!tl.result
 }
 
+// 줄 수 — split('\n')은 출력 전체를 배열로 복제한다(행마다·렌더마다). 개수만 센다.
+function countLines(s: string): number {
+  let n = 1
+  for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n++
+  return n
+}
+
 function ToolResult({ t: tl }: { t: ToolLogItem }) {
   // ★ 3.0 M-UX R2 — 이 도구가 **사유와 함께 정착**했나(`chat:run-state.settled[]`).
   // 스트림이 밖에서 죽으면 합성 result가 busy만 내리고 도구 행은 안 건드린다 →
@@ -388,10 +395,8 @@ function ToolResult({ t: tl }: { t: ToolLogItem }) {
   }
   if (tl.status === 'error') return <span className="t-res err">{t('오류', 'Error')}</span>
   if (tl.kind === 'bash') {
-    const parts = [
-      tl.durationMs != null ? fmtDur(tl.durationMs) : '',
-      tl.output ? t(`${tl.output.split('\n').length}줄`, `${tl.output.split('\n').length} lines`) : ''
-    ].filter(Boolean)
+    const n = tl.output ? countLines(tl.output) : 0
+    const parts = [tl.durationMs != null ? fmtDur(tl.durationMs) : '', n ? t(`${n}줄`, `${n} lines`) : ''].filter(Boolean)
     if (parts.length) return <span className="t-res">{parts.join(' · ')}</span>
   }
   // Skill/Workflow 정착 — 요약 원문이 오른쪽 끝이 아니라 **동사 옆**에 앉는다
@@ -610,10 +615,12 @@ function ToolLogModal({
 }
 
 // Bash 행 — Read/Edit 행이 파일을 열듯 명령(t-target)을 클릭하면 전체 로그 모달이
-// 열린다(호버 툴팁 '결과 보기'). 인라인 출력은 성공·실패 모두 없음 — 실패도 우측
+// 열린다(호버는 밑줄만 — 「결과 보기」 툴팁은 2026-09-03 사용자 결정으로 뺐다). 인라인 출력은 성공·실패 모두 없음 — 실패도 우측
 // '오류' 요약만 남기고, 내용은 다른 도구들과 똑같이 클릭해서 모달로 읽는다.
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
-function BashRow({ t: tl }: { t: ToolLogItem }) {
+// memo — 도구 행 하나가 끝날 때마다 그룹의 다른 60행이 같이 다시 그려지지 않게(3.0.3).
+// 리듀서는 바뀐 도구 항목만 새 객체로 만들므로(tool-end) 나머지 행은 참조가 그대로다.
+const BashRow = memo(function BashRow({ t: tl }: { t: ToolLogItem }) {
   const [open, setOpen] = useState(false)
   const clickable = !!tl.output
   return (
@@ -624,10 +631,7 @@ function BashRow({ t: tl }: { t: ToolLogItem }) {
       >
         <span className="t-ic">{toolIcon('bash', 14)}</span>
         <span className="t-verb">{tl.verb}</span>
-        <span
-          className={'t-target' + (clickable ? ' has-tip' : '')}
-          data-tip={clickable ? t('결과 보기', 'View output') : undefined}
-        >
+        <span className="t-target">
           <span className="t-txt">{tl.target}</span>
         </span>
         <ToolResult t={tl} />
@@ -635,27 +639,20 @@ function BashRow({ t: tl }: { t: ToolLogItem }) {
       {open && tl.output && <ToolLogModal t={tl} onClose={() => setOpen(false)} />}
     </>
   )
-}
+})
 
 // 일반 도구 행(Read/Write/Edit/Search/MCP/기타) — ★TOOLROW(2026-09-02 사용자 결정):
 //   파일 행(read/write/edit)  클릭 = 파일 열기(2.6.2 그대로). 오류면 오류 본문 카드.
 //   나머지(search/mcp/other)  클릭 = 상세 카드(「요청」·「결과」). 실행 중엔 안 열린다.
 // 오른쪽 요약은 ToolResult가 토큰을 풀어 그린다 — 본문은 어느 행에도 안 나온다.
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
-function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: string) => void }) {
+const ToolRow = memo(function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: string) => void }) {
   const [open, setOpen] = useState(false)
   const fileRow = tl.kind === 'read' || tl.kind === 'write' || tl.kind === 'edit'
   const errCard = tl.status === 'error' && !!tl.output
   const toFile = fileRow && !errCard && !!onOpenFile && !!tl.target
   const toCard = fileRow ? errCard : tl.status !== 'running' && (!!tl.output || !!tl.args)
   const clickable = toFile || toCard
-  const tip = toFile
-    ? t('파일 보기', 'View file')
-    : errCard
-      ? t('오류 보기', 'View error')
-      : toCard
-        ? t('결과 보기', 'View output')
-        : undefined
   return (
     <>
       <div
@@ -664,10 +661,10 @@ function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: st
       >
         <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
         <span className="t-verb">{tl.verb}</span>
-        {/* 툴팁은 넓은 행 전체가 아니라 대상에 달아, 대상 바로 아래에 뜨게 한다.
+        {/* 호버 안내는 밑줄뿐 — 「결과 보기/파일 보기/오류 보기」 툴팁은 2026-09-03 사용자 결정으로 뺐다.
             Skill/Workflow 정착 행은 요약 문장이 이 자리로 오므로 이름 대상은 접는다 */}
         {!resultBesideVerb(tl) && (
-          <span className={'t-target' + (clickable ? ' has-tip' : '')} data-tip={tip}>
+          <span className="t-target">
             <span className="t-txt">{tl.target}</span>
           </span>
         )}
@@ -676,7 +673,7 @@ function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: st
       {open && <ToolLogModal t={tl} onClose={() => setOpen(false)} onOpenFile={onOpenFile} />}
     </>
   )
-}
+})
 
 // 링크의 도메인 (www. 제거) — 표시·파비콘 조회 공용
 function hostOf(url: string): string {
@@ -726,18 +723,8 @@ function WebRow({ t: tl }: { t: ToolLogItem }) {
       >
         <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
         <span className="t-verb">{tl.verb}</span>
-        <span
-          className={'t-target' + (clickable ? ' has-tip' : '')}
-          data-tip={
-            links.length
-              ? open
-                ? t('접기', 'Collapse')
-                : t('찾은 페이지 보기', 'View found pages')
-              : direct
-                ? t('브라우저에서 열기', 'Open in browser')
-                : undefined
-          }
-        >
+        {/* 호버 툴팁(「찾은 페이지 보기」 등)은 2026-09-03 사용자 결정으로 뺐다 — 밑줄만 */}
+        <span className="t-target">
           <span className="t-txt">{tl.target}</span>
         </span>
         <ToolResult t={tl} />
@@ -766,7 +753,7 @@ function WebRow({ t: tl }: { t: ToolLogItem }) {
 // 보이고, 이전 행은 클릭으로 전부 펼친다(스트리밍 중엔 창이 자연히 최신을 따라간다).
 const TOOLLOG_VISIBLE_ROWS = 60
 
-function ToolGroup({
+const ToolGroup = memo(function ToolGroup({
   item,
   onOpenFile
 }: {
@@ -792,7 +779,7 @@ function ToolGroup({
       })}
     </div>
   )
-}
+})
 
 // Smoothly reveals streamed text as a continuous flow instead of in raw SDK
 // chunks. A fractional cursor advances by (time × rate) each frame, where rate
@@ -3780,6 +3767,9 @@ export function VerdictToast({ items, onGo, onDismiss }: { items: VerdictToastIt
       seen.current.add(it.id)
       timers.push(setTimeout(() => onDismiss(it.id), 10_000))
     }
+    // 사라진 항목의 id는 잊는다 — 세션 내내 토스트 id가 쌓이던 자리(3.0.3)
+    const alive = new Set(items.map((i) => i.id))
+    for (const id of seen.current) if (!alive.has(id)) seen.current.delete(id)
     return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items])
@@ -3943,8 +3933,12 @@ function useBgSettled(tk: BgTask | null): { label: string; sub: string } | null 
 // 지금 턴을 막고 있는 포그라운드 Bash가 있는지 — "기다리는 명령 건너뛰고 계속하기"는
 // 건너뛸 대상이 실제로 있을 때만 보여준다 (백그라운드로 넘어간 Bash는 즉시 done이 된다).
 export function hasRunningBash(messages: ThreadItem[]): boolean {
+  // 이 턴의 도구 그룹만 본다 — 마지막 사용자 말풍선 앞은 지난 턴이라 막고 있는 Bash가 있을 수
+  // 없다. 스트리밍 토큰마다 재계산되는 자리라(deps가 messages 배열) 전체 스레드 × 그룹당
+  // 400행을 매번 훑으면 장기 세션에서 토큰당 수십만 비교가 됐다(3.0.3).
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
+    if (m.kind === 'msg' && m.role === 'user') break
     if (m.kind === 'toolgroup' && m.tools.some((t) => t.kind === 'bash' && t.status === 'running')) return true
   }
   return false

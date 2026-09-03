@@ -86,10 +86,14 @@ export function onChatEvent(cb: (chatId: string, event: EngineEvent) => void): (
   // 진단 — 자리 밖 수집기가 "무엇을 몇 개 받았나"(shim의 window.__ccgChrome과 같은 규약).
   // 이게 없으면 "돌아왔더니 대화가 잘렸다"의 원인이 채널인지 수집기인지 구분할 수 없다.
   const dbg = ((window as unknown as { __ccgChatEv?: { n: number; ids: string[] } }).__ccgChatEv ??= { n: 0, ids: [] })
+  const seen = new Set(dbg.ids)
   return sub<{ chatId?: string; event?: EngineEvent }>(CHAT_EVENT, (p) => {
     if (!p || typeof p.chatId !== 'string' || !p.event) return
     dbg.n += 1
-    if (!dbg.ids.includes(p.chatId)) dbg.ids.push(p.chatId)
+    if (!seen.has(p.chatId)) {
+      seen.add(p.chatId)
+      dbg.ids.push(p.chatId)
+    }
     cb(p.chatId, p.event)
   })
 }
