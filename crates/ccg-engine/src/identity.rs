@@ -92,23 +92,72 @@ pub enum BillingKind {
     ApiKey,
 }
 
-/// 정규화된 절대경로. 대소문자 폴딩 + 구분자 통일 + 후행 `\` 제거 — 여기까지가 §2.3의 규칙이다.
-/// (`C:\Code\x` 와 `c:\code\x\` 가 재스폰을 만들면 안 된다. **P1b**)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-pub struct CanonPath(String);
+/// 정규화된 절대경로 — 구분자 통일 + 후행 `\` 제거. **표시·스폰용 원래 대소문자는 보존**하고,
+/// 동일성(비교·해시·직렬화)만 소문자로 접는다.
+///
+/// ★3.0.5 — 3.0.4까지는 `of`가 경로를 통째로 소문자화했다(`CanonPath(s.to_lowercase())`). 그
+/// 값이 `as_str()`로 나와 CLI 스폰 cwd(`driver.rs`)·에코된 `session.cwd`·저장된 정체성(`to_raw`)
+/// 까지 전부 소문자였고, 작업 폴더 이름이 화면에서 `C:\Code\VoxArtDev` → `c:\code\voxartdev`로
+/// 바뀌어 보였다(2026-09-03 보고, 실측 chats-v3의 `identity.cwd`가 소문자). 이제 원래 표기를
+/// 들고 다니고 **비교·해시만** 접는다 — §2.3(P1b: `C:\Code\x` 와 `c:\code\x\`가 재스폰을 만들면
+/// 안 된다)은 접힌 `key`로 지키고, 정체성 해시는 `key`를 직렬화하므로 골든 값도 그대로다.
+#[derive(Debug, Clone)]
+pub struct CanonPath {
+    /// 표시·스폰·저장용 — **원래 대소문자**(구분자·후행 슬래시만 정규화).
+    orig: String,
+    /// 동일성 키 — 소문자로 접은 값(Windows 파일시스템은 대소문자 무관).
+    key: String,
+}
 
 impl CanonPath {
+    /// 표시·스폰·저장에 쓰는 **원래 대소문자** 경로.
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.orig
     }
-    /// 표시·비교 공용 정규화. 폴딩을 플랫폼 조건부로 두지 않는 이유: 정체성 해시가
-    /// **플랫폼 간에도** 같아야 재생 하네스(리눅스 CI)와 실앱(Windows)이 같은 값을 낸다.
+    /// 비교용 **접힌 키**(대소문자 무관). 재사용·스레드 판정이 쓴다 — 여기서 원래 표기를
+    /// 쓰면 같은 폴더를 다른 대소문자로 만났을 때 헛 재스폰이 난다(P1b).
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+    /// 폴딩을 플랫폼 조건부로 두지 않는 이유: 정체성 해시가 **플랫폼 간에도** 같아야
+    /// 재생 하네스(리눅스 CI)와 실앱(Windows)이 같은 값을 낸다.
     pub fn of(raw: &str) -> CanonPath {
         let mut s = raw.trim().replace('/', "\\");
         while s.len() > 3 && s.ends_with('\\') {
             s.pop();
         }
-        CanonPath(s.to_lowercase())
+        let key = s.to_lowercase();
+        CanonPath { orig: s, key }
+    }
+}
+
+// 동일성은 **접힌 키만** 본다(원래 대소문자는 표시용이라 정체성에 안 샌다).
+impl PartialEq for CanonPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+impl Eq for CanonPath {}
+impl std::hash::Hash for CanonPath {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
+impl PartialOrd for CanonPath {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for CanonPath {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+// ★ 직렬화는 **접힌 값**이다 — 정체성 해시(`canon_json`)가 이걸 쓰므로 P1b·골든 해시가
+// 원래 대소문자에 흔들리면 안 된다. 표시용 원래 표기는 `identity_wire`가 따로 싣는다.
+impl Serialize for CanonPath {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.key)
     }
 }
 
@@ -665,11 +714,14 @@ fn norm_leaf_value(r: &RunIdentity, f: IdentityField) -> serde_json::Value {
         F::BillingAccount => json!(account),
         F::BillingDropEnvKey => json!(drop_env_key),
         F::BillingKeyFp => json!(key_fp),
-        F::Cwd => json!(r.cwd.as_str()),
+        // ★3.0.5 — 재사용/재스폰 판정(P1b)은 **접힌 키**로 비교한다. `as_str`은 이제 원래
+        // 대소문자라, 여기서 그걸 쓰면 같은 폴더를 다른 표기로 만난 것이 정체성 변화로 읽혀
+        // 헛 재스폰이 난다(골든 `add_dirs_order_and_case_do_not_change_identity`가 잡는다).
+        F::Cwd => json!(r.cwd.key()),
         F::AddDirs => json!(r
             .add_dirs
             .iter()
-            .map(|p| p.as_str())
+            .map(|p| p.key())
             .collect::<Vec<_>>()),
         F::Mode => json!(r.mode),
         F::SystemPrompt => json!(r.system_prompt),
@@ -1106,6 +1158,32 @@ pub fn resolve_fallback_conflicts(
         }
     }
     (patch, kept)
+}
+
+#[cfg(test)]
+mod canon_path_tests {
+    use super::*;
+
+    /// ★3.0.5 — `as_str`은 **원래 대소문자**(표시·스폰), 동일성은 접힌 키. 작업 폴더 이름이
+    /// 소문자로 바뀌어 보이던 버그(2026-09-03 보고)의 회귀 못.
+    #[test]
+    fn canon_path_keeps_original_case_but_folds_identity() {
+        let a = CanonPath::of("C:/Code/VoxArtDev/");
+        // 표시·스폰용 — 원래 표기 유지(구분자·후행 슬래시만 정규화).
+        assert_eq!(a.as_str(), "C:\\Code\\VoxArtDev");
+        // 비교 키 — 접힘.
+        assert_eq!(a.key(), "c:\\code\\voxartdev");
+
+        let b = CanonPath::of("c:\\code\\voxartdev");
+        // 대소문자만 다른 두 경로는 **같은 정체성**이다(P1b) — 헛 재스폰 금지.
+        assert_eq!(a, b);
+        assert_eq!({ let mut s=std::collections::hash_map::DefaultHasher::new(); std::hash::Hash::hash(&a,&mut s); std::hash::Hasher::finish(&s) },
+                   { let mut s=std::collections::hash_map::DefaultHasher::new(); std::hash::Hash::hash(&b,&mut s); std::hash::Hasher::finish(&s) });
+        // …하지만 표시는 각자의 원래 표기를 지킨다.
+        assert_eq!(b.as_str(), "c:\\code\\voxartdev");
+        // 직렬화(정체성 해시용)는 접힌 값 — 원래 대소문자에 흔들리지 않는다.
+        assert_eq!(serde_json::to_value(&a).unwrap(), serde_json::json!("c:\\code\\voxartdev"));
+    }
 }
 
 #[cfg(test)]

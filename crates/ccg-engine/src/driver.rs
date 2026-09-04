@@ -19,6 +19,13 @@ use std::time::{Duration, Instant};
 /// 넘으면 `Crash`로 본다 — **EOF 자체가 이미 스트림의 죽음**이라 무한정 기다리면
 /// T22가 다시 유령이 된다(크리틱 배선 R1 §2-E/F).
 const EXIT_CODE_GRACE: Duration = Duration::from_millis(700);
+/// ★3.0.5 — stdin EOF 뒤 CLI가 **스스로** 나가길 기다리는 유예(그 안에 마지막 어시스턴트
+/// 메시지·`last-prompt`가 세션 파일에 내려앉는다 — 실측 +0.5s). 넘기면 kill.
+const EXIT_GRACE: Duration = Duration::from_secs(8);
+/// ★3.0.5 — 새 스폰 전에 **앞 프로세스의 퇴장**을 기다리는 상한. 같은 세션 파일을 두
+/// 프로세스가 동시에 쓰지 않게 한다(앞 것의 늦은 쓰기가 새 프로세스의 resume 읽기 뒤에
+/// 오면 그 답이 새 턴에 안 보인다). 넘기면 그냥 띄운다 — 리퍼가 앞 것을 책임진다.
+const SPAWN_WAIT_PRIOR: Duration = Duration::from_millis(2500);
 
 /// 한 프레임 상한. **누적 중에** 검사한다 — 다 읽은 뒤 버리면 상한이 아니다
 /// (`docs/critic/m3-poc.md` §5-3이 PoC `wire.rs`에서 지적한 결함).
@@ -257,6 +264,11 @@ pub trait CliDriver {
     /// stdin EOF = endInput. CLI가 정리 후 스스로 종료한다.
     fn close_input(&mut self);
     fn kill(&mut self);
+    /// ★3.0.5 — **정리 종료**: stdin EOF를 준 뒤 CLI가 스스로 나갈 유예를 주고, 넘기면 kill.
+    /// 기본은 `kill()`과 같다(재생·Codex 드라이버는 유예를 모른다). `ClaudeDriver`가 덮어쓴다.
+    fn kill_graceful(&mut self) {
+        self.kill()
+    }
     /// ⓪ 프로세스 생존. **`Alive` 판정에 쓰면 안 된다** — 타입이 아니라 규약으로 막는 자리라
     /// 호출부(워치독)가 이 값을 `last_evidence`에 반영하지 않는지 불변식 11이 감시한다.
     /// `false`는 **Dead 관측**이므로 T22 백스톱이 그것만 읽는다(§5.4-b ⓪).
@@ -301,6 +313,9 @@ pub struct ClaudeDriver {
     eof_at: Option<Instant>,
     /// 관측된 종료 코드(있으면). `try_wait`은 한 번만 값을 주므로 기억해 둔다.
     exit_code: Option<Option<i32>>,
+    /// ★3.0.5 — 정리 종료 중인 **앞 프로세스**의 리퍼 스레드(`kill_graceful`). 다음 `spawn`이
+    /// 상한 안에서 그 퇴장을 기다린다.
+    reaper: Option<std::thread::JoinHandle<()>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -327,6 +342,7 @@ impl ClaudeDriver {
             dump,
             eof_at: None,
             exit_code: None,
+            reaper: None,
         }
     }
     pub fn pid(&self) -> Option<u32> {
@@ -345,6 +361,17 @@ impl ClaudeDriver {
 
 impl CliDriver for ClaudeDriver {
     fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
+        // ★3.0.5 — 앞 프로세스가 정리 종료 중이면 잠깐 기다린다(같은 세션 파일의 쓰기 순서).
+        if let Some(h) = self.reaper.take() {
+            let t0 = Instant::now();
+            while !h.is_finished() && t0.elapsed() < SPAWN_WAIT_PRIOR {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            if h.is_finished() {
+                let _ = h.join();
+            }
+            // 못 끝냈으면 놓아준다 — 리퍼가 유예 만기에 죽인다.
+        }
         let mut cmd = Command::new(&spec.cli);
         cmd.args(&spec.argv)
             .current_dir(&spec.cwd)
@@ -417,6 +444,32 @@ impl CliDriver for ClaudeDriver {
         if let Some(c) = &mut self.child {
             let _ = c.kill();
         }
+    }
+
+    /// ★3.0.5 — EOF를 주고 자식을 리퍼 스레드로 넘긴다: `EXIT_GRACE` 안에 스스로 나가면
+    /// 그대로, 아니면 kill. 허브 스레드는 기다리지 않는다(`spawn`만 상한 안에서 기다린다).
+    fn kill_graceful(&mut self) {
+        // stdin이 열려 있으면 CLI는 상주한다(§0) — EOF가 먼저다.
+        self.stdin.take();
+        let Some(mut child) = self.child.take() else { return };
+        // 앞 리퍼가 남아 있어도 잊는다 — 그 스레드는 제 자식을 끝까지 책임진다.
+        let _ = self.reaper.take();
+        self.reaper = Some(std::thread::spawn(move || {
+            let t0 = Instant::now();
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => return,
+                    Ok(None) => {}
+                    Err(_) => break,
+                }
+                if t0.elapsed() >= EXIT_GRACE {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+        }));
     }
 
     fn process_alive(&self) -> bool {

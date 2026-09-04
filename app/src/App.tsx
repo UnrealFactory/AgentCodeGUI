@@ -418,6 +418,8 @@ function MainApp({ user }: { user: AppUser }) {
   // **선언만 여기로 올린다**: 한도 재개 훅(useLimitResume, §R3 7)이 `chatStatus`를 읽는데
   // 그 호출이 구독 effect보다 위에 있어 TDZ에 걸린다.
   const [chatStatus, setChatStatus] = useState<Record<string, ChatStatusLite>>({})
+  // ★3.0.5 — 마지막으로 앉힌 `chat:status` REPLACE의 지문(같은 내용이면 리렌더를 건너뛴다).
+  const statusSigRef = useRef('')
   const [winSlots, setWinSlots] = useState<WindowSlot[]>([])
   // 파일 탐색기 — 2.0: 왼쪽 칼럼을 채팅 사이드바와 '전환'해 쓴다 (헤더 돋보기 옆 버튼).
   // 기본은 채팅 목록. 전환 상태는 앱 단위로 기억.
@@ -1099,6 +1101,11 @@ function MainApp({ user }: { user: AppUser }) {
         .catch(() => {})
     }
     const off = onChatStatus((rows) => {
+      // ★3.0.5 — 같은 REPLACE가 또 오면(다른 채팅의 전이마다 전 채팅 배열이 나간다) App을 다시
+      // 그리지 않는다. `next`가 매번 새 객체라 setState가 무조건 리렌더였다(감사 #8).
+      const sig = JSON.stringify(rows)
+      if (sig === statusSigRef.current) return
+      statusSigRef.current = sig
       const next: Record<string, ChatStatusLite> = {}
       for (const r of rows) if (r?.chatId) next[r.chatId] = r
       setChatStatus(next)

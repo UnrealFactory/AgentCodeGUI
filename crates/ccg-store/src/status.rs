@@ -55,7 +55,7 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 /// 그래서 두 자리에서 **키째 지운다**: 쓸 때([`flush`])와 읽을 때([`load_boot`]).
 /// 쓰기만 막으면 R1이 이미 써 둔 파일이 남아 그 홈은 영원히 유령 칩을 문다 — 읽기 쪽
 /// 청소가 그 판의 답이고, 쓰기 쪽 청소가 재발 금지다.
-const RUNTIME_ONLY_KEYS: [&str; 2] = ["account", "panelId"];
+const RUNTIME_ONLY_KEYS: [&str; 3] = ["account", "panelId", "seat"];
 
 /// 런타임 전용 키를 걷어낸 사본(디스크 직렬화·부팅 장전 공용).
 fn strip_runtime_only(v: &mut Value) {

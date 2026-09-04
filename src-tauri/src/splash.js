@@ -25,6 +25,18 @@
 ;(function () {
   if (window.__ccgSplash) return
   window.__ccgSplash = 1
+  // ★3.0.5 — **미리보기 iframe에서는 절대 그리지 않는다.** 이 스크립트는 WebView2
+  // AddScriptToExecuteOnDocumentCreated(= initialization_script)라 **모든 프레임**에서 돈다.
+  // HTML 파일 미리보기(FileModal의 sandbox iframe, ccg-page.localhost)에도 주입되는데,
+  // 미리보는 파일 이름이 index.html이면 아래 pathname 가드(index\.html$)를 통과해 그 페이지
+  // 위에 「AgentCodeGUI / 시작하는 중」 스플래시가 떴다 — 그 프레임엔 #root가 없어 8초 폴백이
+  // 다 흐를 때까지 안 걷혔다(2026-09-04 보고). 앱의 진짜 문서는 **언제나 최상위 프레임**이다.
+  try {
+    if (window.top !== window.self) return
+  } catch (e) {
+    // 교차 출처 접근 예외 = 이 문서가 남의 프레임 안이라는 뜻이다 — 더더욱 그리면 안 된다.
+    return
+  }
   // 메인 창만 — toast/tray 페이지는 오버레이가 필요 없다(그리고 #root가 없다).
   if (!/(^\/?$)|index\.html$/.test(location.pathname)) return
 

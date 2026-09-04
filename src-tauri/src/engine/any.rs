@@ -82,6 +82,9 @@ impl CliDriver for AnyDriver {
     fn kill(&mut self) {
         on_active!(self, kill())
     }
+    fn kill_graceful(&mut self) {
+        on_active!(self, kill_graceful())
+    }
     fn process_alive(&self) -> bool {
         on_active!(self, process_alive())
     }

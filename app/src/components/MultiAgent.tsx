@@ -33,6 +33,7 @@ import {
   useThreadWindow,
   hasRunningBash,
   pickerModelOf,
+  type NotifyAction,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
@@ -540,6 +541,11 @@ export const PanelView = memo(function PanelView({
   // 스트리밍 중 매 토큰 렌더에서 MessageView memo가 유지되도록 — 인라인 화살표를 넘기면
   // 매 렌더 새 함수 정체성이 완료된 메시지까지 전부 리렌더(마크다운 재파싱)시킨다
   const openFile = useEvent((p: string) => onOpenFile(slot, p))
+  // ★3.0.5 — 알림 band 콜백도 같은 규칙. 인라인 화살표라 토큰마다 스레드의 MessageView 전부가
+  // memo를 잃고 다시 그려졌다(감사 #4 — 바로 위 주석이 금지한 그 모양).
+  const notify = useEvent((a: NotifyAction) => {
+    if (a.kind === 'billing-off') onApiMode(slot, false, meta.picker.engine)
+  })
   // 같은 이유로 memo인 WorkBar의 콜백들도 안정 정체성으로 — 순수 텍스트 스트리밍 중엔
   // 나머지 props(할 일·파일·서브에이전트 배열)가 그대로라 WorkBar가 통째로 스킵된다
   const openChangedFile = useEvent((f: ChangedFile) => onOpenFile(slot, f.path))
@@ -747,9 +753,7 @@ export const PanelView = memo(function PanelView({
                   // (누르면 아무 일 없는 버튼을 그리는 게 제일 나쁘다). 과금은 패널 소유다.
                   // ★ 잔여 — 그 "안 그려진다"를 코드가 안 지키고 있었다(`onNotify`만 있으면
                   // 그렸다 = 죽은 버튼). 이제 `canRevert`를 **안 주는 것**이 그 선언이다.
-                  onNotify={(a) => {
-                    if (a.kind === 'billing-off') onApiMode(slot, false, meta.picker.engine)
-                  }}
+                  onNotify={notify}
                 />
               ))}
               {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}

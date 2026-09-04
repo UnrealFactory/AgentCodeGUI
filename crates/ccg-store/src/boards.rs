@@ -39,6 +39,13 @@ pub fn read_boards() -> Value {
     })
 }
 
+/// ★3.0.5 — 보드 배열을 **복제 없이** 빌려준다. 허브가 슬롯마다 틱마다 부르는 자리
+/// (`engine::panel_seat_of`)용 — `read_boards`는 호출마다 전 보드를 깊이 복제한다.
+pub fn with_boards<R>(f: impl FnOnce(&[Value]) -> R) -> Option<R> {
+    let (_, boards) = STORE.read_all_cached()?;
+    Some(f(boards.as_ref()))
+}
+
 pub fn read_board(id: &Value) -> Value {
     match safe_id(id) {
         Some(id) => STORE.read_one(id),

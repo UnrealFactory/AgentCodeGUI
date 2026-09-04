@@ -70,6 +70,10 @@ impl CliDriver for TapDriver {
     fn kill(&mut self) {
         self.inner.kill()
     }
+    /// ★3.0.5 — 정리 종료도 **그대로 통과**(여기서 `kill()`로 접으면 제품에서만 유예가 사라진다).
+    fn kill_graceful(&mut self) {
+        self.inner.kill_graceful()
+    }
     fn process_alive(&self) -> bool {
         self.inner.process_alive()
     }

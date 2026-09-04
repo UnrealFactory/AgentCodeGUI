@@ -113,6 +113,13 @@ pub struct QueuedMessage {
     pub on_drift: OnDrift,
     pub created_at: Millis,
     pub origin: QueueOrigin,
+    /// ★3.0.5 — 이 발화의 **말풍선이 이미 모든 창에 그려졌나**.
+    ///
+    /// 렌더러의 전송(`Cmd::Send`)은 보낸 창이 자기 `begin` 리듀서로 그리고, 셸(`hub::Op::Run`)이
+    /// 나머지 창에 `user-echo`를 낸다 — 판정이 `Queued`여도 그렇다. 그런 항목이 나중에
+    /// 드레인될 때 셸이 또 에코하면 같은 문장이 두 번 그려지므로, 드레인의 에코는 이 값이
+    /// 거짓일 때만 나간다(`Cmd::Enqueue`·기계 예약·재장전된 기계 예약).
+    pub echoed: bool,
 }
 
 /// 한도 대기 = **큐 게이트**. 자동 이어서는 별개 행위자가 아니라 큐 항목이다(P6를 죽인다).

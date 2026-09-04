@@ -141,6 +141,22 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.5 — 2026-09-03 보고 넷: ① AI가 「지난 질문에 답을 안 보냈다」며 밀린 답을 되풀이 — 턴이 끝나는
+  //   순간 CLI를 kill해 마지막 답(end_turn)이 세션 파일에 안 남았고, 다음 --resume이 "Continue from where
+  //   you left off"를 합성 주입 → EOF 뒤 자발 퇴장 대기(kill_graceful, 유예 8s) + 새 스폰은 앞 프로세스 퇴장
+  //   대기 ② 「예약으로 넣었어요」 연쇄 — 예약된 전송이 begin_run을 먼저 열어 앞 턴 Done이 그 id로 나가
+  //   화면은 유휴·엔진은 스트리밍 → 판정 먼저, Queued는 런을 안 열고 드레인 때 sync_engine_run이 연다
+  //   (echoed로 에코 억제) ③ 팝아웃 창의 계정 「현재」·「사용 중」 — chat:status 미구독 → 구독 ④ 「N번 자리」가
+  //   슬롯 인덱스 → order 안의 보이는 위치(seat) + 보드 저장 시 재계산 ⑤ 성능: ma:event를 그 패널의 창에만,
+  //   틱당 델타 합치기, 자리 조회 펌프당 1회, onNotify 인라인 → 안정 정체성, chat:status 지문 가드
+  //   ⑥ 턴마다 「[stderr] Warning: claude.ai MCP servers blocked by enterprise policy」 카드 — 우리
+  //   deniedMcpServers 설정에 CLI가 찍는 확인 경고 → on_stderr에서 그 한 종류만 거른다
+  //   ⑦ 작업 폴더 이름이 소문자로 보임 — 정체성 정규화(CanonPath)가 경로를 통째로 소문자화해
+  //   스폰 cwd·에코된 session.cwd·저장 정체성까지 소문자였다 → 원래 대소문자 보존, 비교·해시만
+  //   접는다 ⑧ index.html 미리보기 위에 「AgentCodeGUI 시작하는 중」 스플래시 — 부트 스플래시
+  //   initialization_script가 미리보기 iframe에도 돌았다 → 최상위 프레임에서만 ⑨ /clear 뒤 첫 메시지
+  //   씹힘 — 유휴의 stop_all이 거절이라 엔진의 한도 대기표·예약이 살아남아 첫 전송이 닫힌 게이트 뒤에
+  //   주차(판정은 수락, 화면은 작업 중) → 유휴에서도 큐·대기표 비우기.
   // 3.0.4 — 2026-09-03 보고 다섯: ① 링크가 안 열림 — 3.0에 2.6.2 setWindowOpenHandler→shell.openExternal의
   //   짝이 없었다 → shell:open-external + main.tsx 앵커 가로채기 + win.rs on_navigation 안전망 ② 재시작
   //   뒤 내 메시지만 사라짐 — 렌더러가 연 턴의 user-echo를 expect_runs가 통째로 삼켜 같은 대화를 그리는
@@ -152,6 +168,235 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   model로 사망 — CLI의 합성 프레임 model:"<synthetic>"을 모델 전환으로 읽었다 → is_placeholder_model로
   //   차단 + 디스크의 오염 정체성 복구(ident.rs) + 종료 경로도 fallback_arms 정리 ⑤ 계정을 바꿔 보냈는데
   //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
+  '3.0.5': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: 'AI가 「지난 질문에 답을 안 보냈다」며 같은 답을 되풀이하던 것, 「예약으로 넣었어요」가 계속 뜨던 것, 별도 창의 계정 표시와 「N번 자리」 번호를 고쳤습니다.',
+      notes: [
+        {
+          tag: '대화',
+          name: 'AI가 「지난 질문에 답을 안 보냈다」며 밀린 답을 되풀이하던 문제',
+          desc: (
+            <>
+              턴이 끝나는 순간 앱이 CLI를 바로 종료했는데, CLI는 <b>마지막 답을 그 뒤에야</b> 세션 파일에 적습니다.
+              그래서 파일에는 질문과 도구 호출만 남고 답은 빠졌고, 다음 턴이 그 파일로 이어지면 CLI가 「끊긴
+              턴」으로 보고 이어가기 문구를 끼워 넣었습니다. 모델의 눈에는 답 없이 끝난 질문이 쌓인 대화라 매 턴
+              「밀린 답」을 다시 썼습니다. 이제 턴이 끝나면 <b>CLI가 스스로 정리하고 나갈 때까지 기다립니다</b>
+              (중지·무응답은 예전처럼 즉시 종료).
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '「예약으로 넣었어요」가 계속 뜨던 문제',
+          desc: (
+            <>
+              답이 오는 중에 보낸 메시지는 예약이 되는데, 그 예약이 나갈 때 화면에 「턴 시작」이 전달되지 않아
+              <b>엔진은 답을 쓰는데 화면은 유휴</b>였습니다. 그 상태에서 또 보내면 또 예약 — 연쇄였습니다. 이제
+              예약된 메시지가 나가는 순간 화면도 작업 중으로 바뀌고, 거절된 전송이 다음 턴 표시를 삼키던 누수도
+              막았습니다. 그리고 <b>중지</b>가 예약된 메시지를 버릴 때(중지 = 뒤에 줄 선 것까지 취소) 지금까지는
+              말풍선만 남고 아무 말이 없었는데 — 「채팅이 씹힌」 것처럼 보이던 그 자리 — 이제 「예약된 메시지
+              N건은 보내지 않았어요」로 알립니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '별도 창(팝아웃)에서 계정의 「현재」·「사용 중」이 안 보이던 문제',
+          desc: (
+            <>
+              팝아웃 창은 다른 창들이 받는 계정 상태 표를 구독하지 않아, 「현재」가 <b>목록 맨 위 계정</b>으로
+              잘못 찍히고 다른 자리가 쓰는 계정의 「사용 중」 칩이 안 떴습니다. 이제 팝아웃 창도 같은 표를 받습니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '「사용 중 · N번 자리」의 번호가 패널을 옮겨도 안 바뀌던 문제',
+          desc: (
+            <>
+              번호를 슬롯의 <b>고정 번호</b>로 그려서, 패널을 드래그로 옮기면 화면의 1번이 칩에는 「3번 자리」였습니다.
+              이제 화면에 보이는 자리 순서로 세고, 옮기면 바로 갱신됩니다. 접힌 자리는 「접힌 자리」로 표시합니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '/clear 뒤 첫 메시지가 씹히던 문제(Esc로 끊고 다시 보내면 되던 것)',
+          desc: (
+            <>
+              /clear는 엔진에 「전부 중지」를 보내는데, 대화가 유휴면 <b>「도는 실행이 없어요」로 거절만</b> 되고
+              엔진 쪽 한도 대기표·예약은 그대로 남았습니다. 그 뒤 첫 전송은 「수락」으로 큐에 들어가되 닫힌
+              대기표 뒤에 <b>조용히 주차</b>돼 화면만 「작업 중」으로 굳었습니다. 이제 유휴에서도 /clear가 큐와
+              대기표를 비우고, 첫 전송이 바로 나갑니다.
+            </>
+          )
+        },
+        {
+          tag: '탐색기',
+          name: '작업 폴더 이름이 소문자로 바뀌어 보이던 문제',
+          desc: (
+            <>
+              <code>C:\Code\VoxArtDev</code> 같은 폴더가 대화를 한 번 돌린 뒤 <code>c:\code\voxartdev</code>로
+              소문자가 되어 보였습니다. 엔진이 폴더 경로를 <b>정체성 비교용으로 소문자로 접으면서</b> 그 접힌
+              값을 스폰 폴더·저장까지 그대로 썼기 때문입니다. 이제 <b>원래 대소문자를 그대로</b> 두고, 같은
+              폴더인지 판정할 때만 속으로 접습니다.
+            </>
+          )
+        },
+        {
+          tag: '뷰어',
+          name: 'HTML 파일(index.html) 미리보기 위에 「AgentCodeGUI 시작하는 중」이 뜨던 문제',
+          desc: (
+            <>
+              파일 뷰어로 <code>index.html</code>을 미리보면 그 페이지 위에 앱 시작 스플래시가 떠서 한동안
+              안 걷혔습니다. 앱이 창에 까는 부팅 스플래시 스크립트가 <b>미리보기 iframe 안에서도</b> 돌았고,
+              파일 이름이 <code>index.html</code>이라 화면 판정을 통과했습니다. 이제 스플래시는 <b>앱의 최상위
+              창에서만</b> 그려집니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '턴마다 「[stderr] Warning: claude.ai MCP servers blocked by enterprise policy」 카드가 뜨던 것',
+          desc: (
+            <>
+              설정에서 끈 claude.ai 커넥터(Gmail·Calendar·Drive)는 CLI에 「거부 목록」으로 전달되는데, CLI가 그걸
+              기업 정책으로 보고 매번 경고를 찍었고 앱은 그 줄을 스레드 카드로 그렸습니다. <b>직접 끈 것의 확인
+              문장</b>이라 이제 그 경고 한 종류만 거릅니다. 다른 stderr 경고는 그대로 보입니다.
+            </>
+          )
+        },
+        {
+          tag: '성능',
+          name: '패널 여럿이 답을 쓸 때의 버벅임 일부',
+          desc: (
+            <>
+              팝아웃 창마다 <b>다른 패널의 토큰까지 전부 받아 버리던</b> 것을 그 패널의 창에만 보내고, 한 틱에 온
+              토큰 조각은 합쳐 보내며, 자리 조회를 틱마다 하던 것을 줄였습니다. 스레드의 메시지가 토큰마다 다시
+              그려지던 자리 하나(알림 콜백)도 고쳤습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: 'The AI no longer keeps "re-sending answers it never sent", the "Queued instead" card no longer loops, and popped-out windows show the right account and seat number.',
+      notes: [
+        {
+          tag: 'Chat',
+          name: 'The AI kept saying it had not answered earlier questions and re-sent them',
+          desc: (
+            <>
+              The app terminated the CLI the moment a turn ended, but the CLI writes the <b>final reply to the session
+              file only after that</b>. The file kept the question and tool calls and lost the answer; the next turn
+              resumed from that file, the CLI treated it as a cut-off turn and injected a continuation prompt. To the
+              model the history looked like a pile of unanswered questions, so every turn it "re-sent the backlog". The
+              app now <b>waits for the CLI to finish and exit on its own</b> after a turn (stop and hung processes are
+              still killed immediately).
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: '"Queued instead" kept appearing',
+          desc: (
+            <>
+              A message sent while a reply is streaming is queued — but when that queued message went out, the screen
+              was never told a turn had started, so <b>the engine was streaming while the UI showed idle</b>. Sending
+              again in that state queued again, and so on. The UI now switches to working the moment a queued message
+              goes out, and a rejected send no longer swallows the next turn&apos;s start. And when <b>Stop</b> discards
+              queued messages (Stop cancels everything lined up behind the turn), the thread used to keep the bubble
+              and say nothing — the "my message got eaten" moment — it now says "N queued messages were not sent".
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'Popped-out windows did not show "Current" / "In use" for accounts',
+          desc: (
+            <>
+              A popped-out panel window never subscribed to the account-status table the other windows get, so
+              "Current" pointed at the <b>top account in the list</b> and "In use" chips for other seats never appeared.
+              Popped-out windows now receive the same table.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: '"In use · Slot N" did not follow panel reordering',
+          desc: (
+            <>
+              The number was the slot&apos;s <b>fixed index</b>, so after dragging panels around the first panel on
+              screen could read "Slot 3". It now counts by the visible order and updates as soon as you move a panel;
+              folded seats read "folded slot".
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'The first message after /clear got swallowed (Esc, then resend, worked)',
+          desc: (
+            <>
+              /clear sends "stop everything" to the engine, but on an idle chat that was <b>merely rejected as
+              "nothing running"</b>, leaving the engine’s limit hold and queue in place. The next send was then
+              "accepted" into the queue and <b>parked silently</b> behind the closed hold while the screen showed
+              "working". /clear now clears the queue and hold even when idle, so the first message goes straight out.
+            </>
+          )
+        },
+        {
+          tag: 'Explorer',
+          name: 'The working-folder name showed up lowercased',
+          desc: (
+            <>
+              A folder like <code>C:\Code\VoxArtDev</code> turned into <code>c:\code\voxartdev</code> once the
+              conversation had run once. The engine <b>folds the path to lowercase for identity comparison</b> and was
+              then using that folded value for the spawn folder and for storage. It now <b>keeps the original case</b>
+              and only folds internally when deciding whether two folders are the same.
+            </>
+          )
+        },
+        {
+          tag: 'Viewer',
+          name: '"AgentCodeGUI starting" appeared over an HTML (index.html) preview',
+          desc: (
+            <>
+              Previewing an <code>index.html</code> in the file viewer drew the app’s startup splash on top of that
+              page and left it there for a while. The boot-splash script the app injects into its window <b>also ran
+              inside the preview iframe</b>, and the file being named <code>index.html</code> passed its screen check.
+              The splash now draws <b>only in the app’s top-level window</b>.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'A "[stderr] Warning: claude.ai MCP servers blocked by enterprise policy" card on every turn',
+          desc: (
+            <>
+              The claude.ai connectors you turn off in Settings (Gmail, Calendar, Drive) reach the CLI as a deny list,
+              which the CLI reports as an enterprise-policy warning on every spawn — and the app drew that line as a
+              thread card. It only confirms <b>what you switched off yourself</b>, so that one warning is now filtered;
+              other stderr warnings still show.
+            </>
+          )
+        },
+        {
+          tag: 'Performance',
+          name: 'Some of the stutter while several panels stream',
+          desc: (
+            <>
+              Each popped-out window used to receive and discard <b>every other panel&apos;s tokens</b>; panel events now
+              go only to the windows that draw that panel, token fragments arriving in the same tick are merged, the
+              seat lookup runs once per tick instead of once per slot, and one per-token re-render of the whole thread
+              (the notify callback) was fixed.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.4': {
     ko: {
       eyebrow: 'FIXES',

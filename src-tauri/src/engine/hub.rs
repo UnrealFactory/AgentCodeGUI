@@ -124,6 +124,10 @@ pub enum Op {
     /// 아직 `system/init`을 못 봤으면 `Null`이다 — "없음"이 아니라 "아직 모름"이고,
     /// 화면은 그 둘을 다르게 그린다(빈 칩을 세우지 않는다).
     ToolingGet,
+    /// ★3.0.5 — 보드 자리가 바뀌었다(드래그 재배치·접기·저장). 모든 슬롯의 lite를 다시 만들어
+    /// `seat`(보이는 자리 번호)가 바뀐 채팅만 `chat:status`로 내보낸다. `ensure` 앞에서 끝난다 —
+    /// 채팅 하나의 일이 아니라 `chat`은 비어 있다.
+    SeatsChanged,
     Dispose,
     /// 진단 — 런타임 수·상태(하네스가 읽는다).
     /// (전 채팅 상태 스냅샷은 허브를 거치지 않는다 — `chats:get`이 `status.json`에서
@@ -238,6 +242,8 @@ struct Hub {
 struct RouteCache {
     active: Option<String>,
     panel: HashMap<String, Option<String>>,
+    /// ★3.0.5 — 표시용 자리(`lite`의 `panelId`·`seat`). 펌프당 한 번만 보드를 본다.
+    seats: HashMap<String, Option<super::Seat>>,
 }
 
 /// `chat:event` 봉투 — 참조로 직렬화한다(★3.0.3, `fanout` 참조).
@@ -257,6 +263,29 @@ struct PanelEnvelope<'a> {
 }
 
 /// `updatedAt`만 다른 lite는 같은 것으로 본다 — 매 틱 두 벌을 복제해 비교하던 자리(★3.0.3).
+/// ★3.0.5 — 인접한 `assistant-stream`(같은 런·같은 메시지)의 `delta`를 이어 붙인다.
+/// 다른 이벤트가 끼면 경계를 지킨다(사고·도구·상태 순서가 바뀌면 안 된다).
+fn coalesce_stream(events: Vec<Value>) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::with_capacity(events.len());
+    for ev in events {
+        if ev.get("type").and_then(Value::as_str) == Some("assistant-stream") {
+            if let Some(last) = out.last_mut() {
+                if last.get("type").and_then(Value::as_str) == Some("assistant-stream")
+                    && last.get("messageId") == ev.get("messageId")
+                    && last.get("runId") == ev.get("runId")
+                {
+                    if let (Some(Value::String(a)), Some(Value::String(b))) = (last.get_mut("delta"), ev.get("delta")) {
+                        a.push_str(b);
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(ev);
+    }
+    out
+}
+
 fn lite_same(a: &Value, b: &Value) -> bool {
     match (a.as_object(), b.as_object()) {
         (Some(a), Some(b)) => {
@@ -270,6 +299,7 @@ fn lite_same(a: &Value, b: &Value) -> bool {
 impl RouteCache {
     fn clear(&mut self) {
         self.active = None;
+        self.seats.clear();
         self.panel.clear();
     }
 }
@@ -492,7 +522,21 @@ impl Hub {
             }
         };
         if let Some(panel) = panel {
-            let _ = self.app.emit(crate::ipc::ch::MA_EVENT, PanelEnvelope { panel_id: &panel, event: &ev });
+            // ★3.0.5 — 패널 봉투는 **그 패널을 그리는 창**에만: 메인(그리드·유령 셀)과 그 패널의 팝아웃.
+            // 3.0.4까지 `emit`(모든 창)이라 팝아웃 창마다 **다른 패널의 델타까지** 전부 JS로 평가하고
+            // 버렸다(패널 P개 × 창 W개 — 팝아웃을 띄울수록 토큰당 비용이 늘었다). 팝아웃·메인의
+            // 구독은 `{target: label}`이라 라벨 필터가 먹는다(`unified.ts`의 무표적 `listen`과 다르다).
+            let popout = crate::win::popout::window_label_for(&panel);
+            let keep = |t: &EventTarget| match t {
+                EventTarget::AnyLabel { label }
+                | EventTarget::Window { label }
+                | EventTarget::Webview { label }
+                | EventTarget::WebviewWindow { label } => {
+                    label == crate::win::MAIN || popout.as_deref() == Some(label.as_str())
+                }
+                _ => true,
+            };
+            let _ = self.app.emit_filter(crate::ipc::ch::MA_EVENT, PanelEnvelope { panel_id: &panel, event: &ev }, keep);
         }
     }
 
@@ -643,6 +687,15 @@ impl Hub {
                 );
                 return;
             }
+            // ★3.0.5 — 자리 재배치. 런타임을 만들지 않는다(있는 슬롯만 다시 센다).
+            Op::SeatsChanged => {
+                let chats: Vec<String> = self.slots.keys().cloned().collect();
+                for c in chats {
+                    self.refresh_lite(&c);
+                }
+                answer(Value::Null);
+                return;
+            }
             Op::Dispose => {
                 if let Some(mut s) = self.slots.remove(&chat) {
                     s.rt.dispatch(Cmd::Dispose);
@@ -706,7 +759,12 @@ impl Hub {
                 if let Some(r) = req.get("resume").and_then(Value::as_str).filter(|s| !s.is_empty()) {
                     if slot.rt.thread.session_id.is_none() {
                         slot.rt.thread.session_id = Some(r.to_string());
-                        slot.rt.thread.cwd_at_bind = req.get("cwd").and_then(Value::as_str).map(str::to_string);
+                        // ★3.0.5 — 재사용 비교는 접힌 키로 한다(`runtime.rs`). 렌더러가 준 원래
+                        // 표기를 그대로 적으면 접힌 `want.cwd().key()`와 늘 어긋나 헛 재스폰이 난다.
+                        slot.rt.thread.cwd_at_bind = req
+                            .get("cwd")
+                            .and_then(Value::as_str)
+                            .map(|c| ccg_engine::identity::CanonPath::of(c).key().to_string());
                     }
                     if req.get("forkSession").and_then(Value::as_bool) == Some(true)
                         && !slot.rt.thread.fork_consumed
@@ -714,30 +772,59 @@ impl Hub {
                         slot.rt.thread.want_fresh = true;
                     }
                 }
-                // ③ runId 발급 — 렌더러가 이벤트를 자기 실행에 붙이는 키.
-                slot.run_seq += 1;
-                let run_id = format!("r{}-{}", std::process::id(), slot.run_seq);
-                let first = slot.wire.begin_run(&run_id);
-                // 뒤따르는 엔진 RunId 하나는 이 런의 것이다 — 그걸 "엔진이 스스로 시작한
-                // 턴"으로 오인하면 사용자 말풍선이 두 번 그려진다.
-                slot.expect_runs = slot.expect_runs.saturating_add(1);
-                slot.terminal = lite::Terminal::None;
+                // ③ 판정을 **먼저** 받는다(★3.0.5). 3.0.4까지는 와이어 런을 먼저 열고(runId 발급 +
+                //    `analyzing`) 그다음 보냈다. 도는 턴이 있어 예약(`Queued`)이 되면 세 가지가 어긋났다:
+                //    ㉠ `begin_run`이 도는 턴의 와이어 상태(cur_msg·said_working·파일 기준선)를 갈아엎고,
+                //    ㉡ 렌더러가 새 runId를 채택해 **앞 턴의 `Done`이 그 id로** 나가 화면이 유휴로 내려가며,
+                //    ㉢ `expect_runs`가 남아 나중에 드레인된 그 턴의 런 개시를 `sync_engine_run`이 삼켰다 —
+                //    렌더러는 유휴인데 엔진은 스트리밍이라 다음 전송이 또 `Queued`가 되는 **자기 유지
+                //    연쇄**(「예약으로 넣었어요」가 계속 뜬다 — 2026-09-03 보고). 거절도 같은 누수였다
+                //    (`expect_runs`만 +1 되고 런이 안 와서 다음 기계 턴의 개시를 삼켰다).
+                //
+                //    판정 방출은 **런타임 하나**가 한다(`Event::Verdict` → `on_engine_event`).
+                //    R1은 여기서도 쐈고 `runtime.rs`의 `dispatch`가 무조건 또 쐈다 —
+                //    전송 1회에 `send:accepted` 2건(크리틱 배선 R1 F6). 저자를 하나로 줄인다.
                 let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
-                // 판정 방출은 **런타임 하나**가 한다(`Event::Verdict` → `on_engine_event`).
-                // R1은 여기서도 쐈고 `runtime.rs`의 `dispatch`가 무조건 또 쐈다 —
-                // 전송 1회에 `send:accepted` 2건(크리틱 배선 R1 F6). 구독자가 붙는 순간
-                // 거부 사유가 두 번 뜬다. 저자를 하나로 줄인다.
-                let _ = slot.rt.dispatch(Cmd::Send { text: prompt });
+                let verdict = slot.rt.dispatch(Cmd::Send { text: prompt });
+                let (run_id, first) = match verdict {
+                    Verdict::Accepted => {
+                        // runId 발급 — 렌더러가 이벤트를 자기 실행에 붙이는 키. 뒤따르는 엔진 RunId
+                        // 하나는 이 런의 것이다 — 그걸 "엔진이 스스로 시작한 턴"으로 오인하면
+                        // 사용자 말풍선이 두 번 그려진다(`expect_runs`).
+                        slot.run_seq += 1;
+                        let run_id = format!("r{}-{}", std::process::id(), slot.run_seq);
+                        let first = slot.wire.begin_run(&run_id);
+                        slot.expect_runs = slot.expect_runs.saturating_add(1);
+                        slot.terminal = lite::Terminal::None;
+                        (run_id, Some(first))
+                    }
+                    Verdict::Queued => {
+                        // 예약 — 와이어 런은 드레인 때 `sync_engine_run`이 연다(항목의 `echoed`가 참이라
+                        // 그때 에코는 없다). 보낸 창은 자기 `begin`으로 PENDING 대기 중이다: **도는 런의
+                        // `analyzing`을 되쏴** 그 런을 채택시킨다 — 앞 턴의 남은 프레임과 `Done`이 화면에
+                        // 닿고, 같은 틱에 드레인의 새 런 개시(`analyzing`)가 뒤따라 busy가 다시 선다.
+                        let run_id = slot.wire.run_id.clone();
+                        let first = (!run_id.is_empty())
+                            .then(|| json!({ "type": "status", "runId": run_id, "status": "analyzing" }));
+                        (run_id, first)
+                    }
+                    // 거절 — 사유는 런타임의 `Verdict`가 그린다(렌더러가 말풍선·busy를 되감는다).
+                    // 런도 기대(`expect_runs`)도 없다.
+                    _ => (slot.wire.run_id.clone(), None),
+                };
                 let chat_id = chat.clone();
-                self.fanout(&chat_id, first);
+                if let Some(first) = first {
+                    self.fanout(&chat_id, first);
+                }
                 // ★3.0.4 — 사용자 말풍선을 **보낸 창만 빼고** 나머지 창에 에코한다
                 // (`fanout_except`). `echoText`는 화면에 그린 원문이다(멘션·첨부 안내가 붙은
                 // `prompt`가 아니다 — 그걸 그리면 다른 창의 말풍선에 안내문이 딸려 온다).
                 // `echoFrom`은 보낸 창의 라벨. 둘 중 하나라도 없는 옛 요청은 3.0.3처럼 침묵한다.
                 // 슬래시 명령은 렌더러가 `echoText`를 안 실으므로(카드로 그린다) 여기 안 온다.
+                // 거절은 에코하지 않는다 — 보낸 창도 곧 되감는 말풍선이다.
                 let echo_text = req.get("echoText").and_then(Value::as_str).unwrap_or("").to_string();
                 let echo_from = req.get("echoFrom").and_then(Value::as_str).unwrap_or("").to_string();
-                if !echo_text.is_empty() && !echo_from.is_empty() {
+                if matches!(verdict, Verdict::Accepted | Verdict::Queued) && !echo_text.is_empty() && !echo_from.is_empty() {
                     let images = req.get("echoImages").cloned().unwrap_or(Value::Null);
                     let ev = json!({
                         "type": "user-echo", "runId": run_id.clone(), "text": echo_text,
@@ -909,7 +996,7 @@ impl Hub {
                 let v = slot.rt.resume_now();
                 answer(verdict_wire("hold.resume", &v));
             }
-            Op::Debug | Op::Dispose | Op::ToolingGet => {
+            Op::Debug | Op::Dispose | Op::ToolingGet | Op::SeatsChanged => {
                 unreachable!("위에서 처리")
             }
         }
@@ -1004,7 +1091,10 @@ impl Hub {
             }
             let _ = frames;
             // ① 내용(2.6.2 EngineEvent) — 렌더러가 그리는 것.
-            for ev in events {
+            //    ★3.0.5 — 한 틱(20ms)에 온 같은 메시지의 텍스트 조각은 하나로 합쳐 보낸다. 조각마다
+            //    창별 직렬화 + JS 평가 + 리듀서 한 바퀴였다(감사 #6). 순서·경계는 그대로다 — 인접한
+            //    같은 종류만 합친다.
+            for ev in coalesce_stream(events) {
                 self.fanout(&chat, ev);
             }
             // ② 상태·판정(3.0 브로드캐스트) + 2.6.2가 아는 몇 가지로의 번역.
@@ -1222,6 +1312,19 @@ impl Hub {
                 let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
                 self.fanout(chat, json!({ "type": "notice", "runId": run, "text": text }));
             }
+            // ★3.0.5 — 중지가 예약을 버리면 **말한다**. 렌더러는 `chat:queue`를 안 듣고, 예약된
+            // 전송의 말풍선은 스레드에 그대로 남아 있어 그 메시지가 조용히 사라진 것처럼 보였다
+            // (「채팅이 씹힌다」 — 2026-09-03 보고: 도는 중에 보낸 말이 예약됐고, 중지가 그 예약을
+            // 비웠다). 버리는 계약(중지 = 뒤에 줄 선 것까지 취소)은 그대로다 — 침묵만 없앤다.
+            Event::QueueCleared { count, .. } if count > 0 => {
+                let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
+                let text = if count == 1 {
+                    "중지해서 예약된 메시지 1건은 보내지 않았어요 — 필요하면 다시 보내 주세요.".to_string()
+                } else {
+                    format!("중지해서 예약된 메시지 {count}건은 보내지 않았어요 — 필요하면 다시 보내 주세요.")
+                };
+                self.fanout(chat, json!({ "type": "notice", "runId": run, "text": text }));
+            }
             // 나머지(StateAssign·ProbeSent·EvidenceRearm·Settled·AskOpened/Closed·Spawn·
             // Exit·CloseInput·Compact·UnknownFrameDropped…)는 `chat:run-state`가 REPLACE로
             // 이미 싣거나 진단 전용이다 — 채널을 늘리지 않는다(§6.1 32채널).
@@ -1274,6 +1377,11 @@ impl Hub {
         };
         self.fanout(chat, first);
         if let Some(e) = echo {
+            // ★3.0.5 — 말풍선이 이미 모든 창에 있는 발화(렌더러 전송이 예약됐다 드레인된 것 —
+            // `QueuedMessage::echoed`)는 안 낸다. 내면 같은 문장이 두 번 그려진다.
+            if e.echoed {
+                return;
+            }
             let run = self.slots.get(chat).map(|s| s.wire.run_id.clone()).unwrap_or_default();
             // 계약면에 없던 이벤트다(2.6.2 `EngineEvent`에는 사용자 에코가 없다 —
             // 렌더러가 자기 `begin` 리듀서로 말풍선을 만들었다). 얼려 둔 화면의
@@ -1344,8 +1452,18 @@ impl Hub {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
+        // ★3.0.5 — 자리(보드) 조회는 펌프당 한 번(라우팅 캐시와 같은 수명). 3.0.4까지
+        // `lite::build`가 슬롯마다 틱마다 보드 전체를 깊이 복제했다(감사 #7).
+        let seat = match self.route.seats.get(chat) {
+            Some(s) => s.clone(),
+            None => {
+                let s = super::panel_seat_of(chat);
+                self.route.seats.insert(chat.to_string(), s.clone());
+                s
+            }
+        };
         let Some(slot) = self.slots.get_mut(chat) else { return };
-        let mut next = lite::build(&slot.rt, slot.terminal, now);
+        let mut next = lite::build(&slot.rt, slot.terminal, now, seat);
         // updatedAt만 다른 것은 "바뀐 것"이 아니다(매 틱 브로드캐스트 방지).
         if lite_same(&next, &slot.last_lite) {
             return;

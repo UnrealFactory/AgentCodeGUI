@@ -414,6 +414,33 @@ pub struct SentEcho {
     pub text: String,
     pub images: Vec<String>,
     pub origin: QueueOrigin,
+    /// ★3.0.5 — 말풍선이 이미 모든 창에 있다(`QueuedMessage::echoed`). 셸은 이때 에코를 안 낸다.
+    pub echoed: bool,
+}
+
+/// ★3.0.5 — **앱이 스스로 만든 stderr 경고**인가. 사용자가 끈 MCP 서버(설정 ▸ 도구의 claude.ai
+/// Gmail·Calendar·Drive 등)는 `--settings`의 `deniedMcpServers`로 CLI에 전달되는데, CLI는 그 키를
+/// 기업 정책으로 보고 매 스폰마다 "Warning: claude.ai MCP servers blocked by enterprise policy: …"를
+/// stderr에 찍는다. 그 줄이 턴마다 스레드에 「[stderr] Warning…」 카드로 쌓였다(2026-09-03 보고).
+/// 사용자가 직접 끈 것의 확인 문장이라 보일 이유가 없다 — 이 한 종류만 거른다(다른 경고는 그대로).
+pub fn is_self_inflicted_stderr(line: &str) -> bool {
+    line.contains("MCP servers blocked by enterprise policy")
+}
+
+/// ★3.0.5 — 정리 종료(EOF → 자발 퇴장 대기)를 허락하는 닫힘 사유. CLI가 **유휴**라 EOF만으로
+/// 스스로 나가는 판이다. 중단(`Cancelled`)·미응답(`HardCancel`)·스폰 실패·급사는 즉시 죽인다 —
+/// 도는 턴이 남은 프로세스가 늦게 같은 세션 파일에 쓰면 다음 재개의 잎(leaf)이 그쪽으로
+/// 뒤집혀 새 턴이 통째로 사라진다.
+pub fn graceful_close(cause: CloseCause) -> bool {
+    matches!(
+        cause,
+        CloseCause::AllClear
+            | CloseCause::IdleReclaim
+            | CloseCause::IdentityChanged
+            | CloseCause::ThreadChanged
+            | CloseCause::CliExit
+            | CloseCause::AppQuit
+    )
 }
 
 /// 재검증 훅이 없을 때의 기본 — 언제나 `Unknown`(=2.6.2 `fire()`의 `catch` 가지).
@@ -805,7 +832,10 @@ impl<D: CliDriver> ChatRuntime<D> {
             // 목록). 셸이 원본을 안 실으면(옛 파일 · 2.6.2 문자열 배열) 여전히 `User`다 —
             // 그쪽은 실제로 사람의 예약이다.
             let origin = q.origin.unwrap_or(QueueOrigin::User);
-            let m = self.make_queue_item(q, origin, now);
+            let mut m = self.make_queue_item(q, origin, now);
+            // ★3.0.5 — 사람의 예약은 렌더러가 `begin`으로 그린 말풍선이 스냅샷에 남아 있다
+            // (재시작 뒤 복원되는 그 스레드). 드레인 때 또 에코하면 두 번 그려진다.
+            m.echoed = origin == QueueOrigin::User;
             self.queue.push_back(m);
         }
         if let Some(h) = hold {
@@ -1272,6 +1302,10 @@ impl<D: CliDriver> ChatRuntime<D> {
     /// F20 — stderr 줄. **리스 증거가 아니다**(죽어 가는 프로세스도 stderr를 뱉는다).
     pub fn on_stderr(&mut self, line: &str) {
         self.fire("F20");
+        // ★3.0.5 — 앱 자신의 설정이 만든 경고는 사용자에게 보일 것이 아니다(아래 참조).
+        if is_self_inflicted_stderr(line) {
+            return;
+        }
         // ★3.0.3 — 수다스러운 CLI(node 경고·MCP 서버 로그)는 줄마다 통지 이벤트가 되어
         // 창마다 팬아웃되고 스레드에 영구히 쌓인다. 턴당 상한을 넘으면 한 줄로 접는다.
         self.stderr_lines = self.stderr_lines.saturating_add(1);
@@ -1370,8 +1404,9 @@ impl<D: CliDriver> ChatRuntime<D> {
     fn execute(&mut self, cmd: Cmd, verdict: Verdict) -> Verdict {
         let now = self.now();
         match cmd {
-            Cmd::Send { text } => self.accept_user_message(QueueInput::text(text), verdict, now),
-            Cmd::Enqueue(input) => self.accept_user_message(input, verdict, now),
+            // ★3.0.5 — `Send`는 렌더러가 말풍선을 이미 그린 발화다(`echoed`). `Enqueue`는 아니다.
+            Cmd::Send { text } => self.accept_user_message(QueueInput::text(text), verdict, now, true),
+            Cmd::Enqueue(input) => self.accept_user_message(input, verdict, now, false),
             Cmd::Interrupt => {
                 if verdict != Verdict::Accepted {
                     return verdict;
@@ -1391,6 +1426,12 @@ impl<D: CliDriver> ChatRuntime<D> {
                     self.t34_cancel_spawn();
                 } else if self.stream.is_some() {
                     self.t23_stop_all();
+                } else {
+                    // ★3.0.5 — 유휴: 죽일 스트림은 없지만 **주차된 예약·한도 대기표는 비운다.**
+                    // /clear의 뜻이 "백지"인데 엔진 대기표가 남으면, 첫 전송이 `Accepted`로
+                    // 큐에 들어가 닫힌 게이트 뒤에 조용히 주차된다(화면은 「작업 중」으로 굳고
+                    // 답은 안 온다 — 2026-09-04 보고). 비어 있으면 아무 일도 없다(무동작·무통지).
+                    self.clear_queue_with_undo();
                 }
                 Verdict::Accepted
             }
@@ -1521,7 +1562,7 @@ impl<D: CliDriver> ChatRuntime<D> {
     }
 
     /// `send`·`enqueue`의 공통 착지 — 큐에 세우고, 판정이 `Accepted`면 드레인까지 본다.
-    fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis) -> Verdict {
+    fn accept_user_message(&mut self, input: QueueInput, verdict: Verdict, now: Millis, echoed: bool) -> Verdict {
         // 넣은 자가 사람이 아닐 수 있다(한도 재개·예약 드레인·뷰어 질문·통지 재주입).
         let origin = input.origin.unwrap_or(QueueOrigin::User);
         // 사용자가 직접 말을 걸었다 = 엔진의 헛 재개 연쇄는 여기서 끊긴다(★R5).
@@ -1537,14 +1578,16 @@ impl<D: CliDriver> ChatRuntime<D> {
         }
         match verdict {
             Verdict::Accepted => {
-                let m = self.make_queue_item(input, origin, now);
+                let mut m = self.make_queue_item(input, origin, now);
+                m.echoed = echoed;
                 self.queue.push_back(m);
                 self.broadcast_queue();
                 self.drain_if_possible();
                 Verdict::Accepted
             }
             Verdict::Queued => {
-                let m = self.make_queue_item(input, origin, now);
+                let mut m = self.make_queue_item(input, origin, now);
+                m.echoed = echoed;
                 self.queue.push_back(m);
                 self.broadcast_queue();
                 Verdict::Queued
@@ -1576,6 +1619,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             attachments: images,
             identity,
             identity_rev,
+            echoed: false,
             thread: if self.thread.want_fresh {
                 ThreadIntent::Fresh
             } else {
@@ -1863,7 +1907,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                 .thread
                 .cwd_at_bind
                 .as_deref()
-                .is_some_and(|c| c != want.cwd().as_str());
+                // ★3.0.5 — **접힌 키**로 비교한다. `as_str`이 이제 원래 대소문자라, 여기서
+                // 그걸 쓰면 같은 폴더를 다른 표기로 만났을 때 헛 재스폰이 난다(P1b).
+                .is_some_and(|c| c != want.cwd().key());
         if idiff.is_empty() && !thread_changed {
             ReuseDecision::Reuse
         } else {
@@ -2036,6 +2082,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             text: m.text.clone(),
             images: m.attachments.clone(),
             origin: m.origin,
+            echoed: m.echoed,
         });
     }
 
@@ -2109,7 +2156,25 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.driver.close_input();
             self.emit(Event::CloseInput { stream: sid });
         }
-        self.driver.kill();
+        // ★3.0.5 — **EOF 직후의 kill이 마지막 답을 지웠다.** CLI는 턴의 마지막 어시스턴트
+        // 메시지(end_turn 텍스트)를 `result`를 낸 **뒤에** 세션 파일(`projects/…/<sid>.jsonl`)에
+        // 비동기로 내린다. 3.0.4까지 이 자리는 EOF와 같은 틱에 `TerminateProcess`를 불렀고
+        // (실측: result +15ms에 kill → 파일에 user·tool_result·attachment만 남고 end_turn 텍스트
+        // 없음 / EOF만 주면 +533ms에 exit 0 → `assistant end_turn "pong"` 기록), 다음 턴의
+        // `--resume`은 그 파일을 읽으므로 CLI가 "턴이 도중에 끊겼다"로 보고 매 턴
+        // `Continue from where you left off.` + `No response requested.`를 합성 주입했다. 모델의
+        // 눈에는 **지난 질문마다 답 없이 도구만 돌리고 끝낸 대화**가 되어 「지난 여섯 개 질문에
+        // 답을 안 보냈습니다 — 밀린 답을 드립니다」를 반복했다(2026-09-03 보고, 실측
+        // `c--code-stationbot/a88d8291….jsonl`: 사용자 프롬프트 12 · end_turn 0 · 합성 주입 12).
+        //
+        // 유휴 사유(턴이 끝났다 · 유휴 회수 · 정체성/스레드 갈이 · 종료)는 EOF를 주고 CLI가
+        // 스스로 나가게 둔다(유예 뒤에만 kill — `CliDriver::kill_graceful`). 중단·미응답·스폰
+        // 실패는 예전처럼 즉시 죽인다(`graceful_close` 참고).
+        if graceful_close(cause) {
+            self.driver.kill_graceful();
+        } else {
+            self.driver.kill();
+        }
         self.finish_termination(cause);
     }
 
@@ -2633,7 +2698,8 @@ impl<D: CliDriver> ChatRuntime<D> {
                             .map(|s| s.spawn_identity.engine_kind())
                             .unwrap_or_else(|| self.identity.engine_kind()),
                     );
-                    self.thread.cwd_at_bind = Some(self.identity.cwd().as_str().to_string());
+                    // ★3.0.5 — 재사용 비교와 같은 좌표계(접힌 키)로 적어 둔다.
+                    self.thread.cwd_at_bind = Some(self.identity.cwd().key().to_string());
                 }
                 self.maybe_t2();
             }
@@ -4147,6 +4213,138 @@ impl Contig for VecDeque<QueuedMessage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ★3.0.5 — 턴이 끝난 CLI는 **정리 종료**(EOF → 자발 퇴장 대기)로 닫는다
+//
+// 실측(2026-09-03): `result` 직후 kill → 마지막 어시스턴트 메시지(end_turn)가 세션 파일에
+// 안 남고, 다음 `--resume`이 "Continue from where you left off." + "No response requested."를
+// 합성 주입해 모델이 매 턴 「지난 질문에 답을 안 보냈다」고 했다. 여기서 재는 것은 두 가지다:
+// 정상 착지(T7 → AllClear)는 `kill_graceful`, 스폰 취소(T34 → Cancelled)는 즉시 `kill`.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod graceful_close_tests {
+    use super::*;
+    use crate::clock::VirtualClock;
+    use crate::driver::SpawnSpec;
+    use crate::identity::*;
+
+    /// 한 턴을 통째로 대본으로 돌려주는 가짜 CLI: initialize 응답 → system/init → result.
+    #[derive(Default)]
+    struct TurnCli {
+        alive: bool,
+        pending: Vec<Value>,
+        kills: usize,
+        graceful: usize,
+    }
+    impl CliDriver for TurnCli {
+        fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
+            self.alive = true;
+            Ok(())
+        }
+        fn send(&mut self, line: Value) {
+            if line.get("type").and_then(Value::as_str) == Some("control_request") {
+                let rid = line.get("request_id").cloned().unwrap_or(Value::Null);
+                self.pending.push(json!({
+                    "type": "control_response",
+                    "response": { "subtype": "success", "request_id": rid, "response": {} }
+                }));
+                self.pending.push(json!({"type":"system","subtype":"init","session_id":"S1","model":"claude-fable-5",
+                    "cwd":"C:\\ccg-fixture\\work","tools":[],"permissionMode":"default","uuid":"U-i"}));
+            } else if line.get("type").and_then(Value::as_str) == Some("user") {
+                self.pending.push(json!({"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed",
+                    "result":"pong","num_turns":1,"total_cost_usd":0.001,"session_id":"S1","uuid":"U-r"}));
+            }
+        }
+        fn close_input(&mut self) {}
+        fn kill(&mut self) {
+            self.kills += 1;
+            self.alive = false;
+        }
+        fn kill_graceful(&mut self) {
+            self.graceful += 1;
+            self.alive = false;
+        }
+        fn process_alive(&self) -> bool {
+            self.alive
+        }
+        fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+            std::mem::take(&mut self.pending)
+        }
+    }
+
+    fn rt() -> ChatRuntime<TurnCli> {
+        let raw = RawIdentity {
+            engine: RawEngine {
+                kind: EngineKind::Claude,
+                model: "haiku".into(),
+                effort: EffortId::Minimal,
+                codex_account: None,
+            },
+            billing: RawBilling {
+                kind: BillingKind::Subscription,
+                account: Some("a@x".into()),
+                drop_env_key: Some(false),
+            },
+            cwd: r"C:\ccg-fixture\work".into(),
+            add_dirs: vec![],
+            mode: ModeId::Normal,
+            system_prompt: None,
+            output_style: None,
+            tools: RawTools::default(),
+        };
+        let defaults = IdentityDefaults {
+            known_accounts: std::collections::BTreeSet::from(["a@x".to_string()]),
+            ..Default::default()
+        };
+        ChatRuntime::new("c-graceful", raw, defaults, VirtualClock::new(), TurnCli::default()).expect("정규화")
+    }
+
+    #[test]
+    fn a_normally_landed_turn_closes_the_cli_gracefully() {
+        let mut r = rt();
+        assert_eq!(r.dispatch(Cmd::Send { text: "핑".into() }), Verdict::Accepted);
+        // initialize 응답 + init → Streaming, 그다음 result → T7 → land_turn → AllClear.
+        r.tick();
+        r.tick();
+        r.tick();
+        assert_eq!(r.state(), StateTag::Idle, "턴이 착지하지 않았다");
+        let d = r.driver_ref();
+        assert_eq!(d.graceful, 1, "★ 정상 착지가 정리 종료(EOF → 대기)가 아니었다 — 마지막 답이 세션 파일에서 사라진다");
+        assert_eq!(d.kills, 0, "★ 정상 착지에서 즉시 kill이 불렸다");
+    }
+
+    #[test]
+    fn cancelling_a_spawn_still_kills_immediately() {
+        let mut r = rt();
+        r.dispatch(Cmd::Send { text: "핑".into() });
+        assert_eq!(r.state(), StateTag::Starting);
+        r.dispatch(Cmd::Interrupt);
+        let d = r.driver_ref();
+        assert_eq!(d.kills, 1, "스폰 취소(T34)는 예전처럼 즉시 죽인다");
+        assert_eq!(d.graceful, 0, "★ 도는 턴을 정리 종료로 놓아주면 늦은 쓰기가 다음 재개의 잎을 뒤집는다");
+    }
+
+    /// ★3.0.5 — 우리 설정(`deniedMcpServers`)이 만든 CLI 경고는 스레드 카드가 되지 않는다.
+    #[test]
+    fn the_denied_mcp_warning_is_not_a_notice() {
+        assert!(is_self_inflicted_stderr(
+            "Warning: claude.ai MCP servers blocked by enterprise policy: claude.ai Google Drive, claude.ai Google Calendar, claude.ai Gmail"
+        ));
+        assert!(!is_self_inflicted_stderr("Warning: something else went wrong"));
+        assert!(!is_self_inflicted_stderr("Error: Not logged in"));
+    }
+
+    #[test]
+    fn graceful_close_covers_only_idle_causes() {
+        for c in [CloseCause::AllClear, CloseCause::IdleReclaim, CloseCause::IdentityChanged, CloseCause::ThreadChanged, CloseCause::CliExit, CloseCause::AppQuit] {
+            assert!(graceful_close(c), "{c:?}는 유휴 사유다");
+        }
+        for c in [CloseCause::Cancelled, CloseCause::HardCancel, CloseCause::SpawnFailed, CloseCause::Crash, CloseCause::ExternalKill] {
+            assert!(!graceful_close(c), "{c:?}는 즉시 죽여야 한다");
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T22 제품 배선 — stdout EOF가 **런타임 안에서** 원장을 거두는가
 //
 // 재생 하네스(`tests/replay*.rs`)는 `stream_died()`를 **직접 부른다**. 그래서 97개
@@ -4726,6 +4924,29 @@ mod reload_tests {
         ChatRuntime::new("c-1", raw, defaults, clock, QuietCli::default()).expect("정규화")
     }
 
+    /// ★3.0.5 — /clear(= `stop_all`)는 **유휴에서도** 엔진의 예약 큐·한도 대기표를 비운다.
+    /// 3.0.4까지 유휴의 `stop_all`은 「도는 실행이 없어요」 거절뿐이라 대기표가 살아남았고,
+    /// 백지가 된 대화의 첫 전송이 닫힌 게이트 뒤에 **조용히 주차**됐다(판정은 수락 — 화면은
+    /// 「작업 중」으로 굳고 답은 영영 안 왔다. 2026-09-04 보고: clear 뒤 첫 채팅이 씹힌다).
+    #[test]
+    fn stop_all_while_idle_clears_the_parked_queue_and_hold() {
+        let clock = VirtualClock::new();
+        clock.advance_to(10 * SEC);
+        let mut r = rt(clock.clone());
+        r.reload_state(
+            vec!["옛 예약".into()],
+            Some(ReloadHold { in_ms: Some(60 * SEC), ready: false, ..Default::default() }),
+        );
+        assert_eq!(r.state(), StateTag::Idle);
+        // /clear → stop_all. 유휴라도 거절이 아니라 **비우기**다.
+        assert_eq!(r.dispatch(Cmd::StopAll), Verdict::Accepted);
+        assert_eq!(r.queue_len(), 0, "★ 옛 예약이 살아남았다");
+        assert!(r.hold().is_none(), "★ 한도 대기표가 살아남았다 — 다음 전송이 그 뒤에 주차된다");
+        // 백지 뒤 첫 전송은 **바로** 나간다.
+        assert_eq!(r.dispatch(Cmd::Send { text: "첫 메시지".into() }), Verdict::Accepted);
+        assert_eq!(r.driver_ref().spawns, 1, "★ 첫 전송이 주차됐다(씹힘)");
+    }
+
     #[test]
     fn reload_restores_the_queue_and_hold_without_sending_anything() {
         let clock = VirtualClock::new();
@@ -4914,6 +5135,25 @@ mod r4_queue_and_resume_tests {
         // 채팅 자체의 정체성은 **안 바뀐다** — 예약이 설정을 몰래 갈지 않는다.
         assert_eq!(r.identity().model(), "haiku");
         assert_eq!(r.identity().mode(), ModeId::Normal);
+    }
+
+    /// ★3.0.5 — 렌더러의 전송(`Send`)은 말풍선이 이미 그려진 발화라 `echoed`, `Enqueue`는 아니다.
+    /// 드레인 때 셸이 이 값으로 `user-echo`를 가른다(참이면 안 낸다 — 두 번 그려진다).
+    #[test]
+    fn a_queued_send_is_marked_echoed_but_an_enqueue_is_not() {
+        let clock = VirtualClock::new();
+        let mut r = rt(clock.clone());
+        r.dispatch(Cmd::Send { text: "첫 턴".into() });
+        assert_eq!(r.state(), StateTag::Starting);
+        // 도는 중의 전송은 예약된다 — 렌더러는 이미 `begin`으로 말풍선을 그렸다.
+        assert_eq!(r.dispatch(Cmd::Send { text: "둘째".into() }), Verdict::Queued);
+        assert_eq!(r.dispatch(Cmd::Enqueue(qin("셋째"))), Verdict::Queued);
+        let items: Vec<_> = r.queue_items().collect();
+        assert_eq!(items.len(), 2);
+        assert!(items[0].echoed, "★ Send로 예약된 항목이 echoed=false — 드레인 때 말풍선이 두 번 그려진다");
+        assert!(!items[1].echoed, "Enqueue는 렌더러가 안 그렸다 — 드레인 때 에코가 나가야 한다");
+        // 첫 턴의 에코도 `Send`였으니 참이다(셸의 `expect_runs`와 별개로 안전하다).
+        assert!(r.take_echo().expect("첫 턴 에코").echoed);
     }
 
     #[test]

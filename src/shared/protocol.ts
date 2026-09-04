@@ -1586,6 +1586,10 @@ export interface ChatStatusLite {
    *  않는다 — R1은 본채팅도 `default::0`이라 칩이 「1번 자리」였고 멀티 첫 자리와 문구가
    *  충돌했다. 자리에 안 앉은 채팅(본채팅·추가 창)의 이름표는 렌더러가 안다. */
   panelId?: string | null
+  /** ★3.0.5 — 그 자리의 **보이는 번호**(1‥N, 보드 `order` 앞 `count`개 안의 위치). 「N번 자리」의 N.
+   *  `panelId`의 슬롯 인덱스는 정체성이라 드래그로 옮겨도 안 변한다 — 번호는 이 값으로 그린다.
+   *  접힌 자리·자리 없음은 `null`. */
+  seat?: number | null
   busy: boolean // 원시 상태(전송 게이트)
   bgActive: boolean // 라이브 원장이 비었나 → 완료 링 판정(effectiveStatus 단일 소스)
   ask: 'none' | 'permission' | 'question' | 'dialog'

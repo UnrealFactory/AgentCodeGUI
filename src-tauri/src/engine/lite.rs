@@ -67,7 +67,7 @@ fn holds_account(state: StateTag, process_alive: bool) -> bool {
     }
 }
 
-pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64) -> Value {
+pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64, seat: Option<super::Seat>) -> Value {
     let state = rt.state();
     let ledger = rt.ledger();
     let ask = ledger
@@ -170,7 +170,11 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64)
         // 쓴다. 마이그레이션이 만든 `default` 보드(`chrome:"ide"` = 본채팅 화면)가 본채팅을
         // 슬롯 0으로 물고 있어서, R1은 본채팅의 칩도 「사용 중 · 1번 자리」였다 —
         // 멀티 1번 자리와 문구가 충돌하고 「본채팅」 이름표는 도달 불가였다(크리틱 F4).
-        "panelId": if holding { super::panel_seat_for_chat(&rt.chat_id) } else { None },
+        "panelId": if holding { seat.as_ref().map(|s| s.panel_id.clone()) } else { None },
+        // ★3.0.5 — **보이는 자리 번호**(1‥N, `order` 앞 `count`개 안의 위치). 「사용 중 · N번 자리」의
+        // N은 이 값이다 — `panelId`의 슬롯 인덱스는 정체성이지 화면 위치가 아니다(드래그로 옮기면
+        // 어긋난다 — 2026-09-03 보고). 접힌 자리는 `null`. 자리 조회는 허브가 펌프당 한 번 한다.
+        "seat": if holding { seat.as_ref().and_then(|s| s.num) } else { None },
         "busy": rt.busy(),
         "bgActive": bg_active,
         "ask": ask,
@@ -281,7 +285,7 @@ mod tests {
     #[test]
     fn the_account_key_rides_the_lite_only_while_the_slot_holds_it() {
         let rt = runtime(true);
-        let v = build(&rt, Terminal::Done, 1_000);
+        let v = build(&rt, Terminal::Done, 1_000, None);
         println!("[F1] 살아 있는 슬롯 = {v}");
         assert_eq!(v["account"], json!("one@ccg.test"));
         assert_eq!(v["status"], json!("done"), "종결 상태는 그대로다(사이드바 점 색)");

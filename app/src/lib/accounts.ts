@@ -350,22 +350,26 @@ function slotOf(panelId?: string | null): number | null {
 const slotScopes: Record<string, Record<string, string>> = {}
 let slotNames: Record<string, string> = {}
 /** 셸이 준 살아 있는 채팅들(계정 키가 있는 행만). */
-let liveRows: { chatId: string; account: string; panelId: string }[] = []
+let liveRows: { chatId: string; account: string; panelId: string; seat: number | null }[] = []
 
 /**
  * `chat:status` REPLACE를 스토어에 앉힌다. **키가 있는 행만** 산다 —
  * `account` 키는 살아 있는 런타임만 싣기 때문이다(`engine/lite.rs`).
  */
 export function putChatStatuses(rows: ChatStatusLite[]): void {
-  const next: { chatId: string; account: string; panelId: string }[] = []
+  const next: { chatId: string; account: string; panelId: string; seat: number | null }[] = []
   for (const r of rows) {
     const acct = r?.account
-    if (r?.chatId && typeof acct === 'string' && acct) next.push({ chatId: r.chatId, account: acct, panelId: r.panelId ?? '' })
+    if (r?.chatId && typeof acct === 'string' && acct)
+      next.push({ chatId: r.chatId, account: acct, panelId: r.panelId ?? '', seat: typeof r.seat === 'number' ? r.seat : null })
   }
   // 같은 내용이면 팬아웃하지 않는다(스레드 꼬리 윈도잉을 흔드는 헛 렌더 방지).
   const same =
     next.length === liveRows.length &&
-    next.every((n, i) => liveRows[i].chatId === n.chatId && liveRows[i].account === n.account && liveRows[i].panelId === n.panelId)
+    next.every(
+      (n, i) =>
+        liveRows[i].chatId === n.chatId && liveRows[i].account === n.account && liveRows[i].panelId === n.panelId && liveRows[i].seat === n.seat
+    )
   if (same) return
   liveRows = next
   emit({})
@@ -396,10 +400,14 @@ export function slotsUsing(email: string | undefined, selfKey?: string): AcctSlo
   return liveRows
     .filter((r) => r.account === email)
     .map((r) => {
-      const slot = slotOf(r.panelId)
+      // ★3.0.5 — 번호는 셸이 준 **보이는 자리**(`seat`)다. `panelId`의 슬롯 인덱스는 정체성이라
+      // 드래그로 옮겨도 안 변해, 그걸 번호로 그리면 화면의 1번이 칩에는 「3번 자리」였다
+      // (2026-09-03 보고). 자리에 앉았는데 번호가 없으면 접힌 자리다.
+      const seated = slotOf(r.panelId) != null
+      const label = r.seat != null ? panelSlotName(r.seat - 1) : seated ? t('접힌 자리', 'folded slot') : (slotNames[r.chatId] ?? '')
       return {
         chatId: r.chatId,
-        label: slot != null ? panelSlotName(slot) : (slotNames[r.chatId] ?? ''),
+        label,
         self: !!selfKey && (r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey))
       }
     })

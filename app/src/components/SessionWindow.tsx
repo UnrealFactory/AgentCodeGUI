@@ -39,6 +39,7 @@ import {
   QuestionModal,
   useThreadFollow,
   useThreadWindow,
+  type NotifyAction,
   type PickerState,
   type ScheduledMsg
 } from './Chat'
@@ -547,6 +548,14 @@ export function SessionWindow(): React.ReactElement {
   // 안정 정체성(useCallback) — 스레드의 MessageView와 WorkBar는 memo라, 렌더마다 새
   // 함수를 넘기면 스트리밍 매 토큰에 완료된 메시지까지 전부 리렌더(마크다운 재파싱)된다
   const openViewer = useCallback((imgs: string[], index: number): void => setViewer({ images: imgs, index }), [])
+  // ★3.0.5 — 알림 band 콜백도 안정 정체성으로(인라인 화살표는 토큰마다 MessageView memo를 깬다).
+  const apiModeRef = useRef(onApiModeChange)
+  apiModeRef.current = onApiModeChange
+  const engineRef = useRef(picker.engine)
+  engineRef.current = picker.engine
+  const notify = useCallback((a: NotifyAction): void => {
+    if (a.kind === 'billing-off') apiModeRef.current(false, engineRef.current)
+  }, [])
 
   // 툴 로그/WorkBar에서 연 파일 — 뷰어로
   // 끈적한 창 모드면 독립 뷰어 창으로(본채팅과 같은 규칙). 콜백은 안정적으로 두고(메모된 자식에
@@ -881,9 +890,7 @@ export function SessionWindow(): React.ReactElement {
                   onOpenImage={openViewer}
                   // ★ M-UI — 알림 band의 행동 알약. 추가 채팅 창엔 통합 스토어 chatId
                   // 배선이 없어 `revert`는 못 준다(그 알약은 안 그려진다). 과금은 이 창 소유다.
-                  onNotify={(a) => {
-                    if (a.kind === 'billing-off') onApiModeChange(false, picker.engine)
-                  }}
+                  onNotify={notify}
                 />
               ))}
               {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}

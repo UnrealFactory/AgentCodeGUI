@@ -235,7 +235,10 @@ pub static COMMANDS: &[CommandRow] = &[
     CommandRow { cmd: "send", cells: [Accept("T1"), Queue, Queue, Queue, Queue, Queue, Accept("T16|T17|T18"), Queue] },
     CommandRow { cmd: "enqueue", cells: [Accept("T27"), Queue, Queue, Queue, Queue, Queue, Queue, Queue] },
     CommandRow { cmd: "interrupt", cells: [Reject("nothing_running"), Accept("T34"), Accept("T13"), Accept("T13"), Accept("T13"), Reject("already_interrupting"), Accept("T35"), Reject("ending")] },
-    CommandRow { cmd: "stop_all", cells: [Reject("nothing_running"), Accept("T34"), Accept("T23"), Accept("T23"), Accept("T23"), Accept("T23"), Accept("T23"), Reject("already_ending")] },
+    // ★3.0.5 — 유휴의 `stop_all`은 거절이 아니라 **비우기**다(예약 큐·한도 대기표). /clear가 이
+    //   명령을 보내는데, 3.0.4까지 유휴에서는 「도는 실행이 없어요」로 튕겨 엔진의 대기표가 살아남았고
+    //   백지가 된 대화의 첫 전송이 닫힌 게이트 뒤에 조용히 주차됐다(2026-09-04 보고: clear 뒤 첫 채팅 씹힘).
+    CommandRow { cmd: "stop_all", cells: [Accept("-"), Accept("T34"), Accept("T23"), Accept("T23"), Accept("T23"), Accept("T23"), Accept("T23"), Reject("already_ending")] },
     CommandRow { cmd: "queue.restore", cells: [Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-")] },
     CommandRow { cmd: "respond_permission", cells: [Reject("no_card"), Reject("no_card"), Reject("no_card"), Accept("T5"), Reject("no_card"), Reject("interrupting"), Reject("no_card"), Reject("ending")] },
     CommandRow { cmd: "respond_question", cells: [Reject("no_card"), Reject("no_card"), Reject("no_card"), Accept("T5"), Reject("no_card"), Reject("interrupting"), Reject("no_card"), Reject("ending")] },

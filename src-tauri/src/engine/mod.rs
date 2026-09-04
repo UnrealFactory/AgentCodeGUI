@@ -385,20 +385,57 @@ pub fn panel_id_for_chat(chat: &str) -> Option<String> {
 /// 라우팅(`ma:event` 봉투)은 **일부러 안 건드린다** — 그쪽은 "이 봉투를 누가 듣나"의
 /// 문제라 판정이 다르고, 본채팅 화면에는 그 봉투를 듣는 리스너가 없어 무해하다.
 pub fn panel_seat_for_chat(chat: &str) -> Option<String> {
-    let all = ccg_store::boards::read_boards();
-    for b in all.get("boards")?.as_array()? {
-        // `chrome`이 없는 옛 보드는 `grid`로 본다(= 지금까지의 동작 그대로).
-        if b.get("chrome").and_then(Value::as_str).unwrap_or("grid") == "ide" {
-            continue;
-        }
-        let id = b.get("id")?.as_str()?;
-        for (i, s) in b.get("slots")?.as_array()?.iter().enumerate() {
-            if s.as_str() == Some(chat) {
-                return Some(format!("{id}::{i}"));
+    panel_seat_of(chat).map(|s| s.panel_id)
+}
+
+/// ★3.0.5 — 표시용 자리 = 라우팅 키 + **보이는 번호**.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Seat {
+    /// `{board}::{slot}` — 슬롯 인덱스 기반 정체성(팝아웃 창의 `panelId`와 같은 키).
+    pub panel_id: String,
+    /// 그리드에서 **보이는** 번호(1‥N) = `order` 앞 `count`개 안의 위치. 접힌 자리는 `None`.
+    pub num: Option<u32>,
+}
+
+/// ★3.0.5 — 자리 번호는 **슬롯 인덱스가 아니라 `order` 안의 위치**다. 3.0.4까지 `{id}::{i}`의
+/// `i`를 그대로 「i+1번 자리」로 그려서, 패널을 드래그로 옮기면 화면의 번호와 칩의 번호가
+/// 갈렸다(`order:[2,1,0,3]`이면 슬롯 2가 1번 자리인데 칩은 「3번 자리」 — 2026-09-03 보고).
+/// 보드 배열은 복제하지 않는다(`with_boards` — 허브가 슬롯마다 틱마다 부르던 자리다).
+pub fn panel_seat_of(chat: &str) -> Option<Seat> {
+    ccg_store::boards::with_boards(|boards| {
+        for b in boards {
+            // `chrome`이 없는 옛 보드는 `grid`로 본다(= 지금까지의 동작 그대로).
+            if b.get("chrome").and_then(Value::as_str).unwrap_or("grid") == "ide" {
+                continue;
+            }
+            let Some(id) = b.get("id").and_then(Value::as_str) else { continue };
+            let Some(slots) = b.get("slots").and_then(Value::as_array) else { continue };
+            for (i, s) in slots.iter().enumerate() {
+                if s.as_str() != Some(chat) {
+                    continue;
+                }
+                let count = b
+                    .get("count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(1)
+                    .clamp(1, ccg_store::boards::SLOT_COUNT as u64) as usize;
+                let order = ccg_store::boards::sanitize_order(b.get("order"));
+                let num = order
+                    .iter()
+                    .position(|&s| s == i)
+                    .filter(|p| *p < count)
+                    .map(|p| p as u32 + 1);
+                return Some(Seat { panel_id: format!("{id}::{i}"), num });
             }
         }
-    }
-    None
+        None
+    })
+    .flatten()
+}
+
+/// ★3.0.5 — 보드가 바뀌었다(자리 드래그·접기·저장) → 허브가 모든 슬롯의 `seat`를 다시 센다.
+pub fn seats_changed() {
+    hub::cast("", hub::Op::SeatsChanged);
 }
 
 /// 이 창(추가 채팅 창)이 보는 채팅. 메인 창이면 활성 채팅.
@@ -860,6 +897,36 @@ mod seat_tests {
     /// 앉고, 그 슬롯 0이 본채팅을 물고 있다. R1은 라우팅용 `panel_id_for_chat`을 그대로
     /// 표시에 써서 본채팅의 `panelId`가 `default::0`이었고, 렌더러가 자리 번호를 이름표보다
     /// 먼저 고르는 탓에 칩이 **「사용 중 · 1번 자리」**였다 — 멀티 첫 자리와 구분이 안 됐다.
+    /// ★3.0.5 — 「N번 자리」의 N은 슬롯 인덱스가 아니라 **`order` 안의 보이는 위치**다.
+    #[test]
+    fn the_seat_number_follows_the_visible_order_not_the_slot_index() {
+        let h = crate::engine::testhome::take("seat-visible-order");
+        let w = |rel: &str, body: &str| {
+            let p = h.dir.join(rel);
+            std::fs::create_dir_all(p.parent().expect("부모")).expect("보드 폴더");
+            std::fs::write(p, body).expect("보드 픽스처");
+        };
+        // 사용자가 드래그로 옮긴 판: 슬롯 2가 첫째 자리, 슬롯 1이 둘째. 슬롯 0·3은 접혔다(count 2).
+        w(
+            "boards/b1.json",
+            &json!({ "id": "b1", "count": 2, "chrome": "grid",
+                     "order": [2,1,0,3,4,5], "slots": ["c-a", "c-b", "c-c", "c-d", null, null] })
+            .to_string(),
+        );
+        w("boards/index.json", r#"{"version":1,"order":["b1"],"activeBoardId":"b1"}"#);
+        ccg_store::boards::invalidate();
+
+        let seat = |c: &str| super::panel_seat_of(c).map(|s| (s.panel_id, s.num));
+        println!("[3.0.5] c-c={:?} c-b={:?} c-a={:?} c-d={:?}", seat("c-c"), seat("c-b"), seat("c-a"), seat("c-d"));
+        // 정체성(라우팅 키)은 슬롯 그대로, 번호는 보이는 위치.
+        assert_eq!(seat("c-c"), Some(("b1::2".into(), Some(1))), "★ 첫째 자리의 채팅이 「3번 자리」로 나온다");
+        assert_eq!(seat("c-b"), Some(("b1::1".into(), Some(2))));
+        assert_eq!(seat("c-a"), Some(("b1::0".into(), None)), "접힌 자리는 번호가 없다");
+        assert_eq!(seat("c-d"), Some(("b1::3".into(), None)));
+        assert_eq!(super::panel_seat_for_chat("c-c").as_deref(), Some("b1::2"), "옛 호출부의 키는 그대로다");
+        drop(h);
+    }
+
     #[test]
     fn the_ide_board_is_not_a_panel_seat() {
         let h = crate::engine::testhome::take("seat-ide-board");

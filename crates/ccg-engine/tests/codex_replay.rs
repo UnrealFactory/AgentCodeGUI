@@ -744,10 +744,11 @@ fn spawn_spec_for_codex_carries_a_plan_not_claude_argv() {
     assert_eq!(p.account.as_deref(), Some("me@openai.com"));
     // 참조 폴더는 두 갈래(쓰기 루트 + 모델 안내문) — engine.ts:1545-1562
     let cfg = p.thread_params();
-    assert_eq!(cfg["config"]["sandbox_workspace_write"]["writable_roots"][0], "c:\\ref");
+    // ★3.0.5 — 참조 폴더도 **원래 대소문자**로 나간다(작업 폴더 이름 소문자화 수정과 같은 축).
+    assert_eq!(cfg["config"]["sandbox_workspace_write"]["writable_roots"][0], "C:\\ref");
     let dev = p.developer_instructions.clone().unwrap();
     assert!(dev.starts_with("한국어로 답해"));
-    assert!(dev.contains("[참조 폴더]") && dev.contains("c:\\ref"));
+    assert!(dev.contains("[참조 폴더]") && dev.contains("C:\\ref"));
 
     // 같은 정체성인데 Claude면 계획이 없다(= 이 스폰은 claude.exe다)
     let mut raw = raw_codex("opus", None);

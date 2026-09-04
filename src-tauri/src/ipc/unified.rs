@@ -65,6 +65,8 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         ch::BOARD_LOAD => ccg_store::boards::read_board(arg(p, 0)),
         ch::BOARD_SAVE => {
             ccg_store::boards::write_boards(arg(p, 0));
+            // ★3.0.5 — 자리 번호(`chat:status.seat`)는 보드에서 나온다 — 재배치를 허브에 알린다.
+            crate::engine::seats_changed();
             Value::Null
         }
 
@@ -73,6 +75,8 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         ch::MA_SAVE => {
             let removed = ccg_store::legacy_bridge::ma_save(arg(p, 0));
             crate::engine::dispose_removed_chats(app, &removed);
+            // ★3.0.5 — 멀티 저장은 보드(`order`·`count`)도 쓴다 — 자리 번호를 다시 센다.
+            crate::engine::seats_changed();
             Value::Null
         }
         ch::MA_LOAD_SESSION => match arg(p, 0).as_str() {

@@ -1,6 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
-import type { ApiConfigStatus, BgTaskRequest, PanelPopState, SessionWindowInfo, UsageInfo } from '@shared/protocol'
+import type { ApiConfigStatus, BgTaskRequest, ChatStatusLite, PanelPopState, SessionWindowInfo, UsageInfo } from '@shared/protocol'
 import type { EngineId } from '@shared/protocol'
+import { listChatWindows, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
+import { MAIN_SLOT_NAME, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
 import { useAgentSession, initialSessionState, sameCwd, commandOf, sanitizeSnapshot, snapshotForPersist, type SessionState } from '../store/session'
 import { parseBtw, btwForkOf } from '../lib/btw'
 import { getPref, setPref } from '../lib/prefs'
@@ -108,6 +110,32 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   useEffect(() => {
     if (boot.snapshot) load(sanitizeSnapshot(boot.snapshot as SessionState))
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── ★3.0.5 — 「계정 → 살아 있는 자리」 역인덱스 (SessionWindow와 같은 배선) ──────
+  // 본채팅·추가 채팅 창만 `chat:status`를 스토어에 앉히고 있어서, 팝아웃 창의 계정 picker는
+  // 이 창의 런타임이 물고 있는 계정(「현재」)도, 다른 자리가 쓰는 계정(「사용 중」)도 몰랐다 —
+  // 정렬 뒤 맨 위 계정을 「현재」로 적었다(2026-09-03 보고). REPLACE는 셸이 모든 창에
+  // `emit`하므로 구독만 하면 같은 표가 선다. 자기 자리는 `panelId`(`chatId={panelId}`)로 뺀다.
+  useEffect(() => {
+    // 첫 REPLACE가 리스너보다 이를 수 있어(F12) 등록 뒤 스냅샷을 한 번 당긴다.
+    const catchUp = (): void => {
+      void window.api
+        .getChats()
+        .then((raw) => {
+          const r = raw as { chats?: { id: string; title?: string }[]; statuses?: Record<string, ChatStatusLite> } | null
+          if (r?.statuses) putChatStatuses(Object.values(r.statuses).filter((v): v is ChatStatusLite => !!v))
+          if (Array.isArray(r?.chats))
+            putSlotNames('chats', Object.fromEntries(r!.chats!.filter((c) => c?.id).map((c) => [c.id, c.title?.trim() || MAIN_SLOT_NAME()])))
+        })
+        .catch(() => {})
+    }
+    return onChatStatus(putChatStatuses, catchUp)
+  }, [])
+  useEffect(() => {
+    const apply = (slots: WindowSlot[]): void =>
+      putSlotNames('wins', Object.fromEntries(slots.map((s) => [s.chatId, s.title?.trim() || WINDOW_SLOT_NAME()])))
+    return onChatWindows(apply, () => void listChatWindows().then(apply).catch(() => {}))
   }, [])
 
   // 창 타이틀(OS 작업 표시줄) — 패널 제목을 따라간다

@@ -11,7 +11,7 @@
 //! 않으므로 한 번 읽어 캐시하고, 계정/키가 바뀌는 채널에서 무효화한다.
 
 use ccg_engine::identity::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 /// 2.6.2 `engine.ts:38-44` 파리티 — 빈 cwd의 대체는 바탕화면.
@@ -234,5 +234,15 @@ pub fn patch_from_json(v: &Value) -> RawIdentityPatch {
 
 /// 정규화값 → 계약면 `RunIdentity`(JSON). picker가 읽는 유일한 진실.
 pub fn identity_wire(id: &RunIdentity) -> Value {
-    serde_json::to_value(id).unwrap_or(Value::Null)
+    let mut v = serde_json::to_value(id).unwrap_or(Value::Null);
+    // ★3.0.5 — 직렬화는 **접힌 cwd**(정체성 해시 안정용)라, 화면·저장에 그대로 나가면 작업
+    // 폴더 이름이 소문자로 보인다. 표시용으로 **원래 대소문자**를 도로 싣는다(해시는 안 건드림).
+    if let Some(o) = v.as_object_mut() {
+        o.insert("cwd".into(), json!(id.cwd().as_str()));
+        o.insert(
+            "addDirs".into(),
+            json!(id.add_dirs().iter().map(|p| p.as_str()).collect::<Vec<_>>()),
+        );
+    }
+    v
 }
