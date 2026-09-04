@@ -1164,7 +1164,7 @@ async function stepOwn() {
 
     // ── ⑤ 창 자리 — 「창」 칩은 chat:windows를 읽는다 ─────────────────────────
     await app.cdp.eval(`window.api.openSessionWindow()`, { awaitPromise: true }).catch(() => {})
-    const chipUp = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 1`, { tries: 120 })
+    const chipUp = await waitFor(app.cdp, `__n('.sb-item .slotchip.winchip') === 1`, { tries: 120 })
     const slots = await ipc('win:chat-list', [])
     const winChatId = (slots ?? [])[0]?.chatId ?? ''
     // **이름을 준다** = 그 추가 채팅이 디스크에 영속된다. 이름 없는 빈 대화는 창을 닫으면
@@ -1173,14 +1173,14 @@ async function stepOwn() {
     // 아직 디스크에 없을 수 있다) 무해하다 — 아래 판정은 이름이 아니라 **항목 수**를 본다.
     if (winChatId) await ipc('session-wins:rename', [winChatId, 'POC 창 대화'])
     await sleep(1200)
-    s.checks.winChip = await app.cdp.eval(`__txts('.sb-item .slotchip.win')`)
+    s.checks.winChip = await app.cdp.eval(`__txts('.sb-item .slotchip.winchip')`)
     s.checks.slots = slots
     if (!chipUp) fail('own.win-chip', '창을 열었는데 목록에 「창」 칩이 안 붙었다', { chip: s.checks.winChip, slots })
     else ok('own.win-chip', { chip: s.checks.winChip, slots: (slots ?? []).map((w) => w.chatId) })
     // 창만 닫기 — 칩은 사라지고 **대화는 목록에 남는다**(삭제가 아니다)
     const before = await app.cdp.eval(`__txts('.sb-item .t .tx')`)
     await ipc('win:chat-close', [{ chatId: winChatId }])
-    const chipGone = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 0`, { tries: 120 })
+    const chipGone = await waitFor(app.cdp, `__n('.sb-item .slotchip.winchip') === 0`, { tries: 120 })
     await sleep(600)
     const after = await app.cdp.eval(`__txts('.sb-item .t .tx')`)
     s.checks.closeOnly = { before, after, chipGone }
@@ -1192,7 +1192,7 @@ async function stepOwn() {
       `(() => { const e = [...document.querySelectorAll('.sb-item')].find((x) => !(x.textContent||'').includes('POC '))
          if (!e) return false; e.click(); return true })()`
     )
-    const chipBack = await waitFor(app.cdp, `__n('.sb-item .slotchip.win') === 1`, { tries: 120 })
+    const chipBack = await waitFor(app.cdp, `__n('.sb-item .slotchip.winchip') === 1`, { tries: 120 })
     s.checks.recreate = { slots: await ipc('win:chat-list', []), chipBack }
     if (!chipBack) fail('own.win-recreate', '닫힌 창 항목을 눌러도 창이 되만들어지지 않는다', s.checks.recreate)
     else ok('own.win-recreate', { slots: (s.checks.recreate.slots ?? []).map((w) => w.chatId) })

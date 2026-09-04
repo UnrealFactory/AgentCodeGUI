@@ -28,6 +28,9 @@ serde_json = { workspace = true }
 # (오프라인 빌드). sha2는 워크스페이스 Cargo.lock에 이미 있어 추가 네트워크가 필요 없다.
 # 성질(정준 직렬화 → 안정 해시 앞 16바이트)은 동일하고, 알고리즘 교체는 canon.rs 한 곳이다.
 sha2 = "0.10"
+# ★3.0.6 — 한도 문구의 사람 말 시각(`resets 3:30pm (Asia/Seoul)`)을 로컬 벽시계로 unix 초에 옮긴다.
+# 워크스페이스 Cargo.lock에 이미 있는 판(0.4.x) — 오프라인 빌드에 추가 다운로드 없음.
+chrono = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 # job object(KILL_ON_JOB_CLOSE) — 앱이 죽으면 claude.exe(337MB)와 손자까지 커널이 거둔다.

@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agentcodegui"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
  "base64 0.22.1",
  "ccg-auth",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-auth"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
  "ccg-store",
  "native-tls",
@@ -352,8 +352,9 @@ dependencies = [
 
 [[package]]
 name = "ccg-engine"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "sha2",
@@ -362,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-fs"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
  "ccg-store",
  "serde",
@@ -373,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-lsp"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
  "ccg-fs",
  "ccg-store",
@@ -384,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-store"
-version = "3.0.6"
+version = "3.0.7"
 dependencies = [
  "aes-gcm",
  "serde",
@@ -433,8 +434,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 

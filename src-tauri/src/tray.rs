@@ -109,8 +109,6 @@ static ANCHOR: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 /// 쏜다.** 그걸 그대로 blur로 받으면 창이 태어나자마자 자기를 부순다 — 조용히, 오류도
 /// 없이(R1에서 트레이 메뉴가 "안 뜬다"의 정체가 이것이었다).
 static MENU_SHOWN: AtomicBool = AtomicBool::new(false);
-/// 카드 창(메뉴·안내)의 "있나 → 만든다"를 한 줄로 세우는 자물쇠 — `show_menu` 주석.
-static SHOW_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn is_quitting() -> bool {
     QUITTING.load(Ordering::SeqCst)
@@ -254,9 +252,17 @@ fn items() -> Value {
 /// `x`/`y`는 **물리** 좌표(TrayIconEvent.position)다.
 pub fn show_menu(app: &AppHandle, x: f64, y: f64) {
     // "떠 있나 → 없으면 만든다"를 한 줄로 세운다 — 쪼개지면 같은 라벨로 창이 둘 만들어져
-    // 하나가 고아가 된다(notify.rs `PUSH_LOCK` 주석의 실측 사고와 같은 종류).
-    // 이 함수는 트레이 우클릭(메인 스레드)과 진단 채널(tokio 워커) 양쪽에서 온다.
-    let _serial = SHOW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // 하나가 고아가 된다. 이 함수는 트레이 우클릭(메인 스레드)과 진단 채널(tokio 워커)
+    // 양쪽에서 오는데, ★3.0.6까지는 std 락(`SHOW_LOCK`)으로 직렬화했다 — 워커가 락을 쥔 채
+    // `scale_factor()`·`build()`(메인 스레드와의 동기 왕복)를 부르는 동안 메인이 우클릭으로
+    // 같은 락에 들어오면 데드락이다(notify.rs 「스레드 규약」의 토스트 덤프와 같은 모양).
+    // 락 대신 **메인 스레드 직렬화**: 메인에서 부르면 바로, 워커에서 부르면 줄을 세운다.
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || show_menu_on_main(&a, x, y));
+}
+
+/// 메인 스레드에서만(`show_menu`).
+fn show_menu_on_main(app: &AppHandle, x: f64, y: f64) {
     // 안내 카드와 메뉴가 **동시에 뜨지 않게** 한다. 같은 페이지를 쓰므로 겹치면
     // 화면에 같은 카드가 둘이고, 사용자가 트레이 메뉴에 도달한 순간 안내의 할 일도 끝난다.
     dismiss_notice(app);

@@ -20,7 +20,7 @@ use crate::identity::{
     IdentityDefaults, IdentityError, IdentityField, IdentityRejectReason, PendingOp, RawIdentity,
     RawIdentityPatch, RunIdentity, Staged,
 };
-use crate::limit::{classify_limit_error, LimitVerdict, MAX_AUTO_ATTEMPTS};
+use crate::limit::{classify_limit_error_at, LimitVerdict, MAX_AUTO_ATTEMPTS};
 use crate::ids::{ChatId, FrameSeq, LiveId, RunId, StreamId};
 use crate::live::{
     AskInfo, AskKind, CloseCause, Confidence, Gating, LiveItem, LiveKind, LiveLedger, Liveness,
@@ -3300,7 +3300,9 @@ impl<D: CliDriver> ChatRuntime<D> {
         let mut limited = false;
         if is_error {
             if let Some(t) = &error_text {
-                let found = classify_limit_error(t);
+                // ★3.0.6 — 기준 시각은 **런타임 시계**(가상 시계 재생에서도 결정적). 사람 말
+                // 시각(`resets 3:30pm`)이 이 시계의 "오늘"로 풀린다.
+                let found = classify_limit_error_at(t, self.clock.now_epoch_ms());
                 if found.hit {
                     limited = true;
                     let at = found.resets_at.map(|s| self.epoch_secs_to_runtime(s));

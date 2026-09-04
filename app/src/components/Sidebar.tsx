@@ -433,7 +433,7 @@ export const Sidebar = memo(function Sidebar({
                           <span
                             className={
                               'slotchip' +
-                              (c.slot.kind === 'folded' ? ' folded' : c.slot.kind === 'win' ? ' win' : '')
+                              (c.slot.kind === 'folded' ? ' folded' : c.slot.kind === 'win' ? ' winchip' : '')
                             }
                             data-tag={c.slot.tag}
                           >

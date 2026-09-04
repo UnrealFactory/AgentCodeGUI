@@ -37,14 +37,11 @@ import type { ChatTooling, EngineEventV3, McpLive, McpServerInfo, SkillInfo, Ski
 import { getChatTooling, onChatEvent } from '../api/unified'
 import { IconAlert, IconBook, IconChevDown, IconEyeOff, IconPlug, IconServer } from './icons'
 import { t, useLang } from '../lib/i18n'
+import { getPref, setPref } from '../lib/prefs'
 
 /** 경로 비교용 정규화 — 대소문자·구분자·후행 슬래시를 접는다(m-logic §2.3의 축소판). */
 function norm(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-}
-function baseOf(p: string): string {
-  const n = p.replace(/\\/g, '/').replace(/\/+$/, '')
-  return n.slice(n.lastIndexOf('/') + 1) || n
 }
 
 /**
@@ -133,6 +130,25 @@ function Toggle({ on, name, onFlip }: { on: boolean; name: string; onFlip: () =>
  *  (전송 방식 + 커맨드/URL — 실행 전에는 도구 목록이 없어 이 줄이 그 자리를 채운다). */
 interface McpRowData extends McpLive {
   detail?: string
+  /** 로컬/전역 알약의 판정 재료 — 디스크 스캔의 scope(이름으로 조인). 못 찾으면 전역. */
+  scope?: 'local' | 'global'
+}
+
+/**
+ * ★3.0.6(2026-09-04 사용자 요청) — 팝오버 머리의 **「로컬」·「전역」 알약**(계정 picker의
+ * `.pp-filt`와 같은 문법). 켜진 범위만 보인다: 로컬만 켜면 로컬, 전역만 켜면 전역, 둘 다 켜면
+ * 전부. 마지막 하나는 못 끈다(빈 알약 둘 = 빈 목록은 답이 없다). 프리프 `tooling.showLocal`·
+ * `tooling.showGlobal`(기본 둘 다 켬)에 절인다 — 접힘과 달리 알약이 상태를 늘 보여 주므로
+ * "왜 안 보이지"가 생기지 않는다.
+ *
+ * 판정: **로컬 = 이 폴더의 것** — 프로젝트·로컬 스코프 스킬(`.claude/skills`), 프로젝트·
+ * 비공개 MCP 서버(`.mcp.json` 등 디스크 스캔 scope `local`). **전역 = 나머지** — 개인
+ * 스킬(`~/.claude/skills`)·플러그인 스킬·내장 스킬(스코프 표식 없음), `~/.claude.json` 서버,
+ * 디스크 스캔에 없는 와이어 전용 서버(플러그인이 붙인 것).
+ */
+type ScopeFilter = { local: boolean; global: boolean }
+function skillIsLocal(s: SkillLive): boolean {
+  return s.scope === 'project' || s.scope === 'local'
 }
 
 function McpRow({
@@ -230,6 +246,16 @@ export function McpSkillView({
   // ★R4 — 섹션 접기(사용자 요청: 내장 스킬 16개가 목록을 길게 만든다). 팝오버가 닫히면
   // 리셋되는 가벼운 상태 — 접힘을 절이면 "왜 안 보이지"가 다음 세션의 미스터리가 된다.
   const [fold, setFold] = useState<{ mcp: boolean; skills: boolean }>({ mcp: false, skills: false })
+  const [scopeF, setScopeF] = useState<ScopeFilter>(() => ({
+    local: getPref<boolean>('tooling.showLocal', true),
+    global: getPref<boolean>('tooling.showGlobal', true)
+  }))
+  const flipScope = (k: keyof ScopeFilter): void => {
+    const next = { ...scopeF, [k]: !scopeF[k] }
+    if (!next.local && !next.global) return // 마지막 하나는 못 끈다(ScopeFilter 주석)
+    setScopeF(next)
+    setPref(k === 'local' ? 'tooling.showLocal' : 'tooling.showGlobal', next[k])
+  }
   const wrapRef = useRef<HTMLSpanElement | null>(null)
 
   useEffect(() => {
@@ -346,24 +372,35 @@ export function McpSkillView({
   // 행 재료 — 와이어가 있으면 그것(연결 상태·도구·내장 스킬까지), 없으면 디스크 스캔
   // (등록 여부만 안다). 디스크 행은 실행 전이라 "지금 붙어 있는 것"이 없으므로
   // 낙관값을 상태에 바로 입힌다 — 표시가 곧 설정이다.
+  // 와이어 행에는 scope가 없다 — 같은 폴더의 디스크 스캔에서 이름으로 빌린다(로컬/전역 알약).
+  const diskMcpScope = new Map((diskOk ? disk!.mcp : []).map((d) => [d.name, d.scope] as const))
   const mcpRows: McpRowData[] = live
-    ? live.mcp
+    ? live.mcp.map((m) => ({ ...m, scope: diskMcpScope.get(m.name) ?? 'global' }))
     : (diskOk ? disk!.mcp : []).map((d) => ({
         name: d.name,
         status: mOn(d.name, d.enabled) ? 'configured' : 'off',
         tools: [],
-        detail: (d.transport !== 'unknown' ? d.transport + ' · ' : '') + d.detail
+        detail: (d.transport !== 'unknown' ? d.transport + ' · ' : '') + d.detail,
+        scope: d.scope
       }))
   const skillRows: SkillLive[] = live
     ? live.skills
     : (diskOk ? disk!.skills : []).map((d) => ({
         name: d.name,
         description: d.description,
-        // 디스크 스코프(global/local) → 와이어 스코프 낱말(개인/프로젝트)로 접는다
-        scope: d.scope === 'global' ? 'user' : 'project',
+        // 디스크 스코프(global/local/plugin) → 와이어 스코프 낱말(개인/프로젝트/플러그인)로 접는다
+        scope: d.scope === 'global' ? 'user' : d.scope === 'plugin' ? 'plugin' : 'project',
         off: !sOn(d.name, d.enabled)
       }))
   const plugins = live?.plugins ?? []
+  // 로컬/전역 알약 — 칩 툴팁은 전체를 세고(붙어 있는 것의 사실), 섹션 머리·목록은 켜진 범위만.
+  const inScope = (local: boolean): boolean => (local ? scopeF.local : scopeF.global)
+  const mcpShown = mcpRows.filter((m) => inScope(m.scope === 'local'))
+  const skillShown = skillRows.filter((s) => inScope(skillIsLocal(s)))
+  const mcpShownOff = mcpShown.filter((m) => m.status === 'off').length
+  const mcpShownTotal = mcpShown.length - mcpShownOff
+  const skillShownOn = skillShown.filter((s) => !s.off).length
+  const skillShownOff = skillShown.length - skillShownOn
 
   // ★R2 — **상태를 전부 센다.** R1은 `connected`/`failed`/`off` 셋만 읽어서, 서버 10대
   // (연결7·실패1·인증필요1·연결중1)를 「MCP 7개 연결 · 2개 실패」로 적었다 — 합이 9다
@@ -440,9 +477,25 @@ export function McpSkillView({
         <div className="wb-pop hpop r">
           <div className="wb-pop-h">
             <span className="t">{t('도구 환경', 'Tool environment')}</span>
-            {/* ★R2 정정(크리틱 §5-마) — 표시 이름은 **패널 meta의 cwd**에서 딴다.
-                와이어의 cwd는 CLI가 정규화한(소문자) 값이라 폴더 칩과 표기가 갈린다. */}
-            <span className="c">{baseOf(cwd || live?.cwd || '')}</span>
+            {/* 로컬/전역 알약(ScopeFilter 주석) — 계정 picker 헤더의 .pp-filt 문법 그대로 */}
+            <span className="pp-filts">
+              <button
+                className={'pp-filt' + (scopeF.local ? ' on' : '')}
+                aria-pressed={scopeF.local}
+                onClick={() => flipScope('local')}
+              >
+                {t('로컬', 'Local')}
+              </button>
+              <button
+                className={'pp-filt' + (scopeF.global ? ' on' : '')}
+                aria-pressed={scopeF.global}
+                onClick={() => flipScope('global')}
+              >
+                {t('전역', 'Global')}
+              </button>
+            </span>
+            {/* 오른쪽 끝의 폴더 이름은 뺐다(2026-09-04 사용자 결정 — 옆 폴더 칩이 이미 말한다).
+                ★R2의 "패널 meta의 cwd에서 딴다" 규칙은 툴팁·판정(norm(cwd))에 그대로 남아 있다. */}
           </div>
 
           {/* ★R2 — 섹션 머리는 **칩과 같은 수**를 센다. 끈 것은 따로 적는다.
@@ -453,13 +506,13 @@ export function McpSkillView({
             onClick={() => setFold((f) => ({ ...f, mcp: !f.mcp }))}
           >
             {/* 수는 0이어도 적는다(2026-09-01 사용자 결정 번복 — 두 머리가 같은 문형이어야) */}
-            {`MCP ${total}`}
-            {offN > 0 ? t(` · 꺼짐 ${offN}`, ` · ${offN} off`) : ''}
+            {`MCP ${mcpShownTotal}`}
+            {mcpShownOff > 0 ? t(` · 꺼짐 ${mcpShownOff}`, ` · ${mcpShownOff} off`) : ''}
             <IconChevDown size={10} />
           </button>
-          {fold.mcp ? null : mcpRows.length ? (
+          {fold.mcp ? null : mcpShown.length ? (
             <div className="wb-pop-list">
-              {mcpRows.map((m) => {
+              {mcpShown.map((m) => {
                 const derived = m.status !== 'off'
                 const on = live ? mOn(m.name, derived) : derived
                 // 살아 있는 행의 토글은 이번 턴을 못 바꾼다 — 상태와 스위치가 어긋난
@@ -473,7 +526,9 @@ export function McpSkillView({
             </div>
           ) : (
             <div className="ag-none">
-              {t('이 폴더에 붙은 MCP 서버가 없어요', 'No MCP servers attached to this folder')}
+              {mcpRows.length
+                ? t('이 범위에 해당하는 MCP 서버가 없어요', 'No MCP servers in this scope')
+                : t('이 폴더에 붙은 MCP 서버가 없어요', 'No MCP servers attached to this folder')}
             </div>
           )}
 
@@ -483,20 +538,22 @@ export function McpSkillView({
             onClick={() => setFold((f) => ({ ...f, skills: !f.skills }))}
           >
             {/* 라벨은 「SKILL」 — 옆 머리 MCP가 전부 대문자라 짝을 맞춘다 · 수는 0이어도 적는다 */}
-            {`SKILL ${skillsOn.length}`}
-            {skillsOff > 0 ? t(` · 꺼짐 ${skillsOff}`, ` · ${skillsOff} off`) : ''}
+            {`SKILL ${skillShownOn}`}
+            {skillShownOff > 0 ? t(` · 꺼짐 ${skillShownOff}`, ` · ${skillShownOff} off`) : ''}
             <IconChevDown size={10} />
           </button>
-          {fold.skills ? null : skillRows.length ? (
+          {fold.skills ? null : skillShown.length ? (
             <div className="wb-pop-list">
               {/* 키에 자리를 섞는다 — 같은 이름이 두 번 오는 판이 있다(플러그인/프로젝트
                   중복). 이름만 키로 쓰면 React가 같은 행으로 접어 하나가 사라진다. */}
-              {skillRows.map((s, i) => {
+              {skillShown.map((s, i) => {
                 // 토글은 **끔 목록이 다루는 이름에만** 세운다 — 디스크 스킬(개인·프로젝트·
-                // 로컬)과 이미 꺼 둔 행. 내장(스코프 없음)·플러그인 스킬은 스위치가 없다.
+                // 로컬)과 이미 꺼 둔 행. 내장(스코프 없음)·플러그인 스킬은 스위치가 없다
+                // (★3.0.6 — 디스크 스캔도 플러그인 스킬을 내므로 그쪽도 같은 규칙: CLI가
+                // `skillOverrides`를 플러그인 스킬에 적용하지 않는다).
                 const canToggle = live
                   ? s.off === true || s.scope === 'user' || s.scope === 'project' || s.scope === 'local'
-                  : true
+                  : s.scope !== 'plugin'
                 const derived = !s.off
                 const on = canToggle && live ? sOn(s.name, derived) : derived
                 const note =
@@ -515,13 +572,15 @@ export function McpSkillView({
             </div>
           ) : (
             <div className="ag-none">
-              {live
-                ? t('쓸 수 있는 스킬이 없어요', 'No skills available')
-                : t('이 폴더에서 찾은 스킬이 없어요', 'No skills found for this folder')}
+              {skillRows.length
+                ? t('이 범위에 해당하는 스킬이 없어요', 'No skills in this scope')
+                : live
+                  ? t('쓸 수 있는 스킬이 없어요', 'No skills available')
+                  : t('이 폴더에서 찾은 스킬이 없어요', 'No skills found for this folder')}
             </div>
           )}
 
-          {plugins.length > 0 && (
+          {plugins.length > 0 && scopeF.global && (
             <>
               <div className="hsec">
                 {t('플러그인', 'Plugins')} {plugins.length}

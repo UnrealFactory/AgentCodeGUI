@@ -183,7 +183,7 @@ impl CliDriver for WcapCli {
         }
         // ★R4 — `mixed_wall`이면 **첫 표만** 꼬리를 달고 그 뒤로는 배너형이다(P4 축).
         let text = if self.banner || (self.mixed_wall && self.turns > 0) {
-            "5-hour limit reached ∙ resets 3pm".to_string()
+            "5-hour limit reached".to_string()
         } else {
             format!("Claude AI usage limit reached|{}", RESET + self.roll * self.turns)
         };
@@ -655,7 +655,7 @@ fn output_from_a_turn_that_died_at_the_doorstep_does_not_clear_the_streak() {
         ),
         // Q1 — **한도 통보문 자체가 화면에 남는 글자**로 온다. 「일했다」가 사용자에게
         //      거짓이 되는 자리다(그 턴이 남긴 유일한 글자가 「한도에 걸렸다」이다).
-        ("한도 문구를 어시스턴트 텍스트로", vec![limit_line("5-hour limit reached ∙ resets 3pm")], false),
+        ("한도 문구를 어시스턴트 텍스트로", vec![limit_line("5-hour limit reached")], false),
     ];
     for (label, pre, work) in cases {
         let (blind, attempts, ready, paused, fires) = twelve_hours_instant_output(pre, work);

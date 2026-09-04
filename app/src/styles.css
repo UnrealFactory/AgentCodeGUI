@@ -4602,7 +4602,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sb-item .slotchip.folded{ background:transparent; border:1px solid var(--line-2); color:var(--text-3); font-weight:600; }
 .sb-item .slotchip.folded i{ font-style:normal; color:var(--text-4); font-size:8.5px; margin-right:1px; }
 /* 창 자리 — 별도 OS 창에서 보는 중 */
-.sb-item .slotchip.win{ background:transparent; border:1px solid var(--line-2); color:var(--text-3); font-weight:600; }
+.sb-item .slotchip.winchip{ background:transparent; border:1px solid var(--line-2); color:var(--text-3); font-weight:600; }
 .sb-item .slotchip[data-tag="violet"]{ background:var(--violet); }
 .sb-item .slotchip[data-tag="blue"]{ background:var(--blue); }
 .sb-item .slotchip[data-tag="amber"]{ background:var(--amber); }
@@ -4610,7 +4610,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sb-item .slotchip[data-tag="green"]{ background:var(--green); }
 .sb-item .slotchip[data-tag="yellow"]{ background:var(--yellow); }
 .sb-item .slotchip[data-tag="red"]{ background:var(--red); }
-.sb-item .slotchip.folded[data-tag], .sb-item .slotchip.win[data-tag]{ background:transparent; }
+.sb-item .slotchip.folded[data-tag], .sb-item .slotchip.winchip[data-tag]{ background:transparent; }
 /* 승인/질문 대기 점 — 2.6.2엔 없던 상태(§2.2-5) */
 .sb-item .dot.ask{ background:var(--yellow); box-shadow:0 0 0 3px rgba(217,192,99,.18); }
 /* 「실행」 배지는 제거(2026-09-01 사용자) — 상태 점이 이미 실행 중을 말한다 */

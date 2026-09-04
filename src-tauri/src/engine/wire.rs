@@ -760,12 +760,26 @@ impl Wire {
             .skills
             .iter()
             .map(|n| {
-                let (desc, scope) = match self.cmd_desc.get(n) {
+                let (mut desc, mut scope) = match self.cmd_desc.get(n) {
                     Some(d) => split_scope(d),
                     // 사전에 없는 이름 = 커맨드 응답이 아직 안 왔거나 이 판에 설명이 없다.
                     // 이름만이라도 낸다(스킬이 있다는 사실이 설명보다 먼저다).
                     None => (String::new(), None),
                 };
+                // ★3.0.6 — 플러그인 스킬. CLI는 이름을 `<플러그인>:<스킬>`로 내고, 설명에는
+                // 매니페스트가 있으면 `(<플러그인>) ` **머리**를, 없으면 ` (plugin)` 꼬리를 붙인다
+                // (CLI 바이너리 실측). 꼬리는 `split_scope`가 가르고, 머리는 `init.plugins`의
+                // 이름과 맞을 때만 뗀다 — 맞지 않으면 설명을 건드리지 않는다(지어내지 않는다).
+                if scope.is_none() {
+                    if let Some((pfx, _)) = n.split_once(':') {
+                        if env.plugins.iter().any(|(pn, _)| pn == pfx) {
+                            scope = Some("plugin");
+                            if let Some(rest) = desc.strip_prefix(&format!("({pfx}) ")) {
+                                desc = rest.to_string();
+                            }
+                        }
+                    }
+                }
                 json!({ "name": n, "description": desc, "scope": scope })
             })
             .collect();

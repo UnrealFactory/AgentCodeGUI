@@ -36,6 +36,25 @@
 //! `ALIVE_AT <= last`로 "같은 사건의 중복이냐"를 가르는데(`crash.rs:383-388`), 토스트
 //! 로드가 `ALIVE_AT`을 올리면 **중복 이벤트가 새 크래시로 승격돼 복구가 두 번 돈다.**
 //! 결정(안 부른다)은 그대로이고 사유만 사실로 고쳐 적는다.
+//!
+//! ## 스레드 규약 (★3.0.6 — 「응답 없음」 덤프의 원인)
+//! **토스트 창을 만들고·부수고·스타일을 바꾸는 일은 전부 메인(UI) 스레드에서 한다**
+//! (`push` → `run_on_main_thread`). 채널 입구(`notify:event` 등)는 tokio 워커라
+//! 여기서 바로 창을 만지면 안 된다.
+//!
+//! 3.0.6까지는 워커가 `PUSH_LOCK`(std Mutex)을 쥔 채 `build()` → `hwnd()` →
+//! `SetWindowLongPtrW`를 불렀다. 뒤의 둘은 **메인 스레드와의 동기 왕복**이다(tauri 게터는
+//! 이벤트 루프에 메시지를 보내고 답을 기다리고, 다른 스레드가 소유한 창에 부른
+//! `SetWindowLongPtrW`는 소유 스레드로 `WM_STYLECHANGING`을 **동기 SendMessage**한다).
+//! 그 사이 메인 스레드가 `Focused(true)`(사용자가 창을 다시 클릭) → `clear_for_window`
+//! → `push` → `PUSH_LOCK.lock()`에 들어오면 서로를 기다린다 — 워커는 메인이 메시지를
+//! 꺼내 주길, 메인은 워커가 락을 놓길. 실측(hang-17248 미니덤프): 메인 스레드
+//! `Mutex::lock_contended`, tokio 워커 `user32!SetWindowLongPtr`(GWL_EXSTYLE,
+//! 새 값 0x08040198 = NOACTIVATE|TOOLWINDOW|TOPMOST… — 바로 `no_activate`), 나머지 전부 유휴.
+//!
+//! 규칙: **std 락을 쥔 채로 메인 스레드와 왕복하는 호출을 하지 않는다.** 여기서는 락을
+//! 없애고 메인 스레드 직렬화로 바꿨다(같은 라벨 창 둘 사고도 그대로 막힌다 — 한 스레드에서
+//! 순서대로 돌기 때문). `no_activate`는 창의 소유 스레드가 아니면 스스로 메인으로 넘긴다.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -67,17 +86,14 @@ struct Entry {
 /// 삽입 순서 = 오래된 것부터. 표시는 뒤집어서 최신이 앞(2.6.2 `entriesNewestFirst`).
 static PENDING: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
 static LOADED: AtomicBool = AtomicBool::new(false);
-/// **`push()` 전체를 한 줄로 세운다**(★R2 — 크리틱 §3.5가 "코드상 존재한다"고만 적고
-/// 재현은 못 한 자리다. R2 회차에 실제로 터졌다).
-///
-/// `notify:event`는 `ipc_call`(async 커맨드)로 오므로 **tokio 워커 여러 개에서 동시에**
-/// 들어온다. 한 번에 10건을 던지면 `ensure()`의 "창이 있나?" 검사와 `build()` 사이가
-/// 벌어져 **두 스레드가 같은 라벨로 창을 두 개 만든다** — tauri 레지스트리에는 나중 것만
-/// 남고 먼저 것은 **아무도 모르는 고아 창**이 된다(항상 위·빈 카드·`notify:show`를 영영
-/// 못 받음·목록이 비어도 안 부서짐). 실측: `count=10 window=true loaded=true`인데 화면의
-/// 카드는 0행이고, 목록을 비운 뒤에도 `toast.html` 문서가 남았다.
-/// 검사와 생성을 한 임계 구역에 넣어 없앤다(경합 없는 정상 경로에서는 마이크로초짜리다).
-static PUSH_LOCK: Mutex<()> = Mutex::new(());
+/// `push_on_main` 재진입 가드 — 메인 스레드 전용이라 경합은 없고 **재진입**만 있다:
+/// `ensure()`의 `build()`가 WebView2 컨트롤러를 만드는 동안 wry가 중첩 메시지 펌프를
+/// 돌리고, 그 안에서 `Focused`/`Destroyed` 이벤트가 `clear_for_window` → `push`로
+/// 다시 들어올 수 있다. 그때 창을 또 만들면 같은 라벨의 고아 창이 된다(★R2 실측: 한 번에
+/// 10건을 던지면 `count=10 window=true loaded=true`인데 카드는 0행). 바깥 회차가 끝난 뒤
+/// `DIRTY`를 보고 한 번 더 돈다.
+static BUSY: AtomicBool = AtomicBool::new(false);
+static DIRTY: AtomicBool = AtomicBool::new(false);
 
 fn enabled() -> bool {
     // 설정 › 알림 토글(`notify.toast`, 기본 on). 매번 읽는다 — 캐시하면 설정 변경이
@@ -261,19 +277,36 @@ fn entries_newest_first() -> Vec<Value> {
 
 /// 표시 목록을 페이지로 밀어넣는다(REPLACE). 비면 창을 부순다.
 ///
-/// 전 구간이 `PUSH_LOCK` 아래다 — "창이 있나 → 없으면 만든다"가 쪼개지면 창이 둘이 된다
-/// (그 상수 주석). 재진입은 없다: `ensure()`가 다는 `on_page_load` 콜백은 나중에
-/// **다른 스레드**에서 오고, `destroy()`는 push를 부르지 않는다.
+/// **항상 메인 스레드로 넘긴다**(모듈 헤더 「스레드 규약」). tauri의 `run_on_main_thread`는
+/// 메인 스레드에서 부르면 바로 실행하고(`send_user_message`가 스레드 id를 본다), 워커에서
+/// 부르면 이벤트 루프에 줄을 세운다 — 어느 쪽이든 창 조작은 한 스레드에서 순서대로 돈다.
+/// 그래서 "창이 있나 → 없으면 만든다"를 락으로 묶을 필요가 없다.
 fn push(app: &AppHandle) {
-    let _serial = PUSH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    if PENDING.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
-        destroy(app);
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || push_on_main(&a));
+}
+
+/// 메인 스레드에서만. 재진입은 `BUSY`/`DIRTY`로 한 회차 뒤로 미룬다(그 상수 주석).
+fn push_on_main(app: &AppHandle) {
+    if BUSY.swap(true, Ordering::SeqCst) {
+        DIRTY.store(true, Ordering::SeqCst);
         return;
     }
-    ensure(app);
-    if LOADED.load(Ordering::SeqCst) && app.get_webview_window(TOAST).is_some() {
-        let _ = app.emit_to(TOAST, NOTIFY_SHOW, entries_newest_first());
+    loop {
+        DIRTY.store(false, Ordering::SeqCst);
+        if PENDING.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+            destroy(app);
+        } else {
+            ensure(app);
+            if LOADED.load(Ordering::SeqCst) && app.get_webview_window(TOAST).is_some() {
+                let _ = app.emit_to(TOAST, NOTIFY_SHOW, entries_newest_first());
+            }
+        }
+        if !DIRTY.load(Ordering::SeqCst) {
+            break;
+        }
     }
+    BUSY.store(false, Ordering::SeqCst);
 }
 
 fn ensure(app: &AppHandle) {
@@ -362,14 +395,27 @@ pub fn drop_toast() {
 /// **포커스를 못 받는 창으로 만든다** — Electron `focusable:false`의 실체.
 /// 실패해도 치명이 아니다(그 경우 토스트가 뜰 때 활성화를 가져간다 — 기능은 산다).
 /// 트레이 안내 카드(`tray::note_first_hide`)도 같은 성질이 필요해 함께 쓴다.
+///
+/// **창을 소유한 스레드(메인)에서만 실제로 부른다.** 다른 스레드의 창에 `SetWindowLongPtrW`를
+/// 부르면 Windows가 소유 스레드로 `WM_STYLECHANGING/CHANGED`를 **동기 SendMessage**하므로,
+/// 그 스레드가 우리 락을 기다리는 순간 데드락이다(모듈 헤더 「스레드 규약」 — 3.0.6 덤프의
+/// 워커 스택이 정확히 이 줄이었다). 소유 스레드가 아니면 메인으로 넘기고 돌아온다.
 #[cfg(windows)]
 pub fn no_activate(win: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Threading::GetCurrentThreadId;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        GetWindowLongPtrW, GetWindowThreadProcessId, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW,
     };
     let Ok(raw) = win.hwnd() else { return };
     let hwnd = HWND(raw.0 as *mut core::ffi::c_void);
+    let owner = unsafe { GetWindowThreadProcessId(hwnd, None) };
+    if owner != 0 && owner != unsafe { GetCurrentThreadId() } {
+        let w = win.clone();
+        let _ = win.run_on_main_thread(move || no_activate(&w));
+        return;
+    }
     unsafe {
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         // TOOLWINDOW = Alt+Tab 목록에서도 빠진다(skip_taskbar와 짝).

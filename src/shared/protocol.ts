@@ -1084,14 +1084,16 @@ export interface McpServerInfo {
 
 // ── Skills (SKILL.md agent capabilities) ─────────────────────
 /** Where a skill's SKILL.md lives. */
-export type SkillScope = 'global' | 'local'
+export type SkillScope = 'global' | 'local' | 'plugin'
 /** A discovered skill (one SKILL.md folder), plus its in-app on/off state. */
 export interface SkillInfo {
-  name: string // frontmatter `name` (falls back to the directory name)
+  name: string // frontmatter `name` (falls back to the directory name); plugin skills are `<plugin>:<name>`
   description: string // frontmatter `description` (may be empty)
-  scope: SkillScope // global = ~/.claude/skills · local = <project>/.claude/skills
+  scope: SkillScope // global = ~/.claude/skills · local = <project>/.claude/skills · plugin = installed marketplace plugin (3.0.6)
   path: string // absolute path to the SKILL.md file
   enabled: boolean // false → turned off in the app (engine gets skillOverrides: 'off')
+  plugin?: string // plugin scope only — `<plugin>@<marketplace>` (the enabledPlugins key)
+  toggleable?: boolean // false → the CLI ignores skillOverrides for this skill (plugin skills); the UI shows no switch
 }
 
 // ── App auto-update (electron-updater, GitHub Releases) ──────

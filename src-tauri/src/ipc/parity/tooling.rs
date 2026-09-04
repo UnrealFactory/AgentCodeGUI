@@ -23,7 +23,7 @@
 //! 둘이 다른 값을 낼 수 있는 게 정상이다(연결 실패한 서버는 저쪽에만 상태가 뜬다).
 
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 // ── 끔 목록 (앱 홈) ─────────────────────────────────────────────────────────
@@ -311,10 +311,17 @@ pub fn skill_list(cwd: &str) -> Value {
         }
     }
 
+    // ★3.0.6 — 세 번째 출처: 마켓플레이스 플러그인의 스킬(아래 「플러그인 스킬」).
+    out.extend(plugin_skills(&home_dir().join(".claude"), cwd));
+
     out.sort_by(|a, b| {
         let (na, nb) = (a["name"].as_str().unwrap_or(""), b["name"].as_str().unwrap_or(""));
         na.cmp(nb).then_with(|| {
-            let rank = |v: &Value| u8::from(v["scope"].as_str().unwrap_or("") != "global");
+            let rank = |v: &Value| match v["scope"].as_str().unwrap_or("") {
+                "global" => 0u8,
+                "local" => 1,
+                _ => 2,
+            };
             rank(a).cmp(&rank(b))
         })
     });
@@ -323,6 +330,151 @@ pub fn skill_list(cwd: &str) -> Value {
 
 pub fn skill_set_enabled(name: &str, enabled: bool) -> Value {
     set_enabled(SKILL_DISABLED, name, enabled)
+}
+
+// ── 플러그인 스킬 (★3.0.6 사용자 제보) ────────────────────────────────────────
+//
+// "PowerShell(CLI)로 마켓플레이스 플러그인을 설치했는데 앱의 Skills 목록에도 `/` 팔레트에도
+// 안 뜬다." 2.6.x부터 스캔이 `~/.claude/skills`·`<프로젝트>/.claude/skills` 두 곳뿐이었다.
+// 클로드 코드는 세 번째 출처를 더 읽는다(실측 — 이 기기의 `~/.claude/plugins`):
+//
+//   ~/.claude/plugins/installed_plugins.json   설치 목록. v1 = `plugins[키] = {installPath,…}`,
+//                                              v2 = `plugins[키] = [{scope, installPath, projectPath?,…}]`.
+//                                              키 = `<플러그인>@<마켓플레이스>`.
+//   ~/.claude/settings.json `enabledPlugins`   켬/끔(`{키: true|false}`). 프로젝트의
+//                                              `.claude/settings.json`·`settings.local.json`도 같은 키를
+//                                              가지며 **가까운 쪽·local이 이긴다**(CLI의 설정 겹침 순서).
+//   <installPath>/skills/<폴더>/SKILL.md        스킬 본체. `.claude-plugin/plugin.json`의 `skills`
+//                                              (문자열·배열, `${CLAUDE_PLUGIN_ROOT}` 허용)로 폴더를 더 둘 수 있다.
+//
+// 이름은 **`<플러그인>:<스킬>`**이다 — CLI가 그렇게 부른다(`/discord:access`). 그리고 CLI
+// 바이너리 실측: `skillOverrides`는 플러그인 스킬에 **적용되지 않는다**(`source==="plugin"` →
+// 항상 on). 그래서 행에 `toggleable:false`를 실어 화면이 스위치를 세우지 않게 한다 — 끄는
+// 척하면 거짓말이다. 켜진 플러그인만 낸다(꺼진 플러그인의 스킬은 CLI도 안 로드한다).
+
+/// 설치된 플러그인 한 건(설치 목록의 한 항목).
+struct PluginInstall {
+    /// `<플러그인>@<마켓플레이스>` — `enabledPlugins`의 키이자 화면의 출처 배지.
+    key: String,
+    /// `<플러그인>` — 스킬 이름의 접두사.
+    plugin: String,
+    path: PathBuf,
+    /// v2 프로젝트 스코프 설치의 `projectPath` — 있으면 그 폴더(와 하위)에서만 보인다.
+    project: Option<String>,
+}
+
+fn plugin_installs(claude_dir: &Path) -> Vec<PluginInstall> {
+    let Some(reg) = read_json_file(&claude_dir.join("plugins").join("installed_plugins.json")) else {
+        return vec![];
+    };
+    let Some(map) = reg.get("plugins").and_then(Value::as_object) else { return vec![] };
+    let mut out = vec![];
+    for (key, v) in map {
+        let plugin = key.split('@').next().unwrap_or(key).trim().to_string();
+        if plugin.is_empty() {
+            continue;
+        }
+        let entries: Vec<&Value> = match v {
+            Value::Array(a) => a.iter().collect(),
+            Value::Object(_) => vec![v],
+            _ => continue,
+        };
+        for e in entries {
+            let Some(p) = e.get("installPath").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) else {
+                continue;
+            };
+            out.push(PluginInstall {
+                key: key.clone(),
+                plugin: plugin.clone(),
+                path: PathBuf::from(p),
+                project: e.get("projectPath").and_then(Value::as_str).map(str::to_string),
+            });
+        }
+    }
+    out
+}
+
+/// `enabledPlugins` 겹침 — 사용자 `settings.json` → (먼 조상부터 가까운 순으로) 프로젝트
+/// `.claude/settings.json` → `.claude/settings.local.json`. 뒤가 앞을 덮는다.
+fn enabled_plugins(claude_dir: &Path, cwd: &str) -> BTreeMap<String, bool> {
+    let mut out = BTreeMap::new();
+    let mut absorb = |p: &Path| {
+        let Some(m) = read_json_file(p).and_then(|v| v.get("enabledPlugins").and_then(Value::as_object).cloned()) else {
+            return;
+        };
+        for (k, v) in m {
+            if let Some(b) = v.as_bool() {
+                out.insert(k, b);
+            }
+        }
+    };
+    absorb(&claude_dir.join("settings.json"));
+    if !cwd.trim().is_empty() {
+        for dir in ancestor_dirs(cwd).into_iter().rev() {
+            absorb(&dir.join(".claude").join("settings.json"));
+            absorb(&dir.join(".claude").join("settings.local.json"));
+        }
+    }
+    out
+}
+
+/// 한 플러그인이 스킬을 두는 폴더들 — 기본 `skills/` + `plugin.json`의 `skills`.
+fn plugin_skill_dirs(root: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![root.join("skills")];
+    let extra = read_json_file(&root.join(".claude-plugin").join("plugin.json")).and_then(|m| m.get("skills").cloned());
+    let items: Vec<String> = match extra {
+        Some(Value::String(s)) => vec![s],
+        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        _ => vec![],
+    };
+    for it in items {
+        let it = it.replace("${CLAUDE_PLUGIN_ROOT}", &root.to_string_lossy());
+        let p = PathBuf::from(&it);
+        let p = if p.is_absolute() { p } else { root.join(p) };
+        if !dirs.iter().any(|d| norm(&d.to_string_lossy()) == norm(&p.to_string_lossy())) {
+            dirs.push(p);
+        }
+    }
+    dirs
+}
+
+/// 켜진 플러그인들의 스킬 — `scope:"plugin"` · `plugin:<키>` · `toggleable:false`.
+/// `claude_dir`를 인자로 받는 이유는 테스트다(실홈 `~/.claude`를 갈아끼우지 않고 임시 폴더를 준다).
+fn plugin_skills(claude_dir: &Path, cwd: &str) -> Vec<Value> {
+    let installs = plugin_installs(claude_dir);
+    if installs.is_empty() {
+        return vec![];
+    }
+    let enabled = enabled_plugins(claude_dir, cwd);
+    let cwd_key = norm(cwd);
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut out = vec![];
+    for inst in installs {
+        if enabled.get(&inst.key).copied() != Some(true) {
+            continue;
+        }
+        if let Some(proj) = &inst.project {
+            let pk = norm(proj);
+            if cwd_key.is_empty() || !(cwd_key == pk || cwd_key.starts_with(&format!("{pk}/"))) {
+                continue;
+            }
+        }
+        for dir in plugin_skill_dirs(&inst.path) {
+            for mut s in discover(&dir, "plugin", &BTreeSet::new()) {
+                let bare = s["name"].as_str().unwrap_or("").to_string();
+                let name = format!("{}:{}", inst.plugin, bare);
+                if !seen.insert(name.clone()) {
+                    continue;
+                }
+                s["name"] = json!(name);
+                s["plugin"] = json!(inst.key);
+                s["enabled"] = json!(true);
+                s["toggleable"] = json!(false);
+                out.push(s);
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -429,5 +581,98 @@ mod tests {
         assert_eq!(v.as_array().unwrap().len(), 1, "끈 스킬이 목록에서 사라졌다");
         assert_eq!(v[0]["enabled"], json!(false));
         assert_eq!(ccg_store::read_home_json("skills.json").unwrap()["disabled"], json!(["s1"]));
+    }
+
+    /// ★3.0.6 제보 — 마켓플레이스 플러그인의 스킬. 설치 목록(v2) + `enabledPlugins:true` →
+    /// `<플러그인>:<스킬>` 이름 · scope plugin · 토글 불가. 꺼진 플러그인(false)과 설정에 없는
+    /// 플러그인은 안 나온다. `plugin.json`의 `skills` 추가 폴더도 읽고, 프로젝트
+    /// `settings.local.json`이 사용자 설정을 양쪽으로 뒤집는다.
+    #[test]
+    fn plugin_skills_come_from_the_install_registry_and_enabled_plugins() {
+        let h = ccg_store::testhome::take("parity-skill-plugin");
+        let claude = h.dir.join("claude-home");
+        let root = h.dir.join("p5");
+        std::fs::create_dir_all(&root).unwrap();
+        let on = h.dir.join("cache").join("mk").join("disc").join("1.0.0");
+        let off = h.dir.join("cache").join("mk").join("quiet").join("1.0.0");
+        let orphan = h.dir.join("cache").join("mk").join("orphan").join("1.0.0");
+        write(&on.join("skills").join("access").join("SKILL.md"), "---\nname: access\ndescription: 채널 접근\n---\n");
+        write(
+            &on.join(".claude-plugin").join("plugin.json"),
+            r#"{"name":"disc","skills":["${CLAUDE_PLUGIN_ROOT}/extra"]}"#,
+        );
+        write(&on.join("extra").join("digest").join("SKILL.md"), "---\nname: digest\n---\n");
+        write(&off.join("skills").join("hush").join("SKILL.md"), "---\nname: hush\n---\n");
+        write(&orphan.join("skills").join("lost").join("SKILL.md"), "---\nname: lost\n---\n");
+        let esc = |p: &Path| p.to_string_lossy().replace('\\', "\\\\");
+        write(
+            &claude.join("plugins").join("installed_plugins.json"),
+            &format!(
+                r#"{{"version":2,"plugins":{{
+                  "disc@mk":[{{"scope":"user","installPath":"{}","version":"1.0.0"}}],
+                  "quiet@mk":[{{"scope":"user","installPath":"{}","version":"1.0.0"}}],
+                  "orphan@mk":[{{"scope":"user","installPath":"{}","version":"1.0.0"}}]}}}}"#,
+                esc(&on),
+                esc(&off),
+                esc(&orphan)
+            ),
+        );
+        write(&claude.join("settings.json"), r#"{"enabledPlugins":{"disc@mk":true,"quiet@mk":false}}"#);
+        let v = plugin_skills(&claude, &root.to_string_lossy());
+        let names: Vec<&str> = v.iter().map(|s| s["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["disc:access", "disc:digest"], "{v:?}");
+        assert_eq!(v[0]["scope"], "plugin");
+        assert_eq!(v[0]["plugin"], "disc@mk");
+        assert_eq!(v[0]["toggleable"], json!(false));
+        assert_eq!(v[0]["enabled"], json!(true));
+        assert_eq!(v[0]["description"], "채널 접근");
+        assert!(v[0]["path"].as_str().unwrap().ends_with("SKILL.md"));
+        // 프로젝트 settings.local.json이 사용자 설정을 뒤집는다(켜기·끄기 양쪽).
+        write(
+            &root.join(".claude").join("settings.local.json"),
+            r#"{"enabledPlugins":{"disc@mk":false,"quiet@mk":true}}"#,
+        );
+        let v = plugin_skills(&claude, &root.to_string_lossy());
+        let names: Vec<&str> = v.iter().map(|s| s["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["quiet:hush"], "{v:?}");
+    }
+
+    /// v1 설치 목록(키 → 객체 하나)도 읽고, v2 프로젝트 스코프 설치(`projectPath`)는 그 폴더와
+    /// 하위에서만 보인다. 설치 목록이 없으면 빈 목록(오류 없음).
+    #[test]
+    fn plugin_registry_v1_shape_and_project_scoped_installs() {
+        let h = ccg_store::testhome::take("parity-skill-plugin-v1");
+        let claude = h.dir.join("claude-home");
+        let proj = h.dir.join("proj");
+        let other = h.dir.join("other");
+        std::fs::create_dir_all(proj.join("src")).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        assert!(plugin_skills(&claude, &other.to_string_lossy()).is_empty(), "설치 목록 없음 = 빈 목록");
+        let every = h.dir.join("cache").join("mk").join("ev").join("1.0.0");
+        let scoped = h.dir.join("cache").join("mk").join("pj").join("2.0.0");
+        write(&every.join("skills").join("a").join("SKILL.md"), "---\nname: a\n---\n");
+        write(&scoped.join("skills").join("s").join("SKILL.md"), "---\nname: s\n---\n");
+        let esc = |p: &Path| p.to_string_lossy().replace('\\', "\\\\");
+        // v1 꼴과 v2 꼴이 한 파일에 섞여도 각자 읽힌다.
+        write(
+            &claude.join("plugins").join("installed_plugins.json"),
+            &format!(
+                r#"{{"version":1,"plugins":{{
+                  "ev@mk":{{"installPath":"{}"}},
+                  "pj@mk":[{{"scope":"project","installPath":"{}","projectPath":"{}"}}]}}}}"#,
+                esc(&every),
+                esc(&scoped),
+                esc(&proj)
+            ),
+        );
+        write(&claude.join("settings.json"), r#"{"enabledPlugins":{"ev@mk":true,"pj@mk":true}}"#);
+        let names = |cwd: &Path| {
+            plugin_skills(&claude, &cwd.to_string_lossy())
+                .iter()
+                .map(|s| s["name"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&proj.join("src")), vec!["ev:a".to_string(), "pj:s".to_string()]);
+        assert_eq!(names(&other), vec!["ev:a".to_string()], "프로젝트 스코프 설치가 남의 폴더에서 보였다");
     }
 }

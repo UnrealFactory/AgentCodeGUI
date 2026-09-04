@@ -102,7 +102,7 @@ impl CliDriver for Cli {
                     "session_id":"S1","uuid":"U-tool"}));
             }
         }
-        let text = if self.tail { wall } else { "5-hour limit reached ∙ resets 3pm".to_string() };
+        let text = if self.tail { wall } else { "5-hour limit reached".to_string() };
         self.turns += 1;
         let err = json!({"type":"result","subtype":"error_during_execution","is_error":true,"result":text});
         if self.life_ms == 0 {

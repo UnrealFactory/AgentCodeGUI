@@ -144,6 +144,28 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.7 — 2026-09-04 보고·요청 다섯: ① 채팅 완료 순간 「응답 없음」(사용자 hang-17248 미니덤프): notify.rs
+  //   push()가 tokio 워커에서 PUSH_LOCK(std Mutex)을 쥔 채 build() → hwnd() → SetWindowLongPtrW(다른 스레드의 창 =
+  //   메인으로 동기 SendMessage), 메인은 Focused(true) → clear_for_window → push → 같은 락 대기 → 교착 → 토스트 창
+  //   조작을 run_on_main_thread로 메인 직렬화(락 제거 · BUSY/DIRTY 재진입 가드) + no_activate는 소유 스레드가 아니면
+  //   메인으로 넘김 + tray.rs show_menu의 SHOW_LOCK도 같은 처방 ② 마켓플레이스 플러그인 스킬 미탐색(제보 — 2.6.x
+  //   app.asar·3.0 공통): skill:list가 ~/.claude/skills·.claude/skills만 훑음 → tooling.rs plugin_skills:
+  //   installed_plugins.json(v1/v2) × enabledPlugins(사용자 → 프로젝트 settings/settings.local 겹침) ×
+  //   <installPath>/skills(+plugin.json skills) → 이름 「플러그인:스킬」·scope plugin·toggleable:false(CLI 실측:
+  //   skillOverrides는 source==="plugin"에 미적용) + wire.rs 라이브 조인이 「(플러그인) 설명」 머리를 init.plugins
+  //   이름과 맞을 때 떼고 scope plugin + McpSkillView 디스크 행 스위치 제외. 회귀 테스트 2 ③ 사용자 요청 —
+  //   MCP & Skill 팝오버 머리에 「로컬」·「전역」 알약(.pp-filt 문법 · 프리프 tooling.showLocal/showGlobal · 마지막
+  //   하나는 못 끔): 로컬 = project/local 스킬 · 디스크 scope local 서버(와이어 행은 디스크 스캔과 이름 조인), 전역 =
+  //   나머지(user/plugin/내장 · ~/.claude.json · 와이어 전용). 섹션 머리 수는 켜진 범위만, 칩 툴팁은 전체 · 머리
+  //   오른쪽 끝 폴더 이름(.c) 제거(사용자 결정) ④ 사이드바 빈 곳 호버/클릭이 「창」 칩 달린 추가 채팅 줄로 감(사용자
+  //   보고 · 자동숨김에서 실측 재현 — realprobe: elementFromPoint(120,680) = .slotchip.win): 칩 클래스 `win`이 앱
+  //   루트 `.win{position:fixed; inset:0}`에 걸려 칩이 사이드바 칼럼(transform 컨테이닝 블록) 전체를 덮었다 →
+  //   `winchip`으로 개명(styles.css 2곳 · poc-dial.mjs · critic-mux-attack.mjs 셀렉터) ⑤ 한도 대기 「언제 풀리는지
+  //   알 수 없어」(사용자 지적 — 카드엔 「resets 3:30pm (Asia/Seoul)」가 적혀 있음): limit.rs classify가 옛 `|epoch`
+  //   꼬리(parse_epoch)만 읽었다 → parse_reset_phrase(`3:30pm`·`3pm`·`Sep 8 at 3pm`·`in 1h 5m`, 로컬 벽시계 ·
+  //   12h 지났으면 내일 · 30일 지난 날짜는 내년 · 모르는 꼴 None) + chrono 의존 · classify_limit_error_at(text,
+  //   now_epoch_ms)로 런타임 시계 기준(가상 시계 재생 결정적) · 시각 미상 픽스처 문구를 시각 없는 것으로 교체
+  //   (r14_limit_loop·probe_wfire_crit·probe_wfr2·wcap_limit_streak·replay·parity).
   // 3.0.6 — 2026-09-04 알림 디자인 패스: ① 스레드 안내(kind:notice)가 전부 노란 ⚠ 한 종 → 주제별 분류
   //   (lib/noticeCat.ts · 문장으로 판정 · 표 밖은 남의 문장=무채색 ⓘ): 한도 대기(라임·모래시계, 노랑 대체) · 풀림
   //   (초록·▶) · 계정(청록) · 모델(보라) · 수명(파랑·맥박) · 종료/재시작(무채색) · 중지(주황·■) · 예약(남색) · 거절
@@ -183,6 +205,163 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   model로 사망 — CLI의 합성 프레임 model:"<synthetic>"을 모델 전환으로 읽었다 → is_placeholder_model로
   //   차단 + 디스크의 오염 정체성 복구(ident.rs) + 종료 경로도 fallback_arms 정리 ⑤ 계정을 바꿔 보냈는데
   //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
+  '3.0.7': {
+    ko: {
+      eyebrow: 'FIXES',
+      lead: '채팅이 끝나는 순간 앱이 「응답 없음」으로 굳던 알림 창의 교착, 마켓플레이스 플러그인 스킬이 목록에 안 보이던 것, 사이드바 빈 곳을 눌러도 추가 채팅 줄이 잡히던 것, 한도에 걸렸을 때 「언제 풀리는지 알 수 없어」라고 하던 것을 고쳤습니다. MCP & Skill 목록에는 「로컬」·「전역」 알약이 생겼습니다.',
+      notes: [
+        {
+          tag: '안정성',
+          name: '채팅이 끝나는 순간 앱이 「응답 없음」으로 굳던 것 — 알림 창의 스레드 교착',
+          desc: (
+            <>
+              다른 창을 보고 있거나 앱이 뒤로 가 있을 때 채팅이 끝나면 화면 우하단에 알림 카드가 뜨는데, 그 카드 창을
+              만드는 코드가 <b>백그라운드 스레드에서 창 스타일을 바꾸는 호출</b>을 잠금을 쥔 채 불렀습니다. Windows는 그
+              호출을 창을 가진 UI 스레드에 넘겨 답을 기다리는데, 바로 그 순간 사용자가 창을 다시 클릭해 UI 스레드가 같은
+              잠금을 기다리면 둘이 서로를 영원히 기다립니다 — 키보드가 먼저 안 먹고, 이어서 창이 하얗게 되며 「응답
+              없음」이 됩니다. 사용자가 보내 준 정지 덤프에서 두 스레드의 자리를 확인했습니다. 이제 알림 창의 생성·파기·
+              스타일 변경은 전부 UI 스레드에서만 하고 그 잠금은 없앴습니다. 트레이 메뉴 창의 같은 구조도 함께 고쳤습니다.
+            </>
+          )
+        },
+        {
+          tag: 'MCP & Skill',
+          name: '마켓플레이스 플러그인으로 설치한 스킬이 목록과 「/」 팔레트에 안 보이던 것',
+          desc: (
+            <>
+              PowerShell 등 CLI에서 <code>claude plugin install</code>로 넣은 플러그인의 스킬은 클로드 코드가 쓰는데, 앱은{' '}
+              <code>~/.claude/skills</code>와 프로젝트의 <code>.claude/skills</code> 두 곳만 훑어서 헤더의 「MCP &amp; Skill」
+              목록에도 입력창의 「/」 팔레트에도 나오지 않았습니다(제보). 이제 클로드 코드의 설치 목록과 켬/끔 설정(프로젝트
+              설정 포함)을 읽어 <b>켜진 플러그인의 스킬을 「플러그인」 배지로 함께 보여 주고</b>, 클로드 코드가 부르는 이름
+              그대로 <code>/플러그인:스킬</code>로 넣어 줍니다. 플러그인 스킬은 클로드 코드가 앱의 끄기 설정을 받지 않으므로
+              스위치를 두지 않습니다.
+            </>
+          )
+        },
+        {
+          tag: 'MCP & Skill',
+          name: 'MCP & Skill 목록에 「로컬」·「전역」 알약 — 이 폴더 것만, 전역 것만, 또는 둘 다',
+          desc: (
+            <>
+              헤더의 「MCP & SKILL」 칩을 열면 「도구 환경」 제목 옆에 알약 두 개가 붙었습니다(계정 목록의 숨김 알약과
+              같은 모양). <b>「로컬」</b>만 켜면 이 폴더의 것 — 프로젝트의 <code>.claude/skills</code> 스킬과{' '}
+              <code>.mcp.json</code> 서버 — 만, <b>「전역」</b>만 켜면 개인·플러그인·내장 스킬과 <code>~/.claude.json</code>{' '}
+              서버만, 둘 다 켜면 전부 보입니다. MCP와 SKILL 두 섹션에 함께 걸리고, 섹션 머리의 수도 켜진 범위만 셉니다.
+              마지막 하나는 끌 수 없고, 선택은 기억됩니다. 제목 줄 오른쪽 끝에 있던 폴더 이름은 뺐습니다(옆 폴더 칩이 이미
+              말합니다).
+            </>
+          )
+        },
+        {
+          tag: '안정성',
+          name: '사이드바 빈 곳에 마우스를 두면 추가 채팅 첫 줄이 켜지고, 아무 데나 눌러도 그 줄이 눌리던 것',
+          desc: (
+            <>
+              추가 채팅 창이 떠 있으면 사이드바의 그 줄에 작은 <b>「창」 칩</b>이 붙는데, 그 칩의 CSS 클래스 이름이 앱 창
+              전체를 뜻하는 이름과 같아서 칩이 보이지 않게 <b>사이드바 전체를 덮고</b> 있었습니다. 그래서 목록 아래 빈 곳에
+              마우스를 두면 그 줄이 호버로 켜지고, 빈 곳이나 다른 줄을 눌러도 그 창이 앞으로 왔습니다(자동 숨김 사이드바에서
+              특히 잘 보였습니다). 칩의 클래스 이름을 바꿔 칩은 칩 크기만 차지합니다.
+            </>
+          )
+        },
+        {
+          tag: '한도',
+          name: '한도에 걸리면 「언제 풀리는지 알 수 없어」라고 하던 것 — CLI가 적어 준 시각을 이제 읽습니다',
+          desc: (
+            <>
+              한도 오류 카드에는 <code>You&apos;ve hit your session limit · resets 3:30pm (Asia/Seoul)</code>처럼{' '}
+              <b>풀리는 시각이 버젓이 적혀 있는데</b>, 앱은 옛 CLI가 붙이던 숫자 꼬리(<code>|1755150000</code>)만 알아서
+              요즘 문구에서는 시각을 못 읽고 「언제 풀리는지 알 수 없어 잠시 뒤 다시 확인할게요」로 빠졌습니다. 이제{' '}
+              <code>resets 3:30pm</code>·<code>3pm</code>·<code>Sep 8 at 3pm</code>·<code>in 1h 5m</code> 꼴을 이 기기
+              시각으로 읽어 「풀리는 시각에 맞춰 이어서 보낼게요」로 가고, 그 시각에 맞춰 자동 재개합니다. 시각이 정말 없는
+              문구만 종전처럼 되묻습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIXES',
+      lead: 'Fixes a deadlock in the toast window that froze the app the moment a chat finished, skills from marketplace plugins missing from the skill list, sidebar hovers and clicks on empty space landing on the chat-window row, and a usage-limit hold that said the reset time was unknown. The MCP & Skill list gains "Local" / "Global" pills.',
+      notes: [
+        {
+          tag: 'Stability',
+          name: 'The app froze ("Not responding") the moment a chat finished — a deadlock in the toast window',
+          desc: (
+            <>
+              When a chat finishes while its window is not focused, a small toast card appears at the bottom right. The
+              code that creates that card <b>changed the window style from a background thread</b> while holding a
+              lock. Windows hands that call to the UI thread that owns the window and waits for the answer — and if at
+              that very moment you click back into the app, the UI thread goes to wait for the same lock, and the two
+              wait for each other forever: the keyboard stops first, then the window goes white and reads &quot;Not
+              responding&quot;. Both threads were found in a hang dump a user sent in. Creating, destroying and
+              restyling the toast window now happens on the UI thread only, and the lock is gone. The tray menu window
+              had the same shape and was fixed the same way.
+            </>
+          )
+        },
+        {
+          tag: 'MCP & Skill',
+          name: 'Skills installed through marketplace plugins were missing from the list and the "/" palette',
+          desc: (
+            <>
+              Skills that come with a plugin installed from the CLI (<code>claude plugin install</code>) are used by Claude
+              Code, but the app only scanned <code>~/.claude/skills</code> and the project&apos;s <code>.claude/skills</code>,
+              so they never appeared in the header&apos;s &quot;MCP &amp; Skill&quot; list or the composer&apos;s &quot;/&quot;
+              palette (reported). The app now reads Claude Code&apos;s install registry and enabled-plugins settings
+              (project settings included), <b>lists the skills of enabled plugins with a &quot;Plugin&quot; badge</b>, and
+              inserts them under the name Claude Code uses, <code>/plugin:skill</code>. Plugin skills have no switch: Claude
+              Code does not apply the app&apos;s off setting to them.
+            </>
+          )
+        },
+        {
+          tag: 'MCP & Skill',
+          name: '"Local" / "Global" pills on the MCP & Skill list — this folder only, global only, or both',
+          desc: (
+            <>
+              Open the &quot;MCP &amp; SKILL&quot; chip in the header and two pills now sit next to the &quot;Tool
+              environment&quot; title (same shape as the hide pills in the account list). With only <b>Local</b> on you
+              see this folder&apos;s items — the project&apos;s <code>.claude/skills</code> skills and{' '}
+              <code>.mcp.json</code> servers; with only <b>Global</b> on, personal, plugin and built-in skills and{' '}
+              <code>~/.claude.json</code> servers; with both on, everything. The filter applies to both the MCP and SKILL
+              sections, and the section counts follow it. The last pill cannot be turned off, and the choice is
+              remembered. The folder name that sat at the right end of the title row is gone (the folder chip next
+              door already says it).
+            </>
+          )
+        },
+        {
+          tag: 'Stability',
+          name: 'Hovering empty sidebar space lit up the first chat-window row, and clicking anywhere hit it',
+          desc: (
+            <>
+              When a chat window is open, its sidebar row carries a small <b>&quot;win&quot; chip</b>. The chip&apos;s CSS
+              class name was the same as the one that means the whole app window, so the chip invisibly{' '}
+              <b>covered the entire sidebar</b>: hovering the empty area below the lists highlighted that row, and clicking
+              empty space or other rows brought that window to the front (most visible with the auto-hiding sidebar). The
+              chip now has its own class name and takes up only its own size.
+            </>
+          )
+        },
+        {
+          tag: 'Limits',
+          name: 'A usage-limit hold said the reset time was unknown — it now reads the time the CLI prints',
+          desc: (
+            <>
+              The limit error card plainly shows the reset time, e.g.{' '}
+              <code>You&apos;ve hit your session limit · resets 3:30pm (Asia/Seoul)</code>, but the app only knew the
+              numeric tail older CLIs appended (<code>|1755150000</code>), so on current wording it fell back to
+              &quot;can&apos;t tell when it resets — will check again shortly&quot;. It now reads{' '}
+              <code>resets 3:30pm</code>, <code>3pm</code>, <code>Sep 8 at 3pm</code> and <code>in 1h 5m</code> in this
+              machine&apos;s local time, says &quot;will resume when it resets&quot;, and resumes on that schedule. Only
+              wording with no time at all still falls back to re-checking.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.6': {
     ko: {
       eyebrow: 'DESIGN',

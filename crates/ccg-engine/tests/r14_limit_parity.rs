@@ -83,7 +83,6 @@ fn the_reset_tail_comes_back_with_the_hit() {
         ("Claude AI usage limit reached|1755150000", Some(1_755_150_000)),
         ("Session limit reached|1799999999", Some(1_799_999_999)),
         ("Claude AI usage limit reached", None),
-        ("5-hour limit reached ∙ resets 3pm", None),
         // 10자리가 아니면 안 읽는다(2.6.2 `/\|(\d{10})(?:\D|$)/`)
         ("usage limit reached|175515000", None),
         ("usage limit reached|17551500001", None),
@@ -93,6 +92,11 @@ fn the_reset_tail_comes_back_with_the_hit() {
         assert!(got.hit, "{s:?}는 hit이어야 한다");
         assert_eq!(got.resets_at, *want, "{s:?}의 리셋 꼬리");
     }
+    // ★3.0.6 — 2.6.2와 **일부러 갈리는** 한 줄: 사람 말 시각(`resets 3pm`)은 이제 읽힌다
+    // (limit.rs `parse_reset_phrase` — 요즘 CLI는 꼬리 대신 이 꼴만 적는다). 값은 실행 시각의
+    // 로컬 "오늘 3pm"이라 여기서는 있음만 본다(정확한 값은 limit.rs 단위 테스트).
+    let phrase = classify_limit_error("5-hour limit reached ∙ resets 3pm");
+    assert!(phrase.hit && phrase.resets_at.is_some(), "사람 말 리셋 시각이 버려졌다");
     // miss면 시각도 안 딸려 나온다(2.6.2: `resetsAt: hit ? parseEpoch(s) : null`)
     let m = classify_limit_error("output token limit exceeded|1755150000");
     assert!(!m.hit && m.resets_at.is_none(), "차단벽에 걸린 문구는 시각도 없다");

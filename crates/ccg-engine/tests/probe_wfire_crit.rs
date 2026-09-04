@@ -63,7 +63,7 @@ impl CliDriver for P {
             return;
         }
         let wall = if self.k.banner {
-            "5-hour limit reached ∙ resets 3pm".to_string()
+            "5-hour limit reached".to_string()
         } else {
             format!("Claude AI usage limit reached|{}", RESET + self.k.roll * self.turns)
         };

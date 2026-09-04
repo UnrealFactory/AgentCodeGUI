@@ -377,7 +377,9 @@ fn s04_queue_plus_limit_hold_resume() {
     sim.cmd(set_deferred(patch_model("opus")));
 
     // 한도 소진 — 2순위 근거(문구 분류)로 장전한다. 1순위 프레임은 아직 미관측(O14).
-    sim.frame(f_result_err("Claude usage limit reached · resets at 5pm"));
+    // ★3.0.6 — 옛 문구 `… · resets at 5pm`은 이제 사람 말 시각이 **읽힌다**(limit.rs
+    // `parse_reset_phrase`). 이 시나리오는 시각 미상 갈래이므로 시각 없는 문구로 바꿨다.
+    sim.frame(f_result_err("Claude usage limit reached"));
     assert!(sim.rt.hold().is_some(), "hold 장전");
     // 원장은 비었고 drainable=false(hold가 막는다) → **여기서 닫는 게 맞다**(§3.4-a 3번)
     assert_eq!(sim.state(), StateTag::Idle);
@@ -387,7 +389,7 @@ fn s04_queue_plus_limit_hold_resume() {
     // 한도 해제까지 민다. **딱 그 지점까지만** —
     // 더 밀면 응답 없는 새 스트림이 20s 타임아웃(T3)에 걸린다(그것도 정상 동작이다).
     //
-    // ★R5 — 이 문구("… · resets at 5pm")에는 파싱 가능한 리셋 꼬리가 없다 = **시각 미상**.
+    // ★R5 — 이 문구("Claude usage limit reached")에는 파싱 가능한 리셋 시각이 없다 = **시각 미상**.
     // R4까지는 장전이 미상을 `now + 5분`으로 덮어써 6.5분(390s)이 발화 시각이었는데,
     // 그 덮어쓰기가 R14 확인 크리틱 F2의 뿌리였다(5시간 한도에도 "약 5분 뒤"라고 적고
     // 30분에 4회 헛 재개). 이제 미상은 미상으로 두고 2.6.2 `PROBE_MS`(10분) 간격으로

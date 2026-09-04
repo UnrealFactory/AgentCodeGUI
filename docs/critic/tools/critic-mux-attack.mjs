@@ -63,7 +63,7 @@ const HELPERS = `(() => {
     items: [...s.querySelectorAll('.sb-item')].map((i) => ({
       t: (i.querySelector('.t .tx')?.textContent || '').trim(),
       chip: (i.querySelector('.slotchip')?.textContent || '').trim(),
-      kind: i.querySelector('.slotchip.folded') ? 'folded' : i.querySelector('.slotchip.win') ? 'win' : i.querySelector('.slotchip') ? 'live' : '',
+      kind: i.querySelector('.slotchip.folded') ? 'folded' : i.querySelector('.slotchip.winchip') ? 'win' : i.querySelector('.slotchip') ? 'live' : '',
       dot: (i.querySelector('.dot')?.className || '').replace('dot', '').trim(),
       run: !!i.querySelector('.runbadge'),
       active: i.className.includes('active')

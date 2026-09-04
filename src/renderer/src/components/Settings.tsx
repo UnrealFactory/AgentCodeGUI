@@ -3,7 +3,6 @@ import type {
   EngineVersionEntry,
   EngineVersionState,
   SkillInfo,
-  SkillScope,
   McpServerInfo,
   LspServerInfo,
   ApiConfigStatus,
@@ -1632,7 +1631,8 @@ function ProviderApiCard({
 }
 
 // 라벨이 언어를 따라가야 해서 상수가 아닌 함수 — 렌더 때 t()가 평가된다
-function scopeTabs(): { id: 'all' | SkillScope; label: string }[] {
+// 2.x는 global/local 두 스코프만 낸다(플러그인 스킬은 3.0에서) — 탭 타입도 그 둘로 못 박는다.
+function scopeTabs(): { id: 'all' | 'global' | 'local'; label: string }[] {
   return [
     { id: 'all', label: t('전체', 'All') },
     { id: 'global', label: t('전역', 'Global') },
@@ -1642,7 +1642,7 @@ function scopeTabs(): { id: 'all' | SkillScope; label: string }[] {
 
 function SkillView({ cwd }: { cwd: string }) {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null)
-  const [scope, setScope] = useState<'all' | SkillScope>('all')
+  const [scope, setScope] = useState<'all' | 'global' | 'local'>('all')
   const [busy, setBusy] = useState<string | null>(null) // skill name currently toggling
 
   const refresh = (): void => {

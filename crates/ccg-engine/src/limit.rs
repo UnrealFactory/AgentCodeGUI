@@ -129,7 +129,8 @@ pub fn unknown_wait(attempts: u32) -> Millis {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LimitHit {
     pub hit: bool,
-    /// 에러 원문 꼬리(`…|1755150000`)에서 읽은 **unix 초**. 런타임 시계(단조 ms)와는
+    /// 에러 원문에서 읽은 **unix 초** — 옛 꼬리 `…|1755150000`([`parse_epoch`]) 또는 요즘 CLI의
+    /// 사람 말 `resets 3:30pm (Asia/Seoul)`([`parse_reset_phrase`]). 런타임 시계(단조 ms)와는
     /// 다른 축이라 [`crate::runtime::ChatRuntime`]이 [`crate::clock::Clock::now_epoch_ms`]로
     /// 옮긴 뒤에 쓴다.
     pub resets_at: Option<u64>,
@@ -238,6 +239,13 @@ fn limit_reached_with_tail(t: &str) -> bool {
 /// `한도` 부분일치 — `컨텍스트 한도`·`출력 토큰 한도`까지 삼켰다. 한국어 문구는 2번
 /// 차단벽의 한국어 짝을 통과한 뒤 **`사용 한도`(=`usage limit`의 직역)만** 받는다.
 pub fn classify_limit_error(text: &str) -> LimitHit {
+    classify_limit_error_at(text, chrono::Local::now().timestamp_millis().max(0) as u64)
+}
+
+/// [`classify_limit_error`] + **기준 시각**(unix ms). 사람 말 리셋 시각(`resets 3:30pm`)은 "오늘의
+/// 3시 30분"이라 기준 시각이 있어야 날짜가 정해진다 — 런타임은 자기 시계
+/// ([`crate::clock::Clock::now_epoch_ms`])를 넘겨 재생 하네스(가상 시계)에서도 결정적이게 한다.
+pub fn classify_limit_error_at(text: &str, now_epoch_ms: u64) -> LimitHit {
     let miss = LimitHit { hit: false, resets_at: None };
     if text.is_empty() {
         return miss;
@@ -245,7 +253,7 @@ pub fn classify_limit_error(text: &str) -> LimitHit {
     let t = text.to_lowercase();
     // ① 명시적 "usage limit" — 다른 단어가 섞여 있어도 확정(claude/codex 공통 문구)
     if t.contains("usage limit") {
-        return LimitHit { hit: true, resets_at: parse_epoch(text) };
+        return LimitHit { hit: true, resets_at: parse_resets(text, now_epoch_ms) };
     }
     // ② 컨텍스트·토큰·출력 한도 계열은 전부 비한도 — 아래 관대한 패턴의 오탐 차단벽
     if ["context", "token", "output", "length"].iter().any(|k| t.contains(k))
@@ -258,7 +266,122 @@ pub fn classify_limit_error(text: &str) -> LimitHit {
         || banner_limit_reached(&t)
         || your_limit(&t)
         || limit_reached_with_tail(&t);
-    LimitHit { hit, resets_at: if hit { parse_epoch(text) } else { None } }
+    LimitHit { hit, resets_at: if hit { parse_resets(text, now_epoch_ms) } else { None } }
+}
+
+/// 리셋 시각 — 옛 꼬리(`|epoch`)가 있으면 그것(정확한 값), 없으면 사람 말 문구를 기준 시각의
+/// 로컬 벽시계로 푼다.
+fn parse_resets(text: &str, now_epoch_ms: u64) -> Option<u64> {
+    use chrono::TimeZone;
+    parse_epoch(text).or_else(|| {
+        let now = chrono::Local.timestamp_millis_opt(now_epoch_ms as i64).single()?;
+        parse_reset_phrase(text, now)
+    })
+}
+
+// ── 사람 말 리셋 시각 (★3.0.6 사용자 보고) ────────────────────────────────────
+//
+// 「사용 한도에 걸렸는데 언제 풀리는지 알 수 없다고 나온다」 — 화면에는 CLI 원문이
+// `You've hit your session limit · resets 3:30pm (Asia/Seoul)`로 **시각이 버젓이 적혀 있는데**
+// 판정은 `|epoch` 꼬리만 알아서 `resets_at:None`이었다. 그 꼬리는 옛 CLI의 문법이고 요즘
+// CLI는 사람 말로만 적는다(바이너리 실측: `\`… · resets ${formatResetTime(resets_at)}\``,
+// 빠른 모드 한도는 `resets in 1h 5m`).
+//
+// 받는 꼴(대소문자 무관, `resets`/`reset at` 뒤):
+//   `3:30pm (Asia/Seoul)` · `3pm` · `at 3pm` · `Sep 8 at 3pm (Asia/Seoul)` · `Sep 8, 3pm` · `in 1h 5m` · `in 45m`
+// 괄호의 존은 **읽지 않는다** — CLI가 그 기기의 로컬 존을 적으므로 로컬 벽시계로 옮기면 같은
+// 값이다(다른 기기의 원문을 붙여 넣는 경우는 없다). 날짜 없는 시각은 오늘, 다만 12시간 넘게
+// 지난 시각이면 내일(자정 넘김). 날짜 있는 시각은 올해, 30일 넘게 지났으면 내년.
+// 모르는 꼴은 `None` — 지어내지 않는다(그때는 종전대로 「알 수 없어」 경로).
+
+fn parse_reset_phrase(text: &str, now: chrono::DateTime<chrono::Local>) -> Option<u64> {
+    use chrono::{Datelike, Duration, TimeZone};
+    let lower = text.to_lowercase();
+    let idx = lower.find("resets").map(|i| i + "resets".len()).or_else(|| lower.find("reset at").map(|i| i + "reset".len()))?;
+    let mut toks: Vec<&str> = lower[idx..]
+        .split(|c: char| c.is_whitespace() || c == ',' || c == '·')
+        .filter(|t| !t.is_empty())
+        .take(6)
+        .collect();
+    if toks.first() == Some(&"at") {
+        toks.remove(0);
+    }
+    // `in 1h 5m` / `in 45m` / `in 2 hours 10 minutes`
+    if toks.first() == Some(&"in") {
+        let mut secs: i64 = 0;
+        let mut pending: Option<i64> = None;
+        for t in &toks[1..] {
+            let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let unit = &t[digits.len()..];
+            let n: Option<i64> = if digits.is_empty() { pending } else { digits.parse().ok() };
+            let Some(n) = n else { break };
+            match unit {
+                "h" | "hr" | "hrs" | "hour" | "hours" => secs += n * 3600,
+                "m" | "min" | "mins" | "minute" | "minutes" => secs += n * 60,
+                "" => {
+                    pending = Some(n);
+                    continue;
+                }
+                _ => break,
+            }
+            pending = None;
+        }
+        return (secs > 0).then(|| (now + Duration::seconds(secs)).timestamp() as u64);
+    }
+    // 선택적 날짜: `sep 8`
+    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let mut date: Option<(u32, u32)> = None;
+    if let Some(m) = toks.first().and_then(|t| MONTHS.iter().position(|m| t.starts_with(m))) {
+        let d: u32 = toks.get(1)?.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok()?;
+        date = Some((m as u32 + 1, d));
+        toks.drain(..2);
+        if toks.first() == Some(&"at") {
+            toks.remove(0);
+        }
+    }
+    // 시각: `3:30pm` · `3pm` · `3:30 pm`
+    let mut time = (*toks.first()?).to_string();
+    if !(time.ends_with("am") || time.ends_with("pm")) {
+        match toks.get(1) {
+            Some(&"am") | Some(&"pm") => time.push_str(toks[1]),
+            _ => return None,
+        }
+    }
+    let pm = time.ends_with("pm");
+    let hm = &time[..time.len() - 2];
+    let (h_s, m_s) = hm.split_once(':').unwrap_or((hm, "0"));
+    let mut h: u32 = h_s.parse().ok()?;
+    let m: u32 = m_s.parse().ok()?;
+    if h == 0 || h > 12 || m > 59 {
+        return None;
+    }
+    if h == 12 {
+        h = 0;
+    }
+    if pm {
+        h += 12;
+    }
+    let tz = now.timezone();
+    let at = match date {
+        Some((mo, d)) => {
+            let mut y = now.year();
+            let cand = tz.with_ymd_and_hms(y, mo, d, h, m, 0).single()?;
+            if cand < now - Duration::days(30) {
+                y += 1;
+            }
+            tz.with_ymd_and_hms(y, mo, d, h, m, 0).single()?
+        }
+        None => {
+            let today = now.date_naive();
+            let cand = tz.from_local_datetime(&today.and_hms_opt(h, m, 0)?).single()?;
+            if cand < now - Duration::hours(12) {
+                cand + Duration::days(1)
+            } else {
+                cand
+            }
+        }
+    };
+    Some(at.timestamp() as u64)
 }
 
 /// [`classify_limit_error`]의 불리언 얼굴. 크리틱 하네스(`r14_limit_parity`)가 부르는 이름이다.
@@ -486,6 +609,39 @@ pub struct SwitchPick {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★3.0.6 — 요즘 CLI의 사람 말 리셋 시각. 로컬 벽시계 기준(존 괄호는 무시), 자정 넘김·날짜·`in` 꼴.
+    #[test]
+    fn reset_phrases_become_local_epochs() {
+        use chrono::{Duration, Local, TimeZone};
+        let now = Local.with_ymd_and_hms(2026, 9, 4, 15, 14, 0).single().unwrap();
+        let at = |y, mo, d, h, mi| Local.with_ymd_and_hms(y, mo, d, h, mi, 0).single().unwrap().timestamp() as u64;
+        let p = |s: &str| parse_reset_phrase(s, now);
+        assert_eq!(p("You've hit your session limit · resets 3:30pm (Asia/Seoul)"), Some(at(2026, 9, 4, 15, 30)));
+        assert_eq!(p("resets 3pm"), Some(at(2026, 9, 4, 15, 0)), "14분 지난 시각은 오늘(방금 풀림)");
+        assert_eq!(p("resets at 3:05 pm"), Some(at(2026, 9, 4, 15, 5)));
+        assert_eq!(p("resets 12:30am (Asia/Seoul)"), Some(at(2026, 9, 5, 0, 30)), "12시간 넘게 지났으면 내일");
+        assert_eq!(p("resets 12pm"), Some(at(2026, 9, 4, 12, 0)));
+        assert_eq!(p("Weekly limit · resets Sep 8 at 3pm (Asia/Seoul)"), Some(at(2026, 9, 8, 15, 0)));
+        assert_eq!(p("resets Sep 8, 3pm"), Some(at(2026, 9, 8, 15, 0)));
+        assert_eq!(p("resets Jan 2 at 9am"), Some(at(2027, 1, 2, 9, 0)), "지난 날짜는 내년");
+        assert_eq!(p("You've hit your fast limit · resets in 1h 5m"), Some((now + Duration::seconds(3900)).timestamp() as u64));
+        assert_eq!(p("resets in 45m"), Some((now + Duration::seconds(2700)).timestamp() as u64));
+        assert_eq!(p("resets in 2 hours 10 minutes"), Some((now + Duration::seconds(7800)).timestamp() as u64));
+        assert_eq!(p("resets soon"), None, "모르는 꼴은 지어내지 않는다");
+        assert_eq!(p("resets 25pm"), None);
+        assert_eq!(p("no reset here"), None);
+        // classify가 꼬리 없는 요즘 문구에서도 시각을 낸다 — 기준 시각을 넘기면 결정적이다
+        let hit = classify_limit_error_at(
+            "You've hit your session limit · resets 3:30pm (Asia/Seoul)",
+            now.timestamp_millis() as u64,
+        );
+        assert!(hit.hit);
+        assert_eq!(hit.resets_at, Some(at(2026, 9, 4, 15, 30)), "사람 말 시각이 버려졌다");
+        assert!(classify_limit_error("You've hit your session limit · resets 3:30pm (Asia/Seoul)").resets_at.is_some());
+        // 옛 꼬리가 있으면 그쪽이 이긴다(정확한 값)
+        assert_eq!(classify_limit_error("usage limit reached|1755150000 resets 3pm").resets_at, Some(1_755_150_000));
+    }
 
     #[test]
     fn parse_epoch_wants_exactly_ten_digits() {

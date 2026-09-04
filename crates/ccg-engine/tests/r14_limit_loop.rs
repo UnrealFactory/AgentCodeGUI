@@ -167,7 +167,7 @@ fn a_still_blocked_resume_loops_every_six_and_a_half_minutes() {
 #[test]
 fn a_hold_without_a_reset_time_stops_blind_firing_at_the_cap() {
     let clock = clock_at(5 * 3600);
-    let mut r = rt(clock.clone(), "5-hour limit reached ∙ resets 3pm");
+    let mut r = rt(clock.clone(), "5-hour limit reached");
     r.dispatch(Cmd::Send { text: "첫 턴".into() });
     pump(&mut r, &clock, 1_030 * SEC);
     let h = r.hold().expect("장전");
@@ -262,7 +262,7 @@ fn the_probe_rearms_instead_of_firing_while_still_blocked() {
         blocked_until_call: 2, // 두 번은 "아직", 세 번째에 "풀렸다"
         resets_at: None,
     });
-    let mut r = rt(clock.clone(), "5-hour limit reached ∙ resets 3pm").with_limit_probe(probe.clone());
+    let mut r = rt(clock.clone(), "5-hour limit reached").with_limit_probe(probe.clone());
     r.dispatch(Cmd::Send { text: "첫 턴".into() });
     pump(&mut r, &clock, 1_030 * SEC);
     let spawns0 = r.driver_ref().spawns;
