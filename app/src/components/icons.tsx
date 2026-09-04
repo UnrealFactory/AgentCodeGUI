@@ -508,6 +508,50 @@ export const IconInfo = (p: IconProps) => (
     <path d="M12 8h.01" />
   </Icon>
 )
+// ── 스레드 안내 분류 글리프 (lib/noticeCat.ts · 2026-09-04) ──────────────────
+// 모래시계 — 한도 대기
+export const IconHourglass = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 22h14" />
+    <path d="M5 2h14" />
+    <path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4A2 2 0 0 0 7 17.8V22" />
+    <path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4A2 2 0 0 0 17 6.2V2" />
+  </Icon>
+)
+// 재생 — 한도 풀림(이어감)
+export const IconPlay = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 3l14 9-14 9z" />
+  </Icon>
+)
+// 반짝임 — 모델 전환
+export const IconSparkles = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3l1.9 5.6L19.5 10.5 13.9 12.4 12 18l-1.9-5.6L4.5 10.5l5.6-1.9z" />
+    <path d="M19 17v4" />
+    <path d="M21 19h-4" />
+  </Icon>
+)
+// 맥박 — 수명(워치독)
+export const IconActivity = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+  </Icon>
+)
+// 전원 — 프로세스 종료
+export const IconPower = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 2v10" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
+  </Icon>
+)
+// 금지 — 판정 거절
+export const IconBan = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx={12} cy={12} r={10} />
+    <path d="m4.9 4.9 14.2 14.2" />
+  </Icon>
+)
 // double chevron right — "오른쪽 탭 닫기" (close tabs to the right)
 export const IconChevsRight = (p: IconProps) => (
   <Icon {...p}>

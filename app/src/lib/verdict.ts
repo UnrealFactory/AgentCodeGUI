@@ -164,18 +164,10 @@ export function verdictNote(v: VerdictWire | null | undefined): VerdictNote | nu
       blocked
     }
   }
-  if (kind === 'queued' && USER_SEND.has(cmd))
-    return {
-      key: `${cmd}:queued:`,
-      code: '',
-      detail: '',
-      title: t('예약으로 넣었어요', 'Queued instead'),
-      text: t(
-        '지금 도는 작업이 있어 이 메시지를 예약으로 넣었어요 — 턴이 끝나면 바로 나가요.',
-        'A run is in flight, so this message was queued — it goes out as soon as the turn ends.'
-      ),
-      blocked: false
-    }
+  // ★ 2026-09-04 — 메시지 큐잉(`queued` · send/ensure/run)은 **문장을 만들지 않는다.**
+  // 같은 순간 그 메시지가 컴포저 아래 예약 독(`queued: ScheduledMsg[]`)에 들어가 이미
+  // 보이는데, 스레드에 「예약으로 넣었어요」를 한 번 더 쓰면 같은 사실을 두 곳에서
+  // 말하는 것이다(§5-6 중복 금지). 독에 안 보이는 설정 예약(`deferred`)만 남긴다.
   if (kind === 'deferred' && cmd === 'identity_set')
     return {
       key: `${cmd}:deferred:${code}`,

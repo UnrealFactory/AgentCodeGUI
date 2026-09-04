@@ -81,8 +81,17 @@ import {
   IconSquare,
   IconInfo,
   IconRotate,
+  IconUser,
+  IconCard,
+  IconHourglass,
+  IconPlay,
+  IconSparkles,
+  IconActivity,
+  IconPower,
+  IconBan,
   type IconProps
 } from './icons'
+import { classifyNotice, NOTICE_CAT, type NoticeCat } from '../lib/noticeCat'
 
 const TYPE_SPEED = 12
 
@@ -981,8 +990,32 @@ function renderNoticeText(text: string): ReactNode {
  * 눌러도 아무 일 없는 버튼을 그리는 게 제일 나쁘다. */
 export type NotifyAction = { kind: 'revert'; revertTo: number } | { kind: 'billing-off' }
 
-/** 색조 클래스 한 벌 — 문자열을 여기서만 만든다(오타로 색이 통째로 빠지는 걸 막는다). */
-const tone = (t2: 'neutral' | 'notice' | 'danger' | 'positive'): string => `ntf-t-${t2}`
+/** 색조 클래스 한 벌 — 문자열을 여기서만 만든다(오타로 색이 통째로 빠지는 걸 막는다).
+ *  ★ 2026-09-04 — 심각도 4색조에 **주제** 색조(lib/noticeCat.ts · styles.css `.ntf-t-*`)가 붙었다. */
+type Tone = 'neutral' | 'notice' | 'danger' | 'positive' | 'limit' | 'lifted' | 'account' | 'model' | 'life' | 'stop' | 'queue' | 'reject' | 'billing'
+const tone = (t2: Tone): string => `ntf-t-${t2}`
+
+/* ★ 2026-09-04 — 분류별 글리프. 색을 못 보는 경우의 보험이자 라벨보다 먼저 읽히는 신호.
+   (분류 → 색조·라벨은 noticeCat.ts, 글리프만 여기 — 아이콘은 뷰의 것이다.) */
+const CAT_GLYPH: Record<NoticeCat, ComponentType<{ size?: number }>> = {
+  limit: IconHourglass,
+  lifted: IconPlay,
+  account: IconUser,
+  model: IconSparkles,
+  life: IconActivity,
+  exit: IconPower,
+  respawn: IconRotate,
+  stop: IconSquare,
+  queue: IconClock,
+  reject: IconBan,
+  billing: IconCard,
+  cli: IconTerminal,
+  info: IconInfo
+}
+/** 트레이의 분류 라벨 — 시각 왼쪽. */
+function CatTag({ cat }: { cat: NoticeCat }) {
+  return <span className="ntf-tag">{NOTICE_CAT[cat].tag()}</span>
+}
 
 export const MessageView = memo(function MessageView({
   item,
@@ -1080,12 +1113,16 @@ export const MessageView = memo(function MessageView({
   // ★ M-UI §5-1 — 모델 자동 전환. 형태 = band · notice · action=revert.
   if (item.kind === 'fallback') return <FallbackBand item={item} onNotify={onNotify} canRevert={canRevert} />
   if (item.kind === 'notice') {
-    // 형태 = band. 색조는 **심각도만** 칠한다 — 그냥 사실(엔진 재시작 등)은 neutral,
-    // 알아야 할 변화(과금 등)는 notice. 텍스트의 `백틱`은 색으로 가리킨다.
-    const neutral = item.tone === 'neutral'
+    // 형태 = band. ★ 2026-09-04 — 색조·글리프·라벨은 **주제**(cat)가 정한다(noticeCat.ts).
+    // 옛 항목(cat 없음)은 문장 + 항목에 박힌 사실(action·silent)로 다시 읽는다.
+    // 텍스트의 `백틱`은 색으로 가리킨다. stderr 원문(cli)은 모노.
+    const cat = item.cat ?? classifyNotice(item.text, { action: item.action, silent: item.silent })
+    const Glyph = CAT_GLYPH[cat]
     return (
-      <div className={'ntf-band ' + tone(neutral ? 'neutral' : 'notice')}>
-        <span className="ntf-g">{neutral ? <IconInfo size={13} /> : <IconAlert size={13} />}</span>
+      <div className={'ntf-band ' + tone(NOTICE_CAT[cat].tone as Tone)}>
+        <span className="ntf-g">
+          <Glyph size={13} />
+        </span>
         <div className="ntf-bd">
           {/* ★ R2 — 트레이가 문장 **안**에 산다(문서 순서상 문장 앞). 넓은 폭에서는
               오른쪽으로 띄워 예전 flex 칸과 같은 좌표에 서고, 좁아지면 첫 줄만 비켜 가
@@ -1114,9 +1151,10 @@ export const MessageView = memo(function MessageView({
                     </button>
                   )
                 ))}
+              <CatTag cat={cat} />
               <span className="ntf-tm">{item.time}</span>
             </div>
-            {renderNoticeText(item.text)}
+            {cat === 'cli' ? <span className="ntf-mono">{item.text}</span> : renderNoticeText(item.text)}
           </div>
         </div>
       </div>
@@ -1293,9 +1331,11 @@ function FallbackBand({
       )
   }
   return (
-    <div className={'ntf-band ' + tone('notice')}>
+    // ★ 2026-09-04 — 모델 축의 전환 = `model` 색조(보라 · 반짝임). 계정 전환(청록)과
+    // 같은 「되돌릴 수 있는 전환」이지만 축이 다르므로 색도 다르다.
+    <div className={'ntf-band ' + tone('model')}>
       <span className="ntf-g">
-        <IconAlert size={13} />
+        <IconSparkles size={13} />
       </span>
       <div className="ntf-bd">
         {/* ★ R2 — 트레이는 문장 블록 안(문장 앞)에 산다: 넓으면 오른쪽 띄움으로 예전
@@ -1318,6 +1358,7 @@ function FallbackBand({
                 </button>
               )
             )}
+            <CatTag cat="model" />
             <span className="ntf-tm">{item.time}</span>
           </div>
           {line}
@@ -1341,7 +1382,6 @@ function FallbackBand({
  */
 function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
   const [full, setFull] = useState(false)
-  const [copied, setCopied] = useState(false)
   // 리듀서가 붙인 접두는 언어에 따라 '오류: '/'Error: ' 둘 다 올 수 있다
   const body = item.text.replace(/^(오류|Error):\s*/, '')
   const nl = body.indexOf('\n')
@@ -1358,21 +1398,10 @@ function ErrorBand({ item }: { item: Extract<ThreadItem, { kind: 'msg' }> }) {
             그 아래에 서므로 넓은 폭 좌표는 그대로고, 좁은 폭에서는 면이 판 전폭을
             받는다(가로로 접히는 양이 164px → 36px로 준다). */}
         <div className="ntf-tx">
+          {/* ★ 2026-09-04 — [복사] 알약 제거(사용자 결정). 원문 면은 드래그 선택으로 복사한다
+              (`.ntf-raw`는 user-select:text). 트레이에는 분류 라벨과 시각만 남는다. */}
           <div className="ntf-tray">
-            <button
-              className="ntf-act ghost"
-              onClick={() => {
-                void navigator.clipboard?.writeText(body).then(
-                  () => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1400)
-                  },
-                  () => {}
-                )
-              }}
-            >
-              {copied ? t('복사됨', 'Copied') : t('복사', 'Copy')}
-            </button>
+            <span className="ntf-tag">{t('오류', 'Error')}</span>
             <span className="ntf-tm">{item.time}</span>
           </div>
           {/* ★R4 — 요약 줄은 굵기 없이 색만 올린다(사용자 지적: 문장 통째 600은 판 위에서
@@ -3487,6 +3516,37 @@ function fmtEta(ms: number): string {
   return h > 0 ? t(`${h}시간 ${m}분`, `${h}h ${m}m`) : t(`${m}분`, `${m}m`)
 }
 
+// ★ 2026-09-04 — 한도 상태줄의 판. 스레드 안내와 **같은 문법·같은 분류 색**이다(lib/noticeCat.ts):
+// 기다리는 중 = 한도(라임 · 모래시계), 정말 풀렸다 = 풀림(초록 · ▶). 자동 재개가 접힌 표
+// (paused · 예산 착지)는 「풀림」이 아니다 — 한도 색 그대로 두고 [이어가기]만 준다.
+// 옛 `.limit-hold` 앰버 유리는 걷어냈다. `limit-hold`·`lh-title`·`lh-sub`·`lh-go`·`lh-x`는
+// 스타일 없는 훅 클래스로 남긴다(bench/screens.mjs `limit-hold-bar` · scripts/poc-dial.mjs).
+// 모듈 스코프인 이유: 렌더 안에서 컴포넌트를 만들면 30초 틱마다 리마운트돼 rise 애니가 되풀이된다.
+function HoldBand({ cat, ready, sub, go, x }: { cat: NoticeCat; ready: boolean; sub: ReactNode; go: ReactNode; x: ReactNode }) {
+  const Glyph = CAT_GLYPH[cat]
+  return (
+    <div className="limit-hold-wrap">
+      <div className={'ntf-band limit-hold ' + tone(NOTICE_CAT[cat].tone as Tone) + (ready ? ' ready' : '')}>
+        <span className="ntf-g">
+          <Glyph size={13} />
+        </span>
+        <div className="ntf-bd">
+          <div className="ntf-tx">
+            <span className="ntf-b lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
+            {' — '}
+            <span className="lh-sub">{sub}</span>
+          </div>
+        </div>
+        <div className="ntf-tray">
+          {go}
+          <CatTag cat={cat} />
+          {x}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 한도 자동 이어서 상태줄 — 세 화면(본채팅·멀티 패널·추가 채팅) 공용. 구독 한도에
 // 막힌 대화와 재개 예정(카운트다운)을 보여준다. 토글 자체는 과금 picker(구독 →
 // '한도 소진 시 자동 이어서')에 있고, 카운트다운 갱신은 useLimitResume의 30초 틱이
@@ -3531,11 +3591,20 @@ export function LimitHoldBar({
     const eta = managed.resetAt != null ? fmtEta(Math.max(0, managed.resetAt * 1000 - Date.now())) : ''
     const press = managed.ready && managed.auto !== true
     return (
-      <div className="limit-hold-wrap">
-        <div className={'limit-hold' + (managed.ready ? ' ready' : '')}>
-          <IconAlert size={13} />
-          <span className="lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
-          <span className="lh-sub">
+      <HoldBand
+        cat={managed.ready && !managed.paused ? 'lifted' : 'limit'}
+        ready={managed.ready}
+        go={
+          press &&
+          onResume && (
+            <button className="ntf-act lh-go" onClick={onResume}>
+              {t('이어가기', 'Continue')}
+            </button>
+          )
+        }
+        x={null}
+        sub={
+          <>
             {managed.ready
               ? press
                 ? // ★R28f WFIRE — **왜 멈췄는지에 따라 말이 갈린다**(확인 크리틱 R1 §4.3).
@@ -3561,14 +3630,9 @@ export function LimitHoldBar({
                   ? t(`약 ${eta} 뒤 여기서 이어갈 수 있어요`, `You can continue here in ~${eta}`)
                   : t(`약 ${eta} 뒤 자동으로 이어서 계속해요`, `Auto-continues in ~${eta}`)
                 : t('한도가 풀리기를 기다리는 중이에요 — 대기표는 엔진이 들고 있어요', 'Waiting for the limit to lift — the engine holds the ticket')}
-          </span>
-          {press && onResume && (
-            <button className="lh-go" onClick={onResume}>
-              {t('이어가기', 'Continue')}
-            </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
     )
   }
   if (!hold) return null
@@ -3577,13 +3641,29 @@ export function LimitHoldBar({
   // (RVERD 확인 크리틱 R1 §3.2). `managed` 갈래와 같은 문법·같은 클래스로 버튼을 준다.
   const press = canPressContinue(hold) && !!onContinue
   return (
-    <div className="limit-hold-wrap">
-      {/* `.ready`는 `managed` 갈래가 「눌러서 이어가기」에 쓰는 그 문법이다 — 접힌 표에만
-          붙인다(그냥 `ready`는 곧 전송으로 바뀌는 찰나라 기존 모양을 안 건드린다) */}
-      <div className={'limit-hold' + (hold.autoPaused ? ' ready' : '')}>
-        <IconAlert size={13} />
-        <span className="lh-title">{t('사용 한도에 도달했어요', 'Usage limit reached')}</span>
-        <span className="lh-sub">
+    <HoldBand
+      cat={hold.ready && !hold.autoPaused ? 'lifted' : 'limit'}
+      ready={!!hold.autoPaused}
+      go={
+        press && (
+          <button className="ntf-act lh-go" onClick={onContinue}>
+            {t('이어가기', 'Continue')}
+          </button>
+        )
+      }
+      x={
+        <button
+          className="ntf-act ghost lh-x has-tip"
+          // 꺼짐 상태엔 취소할 '대기'가 없다 — 그때의 ✕는 대기표 폐기 + 안내 닫기
+          data-tip={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
+          aria-label={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
+          onClick={onCancel}
+        >
+          <IconX2 size={12} />
+        </button>
+      }
+      sub={
+        <>
           {hold.ready
             ? hold.autoPaused
               ? // 엔진이 같은 착지에서 쓰는 공지와 같은 문장이다(runtime.rs `attempts >=
@@ -3615,23 +3695,9 @@ export function LimitHoldBar({
                   "과금 메뉴의 '한도 소진 시 자동 이어서'를 켜면 풀릴 때 자동으로 계속해요",
                   "Turn on 'Auto-continue after limit resets' in the billing menu to resume automatically"
                 )}
-        </span>
-        {press && (
-          <button className="lh-go" onClick={onContinue}>
-            {t('이어가기', 'Continue')}
-          </button>
-        )}
-        <button
-          className="lh-x has-tip"
-          // 꺼짐 상태엔 취소할 '대기'가 없다 — 그때의 ✕는 대기표 폐기 + 안내 닫기
-          data-tip={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
-          aria-label={enabled ? t('대기 취소', 'Cancel the wait') : t('안내 닫기', 'Dismiss')}
-          onClick={onCancel}
-        >
-          <IconX2 size={13} />
-        </button>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }
 
@@ -3720,11 +3786,15 @@ export function IdentityBand({ notice, onRevert, onDismiss }: { notice: Identity
       : notice.origin === 'engine_fallback'
         ? t('모델이 자동 전환됐어요', 'Model switched automatically')
         : t('설정이 달라졌어요', 'A setting drifted')
+  // ★ 2026-09-04 — 상태줄도 스레드 band와 같은 분류 색을 따른다: 계정(청록 · 사람) ·
+  // 모델(보라 · 반짝임) · 예약 설정 착지(남색 · 시계). 노란 ⚠는 더 쓰지 않는다.
+  const cat: NoticeCat = notice.origin === 'auto_account_switch' ? 'account' : notice.origin === 'engine_fallback' ? 'model' : 'queue'
+  const Glyph = CAT_GLYPH[cat]
   return (
     <div className="limit-hold-wrap">
-      <div className={'ntf-band ' + tone('notice')}>
+      <div className={'ntf-band ' + tone(NOTICE_CAT[cat].tone as Tone)}>
         <span className="ntf-g">
-          <IconAlert size={13} />
+          <Glyph size={13} />
         </span>
         <div className="ntf-bd">
           <div className="ntf-tx">
@@ -3739,6 +3809,7 @@ export function IdentityBand({ notice, onRevert, onDismiss }: { notice: Identity
               {t('되돌리기', 'Undo')}
             </button>
           )}
+          <CatTag cat={cat} />
           <button className="ntf-act ghost has-tip" data-tip={t('안내 닫기', 'Dismiss')} aria-label={t('안내 닫기', 'Dismiss')} onClick={onDismiss}>
             <IconX2 size={12} />
           </button>

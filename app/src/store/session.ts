@@ -16,6 +16,7 @@ import type {
   WorkflowState
 } from '@shared/protocol'
 import { t } from '../lib/i18n'
+import { classifyNotice, type NoticeCat } from '../lib/noticeCat'
 
 export type ThreadItem =
   | {
@@ -52,7 +53,10 @@ export type ThreadItem =
   // `action:'revert'` + `revertTo`(전환 직전 리비전). 폴백 배너와 **같은 문법**이다(band ·
   // notice · action=revert) — 형태를 늘리지 않고 알약만 얹는다. 종류를 새로 파지 않는 이유는
   // protocol.ts §notice가 적은 그대로다(리듀서 소진 가드·4개 표면의 MessageView를 안 흔든다).
-  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; tone?: NotifyTone; action?: NotifyAct; revertTo?: number; reverted?: boolean }
+  // ★ 2026-09-04 — `cat`: 주제별 분류(lib/noticeCat.ts — 한도·계정·수명·종료·중지·예약·거절…).
+  // 색·글리프·라벨은 이것으로 정한다. 없는 옛 항목은 뷰가 문장으로 다시 읽는다. `tone`은
+  // 옛 스냅샷 호환으로만 남는다(더 쓰지 않는다).
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; cat?: NoticeCat; tone?: NotifyTone; action?: NotifyAct; revertTo?: number; reverted?: boolean }
   // ★ M-UI — 모델 자동 전환 배너(band · notice · action=revert). 2.6.2는 이걸 kind:'notice'로
   // 흘려 API 과금 안내와 같은 무게가 됐다(session.ts:821 · 병리 P3). 이제 M-LOGIC §6.2의
   // 재료를 그대로 든다: 주어(from)·목적어(to)·사유(cause)·되돌릴 지점(revertTo).
@@ -407,32 +411,30 @@ function fallbackCause(via: unknown): 'dialog' | 'refusal_frame' | 'model_delta'
 }
 
 /**
- * ★ M-UI §5-2 — 안내의 **색조**. 노랑은 '알아야 할 변화'에만 쓴다.
+ * ★ M-UI §5-2 → ★ 2026-09-04 — 안내의 **분류**(색·글리프·라벨).
  *
- * 현행은 `kind:'notice'`면 무조건 노랑이라 "엔진이 새 프로세스로 시작했다"(그냥 사실)와
- * "API로 과금 중"(알아야 할 변화)이 같은 무게로 뜬다. 노랑을 남발하면 노랑이 아무 뜻도
- * 없어진다. 다만 **남의 문장**(CLI가 REPL에 띄우는 배너)은 심각도를 판정할 근거가 없으므로
- * 2.6.2 그대로 노랑을 유지한다 — 지어내지 않는다. 여기서 내리는 건 우리가 만든 문장뿐이다.
+ * M-UI까지는 `kind:'notice'`면 노랑이고 "새 프로세스에서 시작했다"만 neutral로 강등했다.
+ * 그 결과 한도·계정·수명·종료·중지·예약·거절·CLI 원문이 전부 같은 노란 ⚠였다. 이제
+ * 주제별 `cat`(lib/noticeCat.ts)으로 가른다 — 표에 없는 **남의 문장**(CLI 배너)은
+ * 심각도를 지어내지 않고 무채색 ⓘ(`info`)다.
  *
  * `action` — "하단 `과금` 토글에서 바꿀 수 있어요"는 **심부름을 시키는 문장**이다.
  * 그 토글이 실재하니 알약이 되는 게 맞다(문장이 짧아져 줄이 준다).
  */
-const NEUTRAL_NOTICE = /새 프로세스에서 시작했|started in a new process/
-function noticeTone(text: string, once?: string): { text?: string; tone?: NotifyTone; action?: NotifyAct } {
+function noticeMeta(text: string, once?: string): { text?: string; cat: NoticeCat; action?: NotifyAct } {
   if (once === 'api-billing') {
     // 환경변수(ANTHROPIC_API_KEY) 과금은 **끌 토글이 없다** — 알약을 주면 거짓말이 된다.
     // 그쪽 문장에는 심부름 절도 없으므로 문장도 그대로 둔다.
-    if (/ANTHROPIC_API_KEY/.test(text)) return { tone: 'notice' }
+    if (/ANTHROPIC_API_KEY/.test(text)) return { cat: 'billing' }
     // 심부름 절을 알약으로 승격했으면 **문장에서도 빼야** 한다 — 안 그러면 같은 것을
     // 두 번 말한다(§5-6 중복 금지와 같은 원리). 남는 사실은 "무엇으로 과금되나"뿐이다.
     return {
-      tone: 'notice',
+      cat: 'billing',
       action: 'billing-off',
       text: t('`API 크레딧`으로 과금 중이에요 — 구독 한도는 줄지 않습니다.', 'Billing to `API credits` — your subscription limit is untouched.')
     }
   }
-  if (NEUTRAL_NOTICE.test(text)) return { tone: 'neutral' }
-  return {}
+  return { cat: classifyNotice(text) }
 }
 
 /**
@@ -699,7 +701,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
   if (action.type === 'verdict') {
     const seq = state.seq + 1
     const without = state.messages.filter((m) => m.id !== THINKING_ID)
-    const item: ThreadItem = { kind: 'notice', id: `vd${seq}`, text: action.text, time: action.time }
+    // 판정 문장은 verdict.ts가 「제목 — 본문」으로 만든다 — 제목이 곧 분류다(거절 · 예약)
+    const item: ThreadItem = { kind: 'notice', id: `vd${seq}`, text: action.text, time: action.time, cat: classifyNotice(action.text) }
     if (!action.blocked) return { ...state, seq, messages: capThread([...without, item]) }
     // 막혔다 = 이 턴은 **시작조차 못 했다**. 나레이션·중지 버튼·스피너가 계속 도는 것이
     // m-logic P8("영구 정지 + 침묵")이고 3.0이 죽이겠다고 선언한 증상이다. 돌던 명령
@@ -1152,9 +1155,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 여기서 더하는 건 **되돌릴 재료** 하나다: `action:'revert'` + `revertTo`.
       // 지어내지 않는다 — `revertTo`가 없거나 음수면 알약 없이 문장만 남는다(폴백 배너 규약).
       const sw = e.switch
-      const revert: { action: NotifyAct; revertTo: number; tone: NotifyTone } | null =
-        sw && typeof sw.revertTo === 'number' && sw.revertTo >= 0 ? { action: 'revert', revertTo: sw.revertTo, tone: 'notice' } : null
-      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime(), ...noticeTone(e.text, e.once), ...(revert ?? {}) }
+      const revert: { action: NotifyAct; revertTo: number } | null =
+        sw && typeof sw.revertTo === 'number' && sw.revertTo >= 0 ? { action: 'revert', revertTo: sw.revertTo } : null
+      // `switch`가 실려 왔다는 사실이 문장보다 먼저다 — 분류는 계정(되돌릴 재료 유무와 무관)
+      const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime(), ...noticeMeta(e.text, e.once), ...(sw ? { cat: 'account' as const } : {}), ...(revert ?? {}) }
       // once 안내(예: API 과금)는 이 대화에서 그 key당 딱 한 번만, 방금 보낸 사용자 메시지
       // 바로 위에 끼워 넣는다 — 'API로 과금 중'을 자기 메시지 바로 위에서 한 번 알아채게.
       if (e.once) {
@@ -1350,6 +1354,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
             'This turn ended without a reply — if you did not stop it yourself, try sending the message again.'
           ),
           time: nowTime(),
+          cat: 'life',
           // 오탐 회수 표식 — 같은 실행이 이어서 내용을 내면 stripSilentTail이 걷어낸다
           silent: true
         })

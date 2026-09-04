@@ -99,7 +99,10 @@ const RATIO = Math.floor(COMMITS.v3 / COMMITS.upTo262) // 「N배가 넘는」 �
 // ★ 2.x 덩이는 전부 지웠다(2026-09-02 사용자 지시) — 3.0은 앱 홈부터 새로 시작하고(2.6.2와
 //   완전 분리·마이그레이션 없음) 2.6.2 설치본은 그대로 남으니, 3.0 카드가 2.x 소식을 되풀이할
 //   이유가 없다. 이후 3.0.x 릴리즈부터 다시 5개 캡으로 쌓는다.
-const MAX_VERSIONS = 5
+// ★ 2026-09-04 — 5 → 10. 카드가 860px로 커져 한 줄에 v3.0.x(한 자리) 12개 · v3.0.xx(두 자리)
+// 11개까지 선다(JetBrains Mono 10.5px/600 · 알약 54.7/60.2px · gap 6 · 실측 헤드리스 렌더).
+// 10이면 두 자리 패치 번호가 섞여도 한 줄이다.
+const MAX_VERSIONS = 10
 const RELEASES: Record<string, LocalizedRelease> = {
   //   키는 **풀버전**(`3.0.0`)이다. 앱 버전도 `3.0.0`(2026-09-02 beta.1 꼬리 제거 — Cargo.toml
   //   워크스페이스 + tauri.conf.json 두 곳)이라 `RELEASES[v]`가 바로 맞는다. 프리릴리즈 꼬리가
@@ -141,6 +144,12 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.6 — 2026-09-04 알림 디자인 패스: ① 스레드 안내(kind:notice)가 전부 노란 ⚠ 한 종 → 주제별 분류
+  //   (lib/noticeCat.ts · 문장으로 판정 · 표 밖은 남의 문장=무채색 ⓘ): 한도 대기(라임·모래시계, 노랑 대체) · 풀림
+  //   (초록·▶) · 계정(청록) · 모델(보라) · 수명(파랑·맥박) · 종료/재시작(무채색) · 중지(주황·■) · 예약(남색) · 거절
+  //   (빨강·⊘) · 과금(금색) · CLI(무채색·모노) + 트레이 라벨 태그(.ntf-tag) ② LimitHoldBar 앰버 유리 → 같은
+  //   .ntf-band(HoldBand · 한도/풀림 색) · IdentityBand도 분류 색 ③ ErrorBand [복사] 제거 ④ verdict queued
+  //   「예약으로 넣었어요」 제거(예약 독과 중복 · deferred는 유지) ⑤ MAX_VERSIONS 5 → 10(한 줄 실측 12/11).
   // 3.0.5 — 2026-09-03 보고 넷: ① AI가 「지난 질문에 답을 안 보냈다」며 밀린 답을 되풀이 — 턴이 끝나는
   //   순간 CLI를 kill해 마지막 답(end_turn)이 세션 파일에 안 남았고, 다음 --resume이 "Continue from where
   //   you left off"를 합성 주입 → EOF 뒤 자발 퇴장 대기(kill_graceful, 유예 8s) + 새 스폰은 앞 프로세스 퇴장
@@ -168,6 +177,138 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   model로 사망 — CLI의 합성 프레임 model:"<synthetic>"을 모델 전환으로 읽었다 → is_placeholder_model로
   //   차단 + 디스크의 오염 정체성 복구(ident.rs) + 종료 경로도 fallback_arms 정리 ⑤ 계정을 바꿔 보냈는데
   //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
+  '3.0.6': {
+    ko: {
+      eyebrow: 'DESIGN',
+      lead: '채팅 안의 시스템 안내가 전부 노란 경고 하나였던 것을 주제별 색·아이콘·라벨로 나눴고, 한도 대기 상태줄도 같은 모양으로 맞췄습니다. 오류 카드의 [복사]와 「예약으로 넣었어요」 줄은 뺐습니다.',
+      notes: [
+        {
+          tag: '대화',
+          name: '시스템 안내가 전부 같은 노란 경고로 뜨던 것 — 주제별로 나눴습니다',
+          desc: (
+            <>
+              한도 대기, 계정 자동 전환, 엔진 무응답, 프로세스 종료, 중지, 예약, 거절, CLI 경고까지 <b>전부 노란
+              ⚠ 한 가지</b>로 나와 노랑이 아무 뜻도 없었습니다. 이제 주제마다 색·아이콘·작은 라벨을 하나씩 줍니다 —
+              <b>한도 대기</b>(라임 · 모래시계), <b>한도 풀림</b>(초록 · ▶), <b>계정</b>(청록 · 사람), <b>모델</b>(보라 ·
+              반짝임), <b>수명</b>(파랑 · 맥박: 무응답·빈 응답·유휴 정리), <b>종료·재시작</b>(무채색), <b>중지</b>(주황 ·
+              ■), <b>예약</b>(남색 · 시계), <b>거절</b>(빨강 · ⊘), <b>CLI 원문</b>(무채색 · 고정폭). 색이 낯선 동안은
+              라벨이 알려 줍니다. 노란 계열 자체도 어두운 바탕에서 머스터드로 읽혀 라임으로 바꿨습니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '한도 대기 상태줄(입력창 위)도 같은 모양으로',
+          desc: (
+            <>
+              입력창 위의 「사용 한도에 도달했어요 — 약 N분 뒤 자동으로 이어서 계속해요」 줄은 스레드 안내와 <b>다른
+              앰버색 유리</b>였습니다. 이제 같은 판 문법입니다 — 기다리는 중은 한도 색(라임 · 모래시계), 정말 풀렸을
+              때는 풀림 색(초록 · ▶), 자동 재개가 접힌 표는 한도 색 그대로에 [이어가기]만 붙습니다. 모델·계정
+              자동 전환 알림 줄도 스레드와 같은 색을 따릅니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '오류 카드의 [복사] 버튼을 뺐습니다',
+          desc: (
+            <>
+              원문 칸을 드래그해 복사하면 되는 자리라 버튼이 하나 더 있을 이유가 없었습니다. 8줄 넘는 원문을 펼치는
+              [전체 보기]는 그대로입니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '「예약으로 넣었어요」 줄을 뺐습니다',
+          desc: (
+            <>
+              답이 오는 중에 보낸 메시지는 입력창 아래 <b>예약 목록</b>에 바로 보이는데, 스레드에도 「예약으로
+              넣었어요 — 턴이 끝나면 바로 나가요」를 한 줄 더 썼습니다. 같은 사실을 두 곳에서 말하던 것이라 스레드
+              줄만 뺐습니다. 턴 중에 모델·계정 등을 바꿨을 때의 「설정을 예약했어요」는 목록에 안 보이므로 남깁니다.
+            </>
+          )
+        },
+        {
+          tag: '앱',
+          name: '이 업데이트 소식 카드의 버전 버튼을 10개까지',
+          desc: (
+            <>
+              카드가 커진 뒤로 한 줄에 버전 알약이 12개까지 서는데 5개에서 잘랐습니다. 이제 최신 10개를 오갈 수
+              있습니다(두 자리 패치 번호가 섞여도 한 줄).
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'DESIGN',
+      lead: 'System notices in the thread were all the same yellow warning; they are now split by topic with their own color, icon and label, and the limit-hold bar matches. The [Copy] pill on error cards and the "Queued instead" line are gone.',
+      notes: [
+        {
+          tag: 'Chat',
+          name: 'Every system notice looked like the same yellow warning — now split by topic',
+          desc: (
+            <>
+              Limit holds, automatic account switches, engine timeouts, process exits, stops, scheduling, refusals and
+              CLI warnings all came out as <b>one yellow ⚠</b>, so yellow meant nothing. Each topic now has its own
+              color, icon and small label — <b>limit hold</b> (lime · hourglass), <b>limit lifted</b> (green · ▶),
+              <b>account</b> (teal · person), <b>model</b> (violet · sparkle), <b>watchdog</b> (blue · pulse: no
+              reply, empty reply, idle cleanup), <b>exit / restart</b> (neutral), <b>stopped</b> (orange · ■),
+              <b>scheduled</b> (indigo · clock), <b>refused</b> (red · ⊘), <b>CLI output</b> (neutral · monospace).
+              The label carries you until the colors are familiar. The old yellow itself read as mustard on the dark
+              background, so it became lime.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'The limit-hold bar above the composer now uses the same shape',
+          desc: (
+            <>
+              The "Usage limit reached — auto-continues in ~N min" bar above the composer was a <b>separate amber
+              glass strip</b>. It now uses the same band grammar as thread notices — the limit color (lime · hourglass)
+              while waiting, the lifted color (green · ▶) once the limit is really gone, and the limit color with just a
+              [Continue] pill when auto-resume has paused. The model / account auto-switch bars follow the same colors
+              as the thread.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Removed the [Copy] pill from error cards',
+          desc: (
+            <>
+              You can select the raw pane and copy it, so the extra button had no job. [Show all] for raw output longer
+              than 8 lines stays.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Removed the "Queued instead" line',
+          desc: (
+            <>
+              A message sent while a reply is streaming already shows up in the <b>queue list</b> under the composer,
+              and the thread repeated it as "Queued instead — goes out when the turn ends". Same fact in two places, so
+              the thread line is gone. "Setting scheduled" (changing model or account mid-turn) stays, because the
+              queue list does not show it.
+            </>
+          )
+        },
+        {
+          tag: 'App',
+          name: 'This what&apos;s-new card keeps up to 10 versions',
+          desc: (
+            <>
+              The card fits 12 version pills per row since it grew, but the list was capped at 5. It now keeps the
+              latest 10 (still one row even with two-digit patch numbers).
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.5': {
     ko: {
       eyebrow: 'FIXES',
@@ -1464,7 +1605,7 @@ export function PatchNotes(): ReactNode {
           <p className="pn-lead">{rel.lead}</p>
         </div>
 
-        {/* 릴리즈 선택 — 시리즈 안의 버전들을 페이지처럼 오간다 (최신 5개까지).
+        {/* 릴리즈 선택 — 시리즈 안의 버전들을 페이지처럼 오간다 (최신 MAX_VERSIONS=10개까지 · 한 줄).
             덩이가 하나뿐이어도 줄을 남긴다 — 3.0.x가 계속 쌓일 자리라 첫 릴리즈부터 같은 모양으로. */}
         <div className="pn-vers">
           {versions.map((v) => (
