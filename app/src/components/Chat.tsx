@@ -2977,7 +2977,7 @@ function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
 // 조회 못 한 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
 function acctUsageLine(u?: AccountUsage): ReactNode {
   if (!u) return null
-  // 주간 소진 계정(표시 토글로 보임 · 유효 계정은 상시)은 잔여 % 대신 "언제 돌아오는지"가
+  // 주간 소진 계정(「주간 소진 숨김」 알약을 끄면 보임 · 유효 계정은 상시)은 잔여 % 대신 "언제 돌아오는지"가
   // 정보다 — 자동 이어서로 이 계정을 골라 기다리는 흐름의 판단 재료
   if (u.weeklyPct != null && u.weeklyPct >= 100)
     return (
@@ -2991,6 +2991,15 @@ function acctUsageLine(u?: AccountUsage): ReactNode {
   if (u.weeklyPct != null) parts.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct })
   if (!parts.length) return null
   return usageLineNode(parts)
+}
+// ★2026-09-04 사용자 요청 — 계정 목록의 **한도별 숨김** 프리프. 「주간」의 기본값은 옛 단일 토글
+// accounts.showExhausted의 반대(예전엔 주간 소진만 기본 숨김이었다) — 펼쳐 두던 사용자는
+// 그대로 펼쳐진 채 이어진다. Fable 0%는 다른 모델로는 쓸 수 있어 기본은 안 숨긴다.
+function readHidePrefs(): { fable: boolean; weekly: boolean } {
+  return {
+    fable: getPref<boolean>('accounts.hideFableExhausted', false),
+    weekly: getPref<boolean>('accounts.hideWeeklyExhausted', !getPref<boolean>('accounts.showExhausted', false))
+  }
 }
 // ChatGPT 플랜 표기 — 'plus' → 'ChatGPT Plus'
 function chatgptPlanLabel(plan: string | null): string {
@@ -3241,31 +3250,37 @@ export function PickerChip({
   /** ★§3 — 이 계정을 **다른 자리**가 물고 있나(주황 칩 문구). 자기 자리는 빠진다. */
   const inUse = (email: string): string | null => inUseLabel(email, chatId)
 
-  // 주간 한도를 다 쓴(잔여 0%) 계정 — 기본은 숨김(골라도 실행이 거부될 뿐이었다).
-  // '한도 풀리면 자동 이어서'가 생기면서 소진 계정을 일부러 골라 리셋을 기다리는 흐름이
-  // 유효해져, 목록 꼬리의 토글로 표시를 선택할 수 있다(소진 계정엔 리셋 시각 병기).
-  // 5시간 창 소진은 곧 풀리고 Fable 창 소진은 다른 모델로 쓸 수 있어 애초에 안 숨긴다.
+  // ★2026-09-04 사용자 요청 — 소진 계정 숨김을 **한도별 알약 둘**(「계정」 헤더 오른쪽 · 시안 V2)로
+  // 가른다(옛 「소진된 계정 N개 표시」 단일 접기 행을 대체). 「Fable 소진 숨김」·「주간 소진 숨김」을
+  // 켜면 그 한도가 0%인 계정이 목록에서 빠진다. 둘 다 켜면 **어느 한쪽이라도 0%면** 빠져
+  // 둘 다 남은 계정만 남는다 — 켤수록 목록이 좁아진다(반대로 「둘 다 0%일 때만」
+  // 빼면 알약을 더 켰는데 계정이 늘어나는 역전이 난다). 주간만 켬 = Fable이 0%여도 주간이
+  // 남았으면 보임, Fable만 켬 = 주간이 0%여도 Fable이 남았으면 보임.
+  // 5시간 창은 곧 풀리니 필터 대상이 아니다. 기본값·옛 프리프 이관은 readHidePrefs 참고.
+  // '한도 풀리면 자동 이어서'로 소진 계정을 일부러 골라 리셋을 기다리는 흐름은 해당 알약을
+  // 끄면 그대로 열린다(소진 계정엔 리셋 시각 병기).
   // 지금 유효한 계정은 소진돼도 항상 표시 — 선택 표시가 있어야 다른 계정으로 벗어난다.
   // 전역 pref — 팝오버를 열 때 되읽어 다른 화면(멀티·추가 채팅)에서 바꾼 값을 따라잡는다.
-  const [showExhausted, setShowExhausted] = useState<boolean>(() => getPref<boolean>('accounts.showExhausted', false))
+  const [hide, setHide] = useState(readHidePrefs)
   useEffect(() => {
-    if (open) setShowExhausted(getPref<boolean>('accounts.showExhausted', false))
+    if (open) setHide(readHidePrefs())
   }, [open])
-  const toggleExhausted = (): void => {
-    setPref('accounts.showExhausted', !showExhausted)
-    setShowExhausted(!showExhausted)
+  const toggleHide = (k: 'fable' | 'weekly'): void => {
+    const next = { ...hide, [k]: !hide[k] }
+    setPref(k === 'fable' ? 'accounts.hideFableExhausted' : 'accounts.hideWeeklyExhausted', next[k])
+    setHide(next)
   }
-  const isExhausted = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.weeklyPct ?? 0) >= 100
-  const exhaustedCount = accounts.filter(isExhausted).length
-  const usableAccounts = showExhausted ? accounts : accounts.filter((a) => !isExhausted(a))
-  const cxIsExhausted = (a: CodexAccountInfo): boolean => {
+  const fableOut = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.fablePct ?? 0) >= 100
+  const weeklyOut = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.weeklyPct ?? 0) >= 100
+  const usableAccounts = accounts.filter((a) => !(hide.fable && fableOut(a)) && !(hide.weekly && weeklyOut(a)))
+  // Codex 계정엔 Fable 창이 없다 — 주간 체크만 적용(Claude와 같은 프리프)
+  const cxWeeklyOut = (a: CodexAccountInfo): boolean => {
     if (a.email === cxEffective) return false
     // 주간 창 판별은 라벨 규약('주간'/'Weekly') — Settings LimRow와 같은 방식
     const wk = cxUsage[a.email]?.windows.find((w) => w.label === '주간' || w.label === 'Weekly')
     return !!wk && wk.usedPct >= 100
   }
-  const cxExhaustedCount = cxAccounts.filter(cxIsExhausted).length
-  const cxUsableAccounts = showExhausted ? cxAccounts : cxAccounts.filter((a) => !cxIsExhausted(a))
+  const cxUsableAccounts = hide.weekly ? cxAccounts.filter((a) => !cxWeeklyOut(a)) : cxAccounts
 
   // 칩 라벨 = 모델·추론·모드 + 계정. 계정은 항상 표시(기본 계정 포함) — API 모드면
   // 계정 대신 'API'. 계정 목록이 아직 안 왔으면(유효 계정 미상) 꼬리표를 생략한다.
@@ -3361,49 +3376,28 @@ export function PickerChip({
                 }
                 onClick={() => onApiModeChange(true, engine)}
               />
-              {/* ── 한도 소진 시 — 이어서 갈 길을 **둘 다 체크**할 수 있는 체크 행
-                  (2026-09-01 사용자 요청: 헤더 「자동 이어서」 단일 필을 대체).
-                  · 다른 계정으로 이어서 = limitSwitch.on (셸 acct_switch가 노는 계정 중
-                    한도 남은 곳을 초기화 임박순으로 고른다 — Claude 구독 전용)
-                  · 현재 계정으로 이어서 = limitResume.on (리셋 대기 후 자동 재개)
-                  둘 다 켜면 전환을 먼저 해보고, 갈아탈 곳이 없으면 리셋을 기다린다.
-                  설정 ▸ API 「한도가 다 되면」 카드와 같은 프리프의 다른 얼굴이다. */}
-              {!apiMode && onAutoResumeChange && (
-                <>
-                  <div className="pp-sep" />
-                  <div className="pp-h4">{t('한도 소진 시', 'When the limit runs out')}</div>
-                  {/* Codex도 같은 스위치 — 셸이 축(계정 우주)을 가른다(2026-09-01 Codex 축 확장) */}
-                  <PPRow
-                    sel={acctSwitchOn}
-                    main={t('다른 계정으로 이어서', 'Continue on another account')}
-                    sub={
-                      (engine === 'codex' ? cxUsableAccounts : usableAccounts).length > 1
-                        ? t('남은 한도가 있는 노는 계정으로 갈아타 바로 계속해요', 'Moves to an idle account with headroom and keeps going')
-                        : t('계정이 2개 이상일 때 동작해요 — 지금은 건너뜁니다', 'Needs two or more accounts — skipped for now')
-                    }
-                    onClick={() => {
-                      const next = !acctSwitchOn
-                      setAcctSwitchOn(next)
-                      setPref('limitSwitch.on', next)
-                      window.dispatchEvent(new CustomEvent('ccg:limit-policy'))
-                    }}
-                  />
-                  <PPRow
-                    sel={autoResume}
-                    main={t('현재 계정으로 이어서', 'Continue on this account')}
-                    sub={t('한도가 풀리면 중단한 곳부터 자동으로 계속해요', 'Waits for the reset, then auto-continues where you left off')}
-                    onClick={() => onAutoResumeChange(!autoResume)}
-                  />
-                </>
-              )}
             </>
           )}
           {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미).
-              전부 소진으로 숨겨져도 섹션은 남아야 표시 토글로 되살릴 수 있다 */}
-          {engine === 'claude' && !apiMode && (usableAccounts.length > 0 || picker.account || exhaustedCount > 0) && (
+              전부 숨겨져도 섹션은 남아야 숨김 체크를 풀어 되살릴 수 있다 */}
+          {engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">{t('계정', 'Account')}</div>
+              <div className="pp-h4 pp-h4f">
+                <span>{t('계정', 'Account')}</span>
+                {/* ★2026-09-04 사용자 결정(시안 V2) — 한도별 숨김 알약. 계정이 하나면 거를 게 없어
+                    안 그린다. 전부 숨겨져도 알약은 남아 되살릴 수 있다 */}
+                {accounts.length > 1 && (
+                  <span className="pp-filts">
+                    <button className={'pp-filt' + (hide.fable ? ' on' : '')} onClick={() => toggleHide('fable')}>
+                      {t('Fable 소진 숨김', 'Hide Fable 0%')}
+                    </button>
+                    <button className={'pp-filt' + (hide.weekly ? ' on' : '')} onClick={() => toggleHide('weekly')}>
+                      {t('주간 소진 숨김', 'Hide weekly 0%')}
+                    </button>
+                  </span>
+                )}
+              </div>
               {usableAccounts.map((a) => (
                 <PPRow
                   key={a.email}
@@ -3428,23 +3422,23 @@ export function PickerChip({
                   onClick={() => switchAccount('account', a.email, effective, a.email)}
                 />
               ))}
-              {/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행.
-                  자동 이어서로 소진 계정을 골라 리셋을 기다리는 흐름의 입구 */}
-              {exhaustedCount > 0 && (
-                <button className={'pp-more' + (showExhausted ? ' open' : '')} onClick={toggleExhausted}>
-                  <IconChevDown size={11} />
-                  {showExhausted
-                    ? t('소진된 계정 숨기기', 'Hide exhausted accounts')
-                    : t(`소진된 계정 ${exhaustedCount}개 표시`, `Show ${exhaustedCount} exhausted account${exhaustedCount === 1 ? '' : 's'}`)}
-                </button>
-              )}
             </>
           )}
           {/* OpenAI 계정 — Anthropic과 동일한 문법 (Codex 엔진 실행이 소비할 계정) */}
-          {engine === 'codex' && !apiMode && (cxUsableAccounts.length > 0 || picker.codexAccount || cxExhaustedCount > 0) && (
+          {engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
             <>
               <div className="pp-sep" />
-              <div className="pp-h4">{t('계정', 'Account')}</div>
+              <div className="pp-h4 pp-h4f">
+                <span>{t('계정', 'Account')}</span>
+                {/* Codex 계정엔 Fable 창이 없다 — 주간 알약 하나(Claude와 같은 프리프) */}
+                {cxAccounts.length > 1 && (
+                  <span className="pp-filts">
+                    <button className={'pp-filt' + (hide.weekly ? ' on' : '')} onClick={() => toggleHide('weekly')}>
+                      {t('주간 소진 숨김', 'Hide weekly 0%')}
+                    </button>
+                  </span>
+                )}
+              </div>
               {cxUsableAccounts.map((a) => (
                 <PPRow
                   key={a.email}
@@ -3459,14 +3453,43 @@ export function PickerChip({
                   onClick={() => switchAccount('codexAccount', a.email, cxEffective, a.email)}
                 />
               ))}
-              {cxExhaustedCount > 0 && (
-                <button className={'pp-more' + (showExhausted ? ' open' : '')} onClick={toggleExhausted}>
-                  <IconChevDown size={11} />
-                  {showExhausted
-                    ? t('소진된 계정 숨기기', 'Hide exhausted accounts')
-                    : t(`소진된 계정 ${cxExhaustedCount}개 표시`, `Show ${cxExhaustedCount} exhausted account${cxExhaustedCount === 1 ? '' : 's'}`)}
-                </button>
-              )}
+            </>
+          )}
+          {/* ── 한도 소진 시 — 이어서 갈 길을 **둘 다 체크**할 수 있는 체크 행
+              (2026-09-01 사용자 요청: 헤더 「자동 이어서」 단일 필을 대체).
+              · 다른 계정으로 이어서 = limitSwitch.on (셸 acct_switch가 노는 계정 중
+                한도 남은 곳을 초기화 임박순으로 고른다 — Claude 구독 전용)
+              · 현재 계정으로 이어서 = limitResume.on (리셋 대기 후 자동 재개)
+              둘 다 켜면 전환을 먼저 해보고, 갈아탈 곳이 없으면 리셋을 기다린다.
+              설정 ▸ API 「한도가 다 되면」 카드와 같은 프리프의 다른 얼굴이다.
+              계정 섹션 **아래**에 둔다(2026-09-04 사용자: 계정 → 한도 소진 시 순) — 과금
+              섹션(onApiModeChange)이 있을 때만 그리던 조건은 그대로다. */}
+          {onApiModeChange && !apiMode && onAutoResumeChange && (
+            <>
+              <div className="pp-sep" />
+              <div className="pp-h4">{t('한도 소진 시', 'When the limit runs out')}</div>
+              {/* Codex도 같은 스위치 — 셸이 축(계정 우주)을 가른다(2026-09-01 Codex 축 확장) */}
+              <PPRow
+                sel={acctSwitchOn}
+                main={t('다른 계정으로 이어서', 'Continue on another account')}
+                sub={
+                  (engine === 'codex' ? cxUsableAccounts : usableAccounts).length > 1
+                    ? t('남은 한도가 있는 노는 계정으로 갈아타 바로 계속해요', 'Moves to an idle account with headroom and keeps going')
+                    : t('계정이 2개 이상일 때 동작해요 — 지금은 건너뜁니다', 'Needs two or more accounts — skipped for now')
+                }
+                onClick={() => {
+                  const next = !acctSwitchOn
+                  setAcctSwitchOn(next)
+                  setPref('limitSwitch.on', next)
+                  window.dispatchEvent(new CustomEvent('ccg:limit-policy'))
+                }}
+              />
+              <PPRow
+                sel={autoResume}
+                main={t('현재 계정으로 이어서', 'Continue on this account')}
+                sub={t('한도가 풀리면 중단한 곳부터 자동으로 계속해요', 'Waits for the reset, then auto-continues where you left off')}
+                onClick={() => onAutoResumeChange(!autoResume)}
+              />
             </>
           )}
         </div>

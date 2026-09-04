@@ -38,7 +38,9 @@ import {
   type ScheduledMsg
 } from './Chat'
 import { parseBtw, btwForkOf } from '../lib/btw'
-import { onChatVerdict } from '../api/unified'
+import { onChatIdentity, onChatVerdict } from '../api/unified'
+import { panelIdOfChat } from '../lib/accounts'
+import { panelSlotOfChat, pickerAfterLanding, queueAfterLanding } from '../lib/identityLanding'
 import { shellAuthored, verdictLine, verdictNote } from '../lib/verdict'
 import type { LimitHold } from '../lib/limitResume'
 import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
@@ -1375,6 +1377,32 @@ function ActiveSession({
     return () => offs.forEach((off) => off())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
+
+  // ★2026-09-04 — 엔진이 착지한 **계정**(한도 자동 전환·되돌리기)도 그 자리의 picker에 미러링한다
+  // — 위 모델 폴백과 같은 이유(안 바꾸면 다음 전송이 옛 계정을 실어 전환을 되돌리고, 다른
+  // 자리의 「사용 중」 칩과 이 자리의 칩이 서로 다른 계정을 말한다 — 2026-09-04 보고: NetCore가
+  // lmg56631로 전환됐는데 칩은 lmg56630, 그래서 「lmg56631 사용 중 · 2곳」이 유령처럼 보였다).
+  // 자리 대응은 셸이 준 살아 있는 행(chatId ↔ panelId)이 우선, 없으면 채번 규칙 `ma-{board}-{slot}`.
+  // 예약 메시지의 picker 스냅샷도 같이 고친다(드레인 때 옛 계정을 싣지 않게). 규칙은 lib/identityLanding.ts.
+  useEffect(
+    () =>
+      onChatIdentity((p) => {
+        const id = p.chatId ?? ''
+        if (!id) return
+        const pid = panelIdOfChat(id)
+        const slot = pid?.startsWith(sessionId + '::') ? Number(pid.slice(sessionId.length + 2)) : panelSlotOfChat(id, sessionId)
+        if (slot == null || !Number.isInteger(slot)) return
+        setMetas((prev) => {
+          const m = prev[slot]
+          if (!m) return prev
+          const pk = pickerAfterLanding(m.picker, p)
+          const q = queueAfterLanding(m.queue, p)
+          if (pk === m.picker && q === m.queue) return prev
+          return prev.map((x, i) => (i === slot ? { ...x, picker: pk, queue: q } : x))
+        })
+      }),
+    [sessionId]
+  )
 
   // cheap signature of every panel session (status + message count)
   const sig = sessions.map((s) => s.state.status + ':' + s.state.messages.length).join('|')

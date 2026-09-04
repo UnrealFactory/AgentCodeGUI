@@ -46,8 +46,9 @@ import {
 import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
 import { useLimitResume } from '../lib/useLimitResume'
-import { listChatWindows, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
+import { listChatWindows, onChatIdentity, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
 import { MAIN_SLOT_NAME, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
+import { pickerAfterLanding } from '../lib/identityLanding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
@@ -217,6 +218,17 @@ export function SessionWindow(): React.ReactElement {
   // 셸이 모든 창에 `emit`하므로 여기서 구독만 하면 같은 표가 선다. 자기 chatId는 창 자리
   // 목록(`chat:windows`)에서 OS 창 라벨로 찾는다 — 렌더러가 달리 알 길이 없다.
   const [selfChatId, setSelfChatId] = useState('')
+  // ★2026-09-04 — 엔진이 착지한 계정(한도 자동 전환·되돌리기)을 이 창의 picker에 미러링한다 —
+  // 위 모델 폴백과 같은 이유(lib/identityLanding.ts). `chat:identity`는 모든 창에 emit_all이라
+  // 구독만 하면 되고, 자기 채팅만 받는다.
+  useEffect(
+    () =>
+      onChatIdentity((p) => {
+        if (!selfChatId || p.chatId !== selfChatId) return
+        setPicker((cur) => pickerAfterLanding(cur, p))
+      }),
+    [selfChatId]
+  )
   useEffect(() => {
     // 첫 REPLACE가 리스너보다 이를 수 있어(F12) 등록 뒤 스냅샷을 한 번 당긴다(App.tsx와 동일).
     const catchUp = (): void => {

@@ -1,8 +1,9 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, BgTaskRequest, ChatStatusLite, PanelPopState, SessionWindowInfo, UsageInfo } from '@shared/protocol'
 import type { EngineId } from '@shared/protocol'
-import { listChatWindows, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
-import { MAIN_SLOT_NAME, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
+import { listChatWindows, onChatIdentity, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
+import { MAIN_SLOT_NAME, panelIdOfChat, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
+import { panelSlotOfChat, pickerAfterLanding, queueAfterLanding } from '../lib/identityLanding'
 import { useAgentSession, initialSessionState, sameCwd, commandOf, sanitizeSnapshot, snapshotForPersist, type SessionState } from '../store/session'
 import { parseBtw, btwForkOf } from '../lib/btw'
 import { getPref, setPref } from '../lib/prefs'
@@ -132,6 +133,28 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     }
     return onChatStatus(putChatStatuses, catchUp)
   }, [])
+  // ★2026-09-04 — 엔진이 착지한 계정(한도 자동 전환·되돌리기)을 이 자리의 picker에 미러링한다
+  // (그리드 MultiAgent와 같은 규칙 — lib/identityLanding.ts). 이 창은 자기 chatId를 모른다(부팅
+  // 상태는 panelId뿐) — 살아 있는 행(chatId ↔ panelId)이 우선, 없으면 채번 규칙으로 판정한다.
+  useEffect(
+    () =>
+      onChatIdentity((p) => {
+        const id = p.chatId ?? ''
+        if (!id) return
+        const cut = panelId.lastIndexOf('::')
+        const board = cut < 0 ? '' : panelId.slice(0, cut)
+        const slotN = cut < 0 ? NaN : Number(panelId.slice(cut + 2))
+        const mine = panelIdOfChat(id) === panelId || (!!board && panelSlotOfChat(id, board) === slotN)
+        if (!mine) return
+        setMeta((m) => {
+          const pk = pickerAfterLanding(m.picker, p)
+          const q = queueAfterLanding(m.queue, p)
+          return pk === m.picker && q === m.queue ? m : { ...m, picker: pk, queue: q }
+        })
+      }),
+    [panelId]
+  )
+
   useEffect(() => {
     const apply = (slots: WindowSlot[]): void =>
       putSlotNames('wins', Object.fromEntries(slots.map((s) => [s.chatId, s.title?.trim() || WINDOW_SLOT_NAME()])))

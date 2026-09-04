@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChatStatusLite, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
+import { pickerAfterLanding, queueAfterLanding } from './lib/identityLanding'
 
 // 백그라운드 셸 컨트롤(중지/Ctrl+B) — window.api는 전역이라 모듈 스코프의 고정 함수로
 // 만들어 memo된 WorkBar가 매 렌더마다 새 콜백을 받지 않게 한다
@@ -2308,6 +2309,26 @@ function MainApp({ user }: { user: AppUser }) {
     const off = onChatIdentity((p) => {
       const id = p.chatId ?? ''
       const origin = p.origin ?? ''
+      // ★2026-09-04 — 착지한 계정을 이 채팅의 picker 바인딩에 미러링한다(lib/identityLanding.ts —
+      // 한도 자동 전환 뒤 칩이 옛 계정을 말하고 다음 전송이 전환을 되돌리던 보고). 활성 채팅은
+      // `picker`·`queue` 상태가 진실(저장 때 레코드로 흘러간다), 나머지는 레코드 쪽을 고친다.
+      if (id === activeChatIdRef.current) {
+        setPicker((cur) => pickerAfterLanding(cur, p))
+        setQueue((cur) => queueAfterLanding(cur, p))
+      } else if (id) {
+        setChats((list) => {
+          let touched = false
+          const next = list.map((c) => {
+            if (c.id !== id) return c
+            const pk = pickerAfterLanding(c.picker, p)
+            const q = queueAfterLanding(c.queue ?? [], p)
+            if (pk === c.picker && q === (c.queue ?? [])) return c
+            touched = true
+            return { ...c, picker: pk, queue: q }
+          })
+          return touched ? next : list
+        })
+      }
       const kept = (p.keptByFallback ?? []).filter((s) => typeof s === 'string')
       const drifted = (p.driftedFields ?? []).filter((s) => typeof s === 'string')
       // ★M11 — 한도 소진 자동 계정 전환도 **내가 고르지 않은 변화**다(m11 §6-1). 스레드

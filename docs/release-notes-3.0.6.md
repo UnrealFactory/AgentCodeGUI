@@ -1,6 +1,6 @@
 ## AgentCodeGUI 3.0.6
 
-채팅 안의 시스템 안내가 전부 노란 경고 하나였던 것을 주제별 색·아이콘·라벨로 나눴고, 한도 대기 상태줄도 같은 모양으로 맞췄습니다. 오류 카드의 [복사]와 「예약으로 넣었어요」 줄은 뺐습니다.
+채팅 안의 시스템 안내가 전부 노란 경고 하나였던 것을 주제별 색·아이콘·라벨로 나눴고, 한도 대기 상태줄도 같은 모양으로 맞췄습니다. 계정 목록에는 한도가 다 된 계정을 숨기는 알약 두 개가 생겼고, 한도 자동 전환 뒤 자리 칩이 옛 계정을 말하던 것을 고쳤습니다.
 3.0.x를 쓰고 있다면 앱 안에서 자동으로 이 업데이트를 받습니다.
 
 **바뀐 것**
@@ -10,6 +10,9 @@
 - **오류 카드의 [복사] 버튼을 뺐습니다.** 원문 칸을 드래그해 복사하면 되는 자리라 버튼이 하나 더 있을 이유가 없었습니다. 8줄 넘는 원문을 펼치는 [전체 보기]는 그대로입니다.
 - **「예약으로 넣었어요」 줄을 뺐습니다.** 답이 오는 중에 보낸 메시지는 입력창 아래 예약 목록에 바로 보이는데, 스레드에도 「예약으로 넣었어요 — 턴이 끝나면 바로 나가요」를 한 줄 더 썼습니다. 같은 사실을 두 곳에서 말하던 것이라 스레드 줄만 뺐습니다. 턴 중에 모델·계정 등을 바꿨을 때의 「설정을 예약했어요」는 목록에 안 보이므로 남깁니다.
 - **이 업데이트 소식 카드의 버전 버튼을 10개까지.** 카드가 커진 뒤로 한 줄에 버전 알약이 12개까지 서는데 5개에서 잘랐습니다. 이제 최신 10개를 오갈 수 있습니다(두 자리 패치 번호가 섞여도 한 줄).
+- **계정 목록에서 한도가 다 된 계정을 골라 숨깁니다 — 「Fable 소진 숨김」·「주간 소진 숨김」.** 모델 칩을 열면 나오는 계정 목록의 「계정」 제목 오른쪽에 알약 두 개가 붙었습니다. 「Fable 소진 숨김」을 켜면 Fable 주간 한도가 0%인 계정이, 「주간 소진 숨김」을 켜면 주간 한도가 0%인 계정이 목록에서 빠집니다. 둘 다 켜면 둘 다 남은 계정만 남고, 하나만 켜면 다른 한도는 보지 않습니다. 지금 이 대화가 쓰는 계정은 언제나 보입니다. 옛 「소진된 계정 N개 표시」 접기 줄을 대신하며, 그때 펼쳐 두었다면 그대로 펼쳐진 채 이어집니다. 목록 순서도 바꿨습니다 — 「계정」이 먼저, 「한도 소진 시」가 그 아래입니다.
+- **한도 자동 전환 뒤 자리 칩이 옛 계정을 말하던 것 — 「사용 중 · 2곳」이 유령처럼 보였습니다.** 한도에 걸려 엔진이 다른 계정으로 바꿔 이어간 뒤에도, 그 자리의 칩과 계정 목록의 「현재」는 바꾸기 전 계정을 그대로 보여 줬습니다. 그래서 다른 자리에서 보면 「사용 중 · 2곳」인데 화면엔 그 계정을 쓰는 자리가 안 보였고, 더 나쁘게는 다음 메시지가 옛 계정을 다시 실어 보내 전환을 되돌려 같은 한도에 다시 걸릴 수 있었습니다. 이제 엔진이 계정을 바꾸면(되돌리기 포함) 본채팅·멀티 자리·추가 창·팝아웃 창의 칩과 예약된 메시지가 모두 그 계정으로 따라갑니다. 모델 자동 전환이 이미 하던 것과 같은 규칙입니다.
+- **도구 줄의 「새 파일 +33」 — 가운데 점을 넣었습니다.** 파일을 새로 쓴 줄의 오른쪽 요약이 「새 파일 +33」으로 한 덩이처럼 붙어 보였습니다. Bash 줄의 「0.3s · 12줄」처럼 「새 파일 · +33」, 「파일 3개 · +4 −2」로 가릅니다.
 
 > **처음 설치할 때 파란 경고 창이 뜨면 — 정상입니다.** AgentCodeGUI3은 코드 서명 인증서를 쓰지 않습니다.
 > 「**추가 정보**」 → 「**실행**」을 누르면 설치가 시작됩니다. 설치 위치는 `%LOCALAPPDATA%\AgentCodeGUI3`, 기존 2.6.2는 그대로 남습니다.
@@ -18,7 +21,7 @@
 
 ## AgentCodeGUI 3.0.6 (English)
 
-System notices in the thread were all the same yellow warning; they are now split by topic with their own color, icon and label, and the limit-hold bar matches. The [Copy] pill on error cards and the "Queued instead" line are gone.
+System notices in the thread were all the same yellow warning; they are now split by topic with their own color, icon and label, and the limit-hold bar matches. The account list gains two pills that hide used-up accounts, and the seat chip now follows automatic account switches.
 If you are on 3.0.x, the app picks this update up on its own.
 
 **Changed**
@@ -28,6 +31,10 @@ If you are on 3.0.x, the app picks this update up on its own.
 - **Removed the [Copy] pill from error cards.** You can select the raw pane and copy it, so the extra button had no job. [Show all] for raw output longer than 8 lines stays.
 - **Removed the "Queued instead" line.** A message sent while a reply is streaming already shows up in the queue list under the composer, and the thread repeated it as "Queued instead — goes out when the turn ends". Same fact in two places, so the thread line is gone. "Setting scheduled" (changing model or account mid-turn) stays, because the queue list does not show it.
 - **This what's-new card keeps up to 10 versions.** The card fits 12 version pills per row since it grew, but the list was capped at 5. It now keeps the latest 10 (still one row even with two-digit patch numbers).
+- **Hide used-up accounts from the account list — "Hide Fable 0%" and "Hide weekly 0%".** Two pills now sit to the right of the **Account** heading in the model chip's list. "Hide Fable 0%" drops accounts whose Fable weekly limit is at 0%; "Hide weekly 0%" drops those whose weekly limit is at 0%. With both on, only accounts with both limits left remain; with one on, the other limit is ignored. The account this chat is using always stays visible. This replaces the old "Show N exhausted accounts" fold — if you had it expanded, it stays expanded. The list order changed too: **Account** comes first, **When the limit runs out** below it.
+- **After an automatic account switch the seat chip kept naming the old account — "In use · 2 places" looked like a ghost.** When the engine moved a chat to another account on a usage limit, that seat's chip and the "Current" mark in its account list kept showing the account it switched away from. Seen from another seat, the account said "In use · 2 places" while no visible seat appeared to use it — and worse, the next message carried the old account again, undoing the switch and walking back into the same limit. Now when the engine changes the account (revert included), the chip and any queued messages in the main chat, multi-agent seats, extra windows and popped-out panels follow it. Same rule the automatic model switch already used.
+- **Tool rows: "New file +33" now has its separator.** The right-hand summary of a file-write row read as "New file +33" in one lump. It now splits like the Bash row's "0.3s · 12 lines" — "New file · +33", "3 files · +4 −2".
+
 
 > **A blue warning on first install is expected.** AgentCodeGUI3 is not code-signed.
 > Click **More info** → **Run** to start the install. It installs to `%LOCALAPPDATA%\AgentCodeGUI3`; an existing 2.6.2 install is left untouched.

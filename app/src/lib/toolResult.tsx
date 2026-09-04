@@ -9,7 +9,9 @@
 import type { ReactNode } from 'react'
 import { t } from './i18n'
 
-/** 행 오른쪽 요약 토큰 → 표시 노드. `+N −N`은 색을 입힌다(ASCII `-`·U+2212 `−` 모두). */
+/** 행 오른쪽 요약 토큰 → 표시 노드. `+N −N`은 색을 입힌다(ASCII `-`·U+2212 `−` 모두).
+ *  말 뒤에 숫자가 붙는 꼴(새 파일 +N · 파일 N개 +a −d)은 ` · `로 가른다 — Bash 행의
+ *  「03s · 12줄」과 같은 문법(2026-09-04 사용자: 「새 파일 +33」이 한 덩이로 붙어 보였다). */
 export function fmtToolResult(result: string | undefined): ReactNode {
   const r = (result ?? '').trim()
   if (!r) return ''
@@ -23,13 +25,13 @@ export function fmtToolResult(result: string | undefined): ReactNode {
   if ((m = r.match(/^new \+(\d+)$/)))
     return (
       <>
-        {t('새 파일', 'New file')} <span className="add">+{m[1]}</span>
+        {t('새 파일', 'New file')} · <span className="add">+{m[1]}</span>
       </>
     )
   if ((m = r.match(/^(\d+) files \+(\d+) [-−](\d+)$/)))
     return (
       <>
-        {t(`파일 ${m[1]}개`, `${m[1]} files`)} <span className="add">+{m[2]}</span> <span className="del">−{m[3]}</span>
+        {t(`파일 ${m[1]}개`, `${m[1]} files`)} · <span className="add">+{m[2]}</span> <span className="del">−{m[3]}</span>
       </>
     )
   if ((m = r.match(/^(\d+) lines?$/))) return t(`${m[1]}줄`, `${m[1]} lines`)

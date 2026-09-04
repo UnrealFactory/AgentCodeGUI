@@ -149,7 +149,13 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   (초록·▶) · 계정(청록) · 모델(보라) · 수명(파랑·맥박) · 종료/재시작(무채색) · 중지(주황·■) · 예약(남색) · 거절
   //   (빨강·⊘) · 과금(금색) · CLI(무채색·모노) + 트레이 라벨 태그(.ntf-tag) ② LimitHoldBar 앰버 유리 → 같은
   //   .ntf-band(HoldBand · 한도/풀림 색) · IdentityBand도 분류 색 ③ ErrorBand [복사] 제거 ④ verdict queued
-  //   「예약으로 넣었어요」 제거(예약 독과 중복 · deferred는 유지) ⑤ MAX_VERSIONS 5 → 10(한 줄 실측 12/11).
+  //   「예약으로 넣었어요」 제거(예약 독과 중복 · deferred는 유지) ⑤ MAX_VERSIONS 5 → 10(한 줄 실측 12/11)
+  //   ⑥ 계정 picker — 「계정」 헤더 오른쪽 한도별 숨김 알약 「Fable 소진 숨김」·「주간 소진 숨김」(시안 V2 ·
+  //   .pp-filt · 옛 「소진된 계정 N개 표시」 접기 줄 대체 · 둘 다 켜면 어느 한쪽이라도 0%면 숨김) + 섹션 순서
+  //   계정 → 한도 소진 시 ⑦ 도구 행 「새 파일 · +N」·「파일 N개 · +a −d」 구분점(Bash 「0.3s · 12줄」 문법)
+  //   ⑧ 한도 자동 전환 뒤 자리 칩이 옛 계정 — chat:identity는 배너만 띄우고 picker 바인딩은 안 바꿔 「사용 중 ·
+  //   2곳」이 유령처럼 보였고 다음 전송이 옛 계정을 실어 전환을 되돌렸다 → 착지 계정을 4창(App·MultiAgent·
+  //   SessionWindow·PanelWindow)의 picker·예약 스냅샷에 미러링(lib/identityLanding.ts · 모델 폴백과 같은 규칙).
   // 3.0.5 — 2026-09-03 보고 넷: ① AI가 「지난 질문에 답을 안 보냈다」며 밀린 답을 되풀이 — 턴이 끝나는
   //   순간 CLI를 kill해 마지막 답(end_turn)이 세션 파일에 안 남았고, 다음 --resume이 "Continue from where
   //   you left off"를 합성 주입 → EOF 뒤 자발 퇴장 대기(kill_graceful, 유예 8s) + 새 스폰은 앞 프로세스 퇴장
@@ -180,7 +186,7 @@ const RELEASES: Record<string, LocalizedRelease> = {
   '3.0.6': {
     ko: {
       eyebrow: 'DESIGN',
-      lead: '채팅 안의 시스템 안내가 전부 노란 경고 하나였던 것을 주제별 색·아이콘·라벨로 나눴고, 한도 대기 상태줄도 같은 모양으로 맞췄습니다. 오류 카드의 [복사]와 「예약으로 넣었어요」 줄은 뺐습니다.',
+      lead: '채팅 안의 시스템 안내가 전부 노란 경고 하나였던 것을 주제별 색·아이콘·라벨로 나눴고, 한도 대기 상태줄도 같은 모양으로 맞췄습니다. 계정 목록에는 한도가 다 된 계정을 숨기는 알약 두 개가 생겼고, 한도 자동 전환 뒤 자리 칩이 옛 계정을 말하던 것을 고쳤습니다.',
       notes: [
         {
           tag: '대화',
@@ -238,12 +244,48 @@ const RELEASES: Record<string, LocalizedRelease> = {
               있습니다(두 자리 패치 번호가 섞여도 한 줄).
             </>
           )
+        },
+        {
+          tag: '계정',
+          name: '계정 목록에서 한도가 다 된 계정을 골라 숨깁니다 — 「Fable 소진 숨김」·「주간 소진 숨김」',
+          desc: (
+            <>
+              모델 칩을 열면 나오는 계정 목록의 「계정」 제목 오른쪽에 알약 두 개가 붙었습니다. <b>Fable 소진 숨김</b>을
+              켜면 Fable 주간 한도가 0%인 계정이, <b>주간 소진 숨김</b>을 켜면 주간 한도가 0%인 계정이 목록에서
+              빠집니다. 둘 다 켜면 둘 다 남은 계정만 남고, 하나만 켜면 다른 한도는 보지 않습니다. 지금 이 대화가 쓰는
+              계정은 언제나 보입니다. 옛 「소진된 계정 N개 표시」 접기 줄을 대신하며, 그때 펼쳐 두었다면 그대로
+              펼쳐진 채 이어집니다. 목록 순서도 바꿨습니다 — <b>계정</b>이 먼저, <b>한도 소진 시</b>가 그 아래입니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '한도 자동 전환 뒤 자리 칩이 옛 계정을 말하던 것 — 「사용 중 · 2곳」이 유령처럼 보였습니다',
+          desc: (
+            <>
+              한도에 걸려 엔진이 다른 계정으로 바꿔 이어간 뒤에도, 그 자리의 칩과 계정 목록의 「현재」는 <b>바꾸기 전
+              계정</b>을 그대로 보여 줬습니다. 그래서 다른 자리에서 보면 「사용 중 · 2곳」인데 화면엔 그 계정을 쓰는
+              자리가 안 보였고, 더 나쁘게는 다음 메시지가 옛 계정을 다시 실어 보내 <b>전환을 되돌려</b> 같은 한도에
+              다시 걸릴 수 있었습니다. 이제 엔진이 계정을 바꾸면(되돌리기 포함) 본채팅·멀티 자리·추가 창·팝아웃 창의
+              칩과 예약된 메시지가 모두 그 계정으로 따라갑니다. 모델 자동 전환이 이미 하던 것과 같은 규칙입니다.
+            </>
+          )
+        },
+        {
+          tag: '대화',
+          name: '도구 줄의 「새 파일 +33」 — 가운데 점을 넣었습니다',
+          desc: (
+            <>
+              파일을 새로 쓴 줄의 오른쪽 요약이 「새 파일 +33」으로 한 덩이처럼 붙어 보였습니다. Bash 줄의 「0.3s ·
+              12줄」처럼 <b>「새 파일 · +33」</b>, 「파일 3개 · +4 −2」로 가릅니다.
+            </>
+          )
         }
       ]
     },
     en: {
       eyebrow: 'DESIGN',
-      lead: 'System notices in the thread were all the same yellow warning; they are now split by topic with their own color, icon and label, and the limit-hold bar matches. The [Copy] pill on error cards and the "Queued instead" line are gone.',
+      lead: 'System notices in the thread were all the same yellow warning; they are now split by topic with their own color, icon and label, and the limit-hold bar matches. The account list gains two pills that hide used-up accounts, and the seat chip now follows automatic account switches.',
       notes: [
         {
           tag: 'Chat',
@@ -303,6 +345,46 @@ const RELEASES: Record<string, LocalizedRelease> = {
             <>
               The card fits 12 version pills per row since it grew, but the list was capped at 5. It now keeps the
               latest 10 (still one row even with two-digit patch numbers).
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'Hide used-up accounts from the account list — "Hide Fable 0%" and "Hide weekly 0%"',
+          desc: (
+            <>
+              Two pills now sit to the right of the <b>Account</b> heading in the model chip&apos;s list. <b>Hide Fable
+              0%</b> drops accounts whose Fable weekly limit is at 0%; <b>Hide weekly 0%</b> drops those whose weekly
+              limit is at 0%. With both on, only accounts with both limits left remain; with one on, the other limit is
+              ignored. The account this chat is using always stays visible. This replaces the old &quot;Show N exhausted
+              accounts&quot; fold — if you had it expanded, it stays expanded. The list order changed too:
+              <b>Account</b> comes first, <b>When the limit runs out</b> below it.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'After an automatic account switch the seat chip kept naming the old account — "In use · 2 places" looked like a ghost',
+          desc: (
+            <>
+              When the engine moved a chat to another account on a usage limit, that seat&apos;s chip and the
+              &quot;Current&quot; mark in its account list kept showing <b>the account it switched away from</b>. Seen
+              from another seat, the account said &quot;In use · 2 places&quot; while no visible seat appeared to use
+              it — and worse, the next message carried the old account again, <b>undoing the switch</b> and walking
+              back into the same limit. Now when the engine changes the account (revert included), the chip and any
+              queued messages in the main chat, multi-agent seats, extra windows and popped-out panels follow it. Same
+              rule the automatic model switch already used.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'Tool rows: "New file +33" now has its separator',
+          desc: (
+            <>
+              The right-hand summary of a file-write row read as &quot;New file +33&quot; in one lump. It now splits
+              like the Bash row&apos;s &quot;0.3s · 12 lines&quot; — <b>&quot;New file · +33&quot;</b>, &quot;3 files ·
+              +4 −2&quot;.
             </>
           )
         }

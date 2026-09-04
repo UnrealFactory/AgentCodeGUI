@@ -1418,6 +1418,18 @@ button.hsec:hover{ color:var(--text-3); }
 .pprov button:disabled:hover{ color:var(--text-3); background:rgba(255,255,255,.04); }
 .pp-lock{ font-size:10.5px; color:var(--text-4); margin:-3px 4px 9px; }
 .pp-h4{ font-size:11px; font-weight:600; color:var(--text-3); margin:2px 4px 8px; }
+/* ★2026-09-04 사용자 결정(시안 V2) — 「계정」 헤더 오른쪽의 한도별 숨김 알약. 변경 파일 모달의
+   상태 세그먼트(.chgm-seg: 600 · 흰 5% · 켜짐=accent 채움)와 같은 문법을 헤더 키에 맞춰
+   줄였다(10px · 3.5px 9px). 필터라 무채색 — 「현재」(파랑)·「사용 중」(주황) 상태 알약과 갈린다 */
+.pp-h4.pp-h4f{ display:flex; align-items:center; gap:8px; }
+.pp-filts{ margin-left:auto; display:flex; gap:5px; }
+.pp-filt{
+  display:inline-flex; align-items:center; white-space:nowrap; font-size:10px; font-weight:600;
+  color:var(--text-3); background:rgba(255,255,255,.05); padding:3.5px 9px; border-radius:99px;
+  transition:background .1s, color .1s;
+}
+.pp-filt:hover{ background:rgba(255,255,255,.09); color:var(--text); }
+.pp-filt.on{ background:var(--accent); color:var(--on-accent); }
 .pp-sep{ height:1px; background:rgba(255,255,255,.07); margin:8px 2px; }
 .pp-row{ display:flex; align-items:center; gap:8px; width:100%; padding:6px 7px; border-radius:7px; font-size:12px; color:var(--text-2); text-align:left; transition:background .12s, color .12s; }
 .pp-row:hover{ background:var(--hover); color:var(--text); }
@@ -1454,14 +1466,8 @@ button.hsec:hover{ color:var(--text-3); }
   padding:2.5px 6px; border-radius:99px;
 }
 /* .pp-flag(과금 헤더 자동 이어서 필)는 「한도 소진 시」 체크 행 2개로 대체돼 은퇴(2026-09-01) */
-/* 숨긴 소진 계정 펼치기 — ToolGroup '이전 도구 N개 펼치기'와 같은 접기 행 문법 */
-.pp-more{
-  display:flex; align-items:center; gap:6px; width:100%; padding:5px 7px; border-radius:7px;
-  font-size:10.5px; color:var(--text-4); text-align:left; transition:background .12s, color .12s;
-}
-.pp-more:hover{ background:var(--hover); color:var(--text-2); }
-.pp-more svg{ flex:0 0 auto; transition:transform .15s; }
-.pp-more.open svg{ transform:rotate(180deg); }
+/* .pp-more(숨긴 소진 계정 펼치기 접기 행)는 「계정」 헤더의 숨김 알약(.pp-filt)으로 대체돼 은퇴(2026-09-04) */
+
 /* 추론 슬라이더 — 선택한 모델 아래로 슬라이드 오픈 (PoC .edrawer) */
 .edrawer{ max-height:0; overflow:hidden; transition:max-height .22s ease; }
 .edrawer.open{ max-height:44px; }

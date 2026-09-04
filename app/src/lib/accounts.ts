@@ -427,6 +427,12 @@ export function liveAccountOf(selfKey?: string): string | undefined {
   return liveRows.find((r) => r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey))?.account
 }
 
+/** chatId → 셸이 준 보드 자리(`${boardId}::${slot}`). 살아 있는 행에 없으면 `null`
+ *  (★2026-09-04 — 팝아웃·그리드가 `chat:identity`의 chatId를 자기 자리와 잇는 데 쓴다). */
+export function panelIdOfChat(chatId: string): string | null {
+  return liveRows.find((r) => r.chatId === chatId)?.panelId || null
+}
+
 /**
  * 「사용 중」 칩의 문구 — 없으면 `null`.
  *
