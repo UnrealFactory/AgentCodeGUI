@@ -534,6 +534,12 @@ export type EngineEventV3 =
   // 붙어 있나"가 아니다 — 연결 실패도, 승인 안 된 .mcp.json도, 플러그인이 들고 온
   // 스킬도 디스크만 봐서는 모른다. 3.0은 와이어가 말하는 것만 싣는다.
   | { type: 'tooling'; runId: string; tooling: ChatTooling }
+  // ★3.0.8 — CLI가 API 오류(과부하 529 · 5xx · 429 · 연결 실패)를 **스스로 재시도하며 기다리는 중**
+  // (`system/api_retry` · SDK `SDKAPIRetryMessage`). 한 번의 대기가 최대 60초, 과부하 지속 모드는
+  // 최대 5분이라 몇 분을 프레임 없이 보낼 수 있다 — 3.0.7까지 버려져 화면은 「작업 중」만 돌았다.
+  // 표시 전용: 성공하면 답이 그냥 이어지고, 끝내 실패하면 `error`가 따로 온다.
+  // `status`는 HTTP 상태(연결 실패는 null) · `error`는 CLI의 분류 문자열(`overloaded`·`rate_limit`…).
+  | { type: 'api-retry'; runId: string; attempt: number; maxRetries: number; retryInMs: number; status: number | null; error: string }
 
 /** 이 채팅에 붙어 있는 MCP 서버 하나 (`system/init`의 `mcp_servers[]`). */
 export interface McpLive {

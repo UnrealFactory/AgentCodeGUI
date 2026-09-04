@@ -93,6 +93,16 @@ export type NotifyTone = 'neutral' | 'notice' | 'danger' | 'positive'
 /** band가 트레이에 놓는 행동. `band`만 행동을 가질 수 있다(M-UI §2.3 행동 규칙). */
 export type NotifyAct = 'billing-off' | 'revert'
 
+/** ★3.0.8 — API 재시도 대기(`api-retry`) 한 장. `at`은 받은 시각(epoch ms) — 남은 시간은 화면이 센다. */
+export interface ApiRetryInfo {
+  attempt: number
+  maxRetries: number
+  retryInMs: number
+  status: number | null
+  error: string
+  at: number
+}
+
 export interface SessionState {
   status: AgentStatus
   messages: ThreadItem[]
@@ -151,6 +161,10 @@ export interface SessionState {
   // 새 실행이 밀어낼 때의 잔재)가 새 실행의 busy·결과를 덮지 못하게 한다.
   // null = 출처 불명(복원 직후 등) — 잘못 거르면 busy가 영영 안 풀리므로 가드 없이 통과.
   curRunId: string | null
+  // ★3.0.8 — CLI가 API 오류를 스스로 재시도하며 기다리는 중이면 그 사실(몇 번째 · 사유 · 다음 시도까지).
+  // 작업 인디케이터가 랜덤 문구 대신 이것을 적는다. 메인 경로가 다시 움직이면(사고·답변·도구·상태·
+  // 종결) 걷힌다. 영속하지 않는다(스냅샷은 null — 재시작한 CLI는 그 대기를 잇지 않는다).
+  apiRetry?: ApiRetryInfo | null
   // ★ M-UI §5-4 — 이번 턴이 시작한 시각(epoch ms). 중단선이 "얼마나 하다 끊겼는지"를
   // 말하려면 이 값이 필요하다. 영속하지 않는다(복원 직후엔 없는 게 맞다 — 지어내지 않는다).
   //
@@ -199,6 +213,11 @@ const THINKING_ID = 'thinking'
 // begin 직후(엔진의 analyzing 이벤트가 아직)를 나타내는 curRunId 표식 — 이 창에 도착하는
 // 종결 이벤트는 전부 이전 실행의 잔재다. 실제 runId는 'run-N'/'cxrun-N'이라 충돌하지 않는다.
 const PENDING_RUN = 'pending'
+// ★3.0.8 — 이 이벤트들이 오면 API 재시도 대기(`apiRetry`)는 끝난 것이다(메인 경로의 진행·종결·카드).
+const API_RETRY_CLEARERS = new Set<string>([
+  'status', 'thinking', 'assistant-stream', 'assistant-done', 'tool-start', 'tool-end', 'result', 'error',
+  'permission-request', 'question-request', 'compact', 'model-fallback'
+])
 
 export function nowTime(): string {
   return new Date().toLocaleTimeString(t('ko-KR', 'en-US'), { hour: 'numeric', minute: '2-digit' })
@@ -272,6 +291,8 @@ export function snapshotForPersist(s: SessionState): SessionState {
     bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
     // 워크플로도 같은 운명 — 도는 채로 복원되면 거짓 알약이 뜬다 (옛 스냅샷은 필드 없음 → [])
     workflows: (s.workflows ?? []).map((w) => (w.status === 'running' ? { ...w, status: 'stopped' as const } : w)),
+    // 재시도 대기는 그 CLI 프로세스의 것이다 — 복원된 대화 위에 남으면 거짓말이 된다
+    apiRetry: null,
     interrupted: false
   }
 }
@@ -333,6 +354,7 @@ export const initialSessionState: SessionState = {
   seq: 0,
   shownNotices: [],
   curRunId: null,
+  apiRetry: null,
   turnAt: undefined,
   turnMark: null
 }
@@ -640,6 +662,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       thinkingText: null,
       streaming: false,
       openGroupId: null,
+      apiRetry: null,
       interrupted: false,
       seq
     }
@@ -796,6 +819,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   const e = action.event
+  // ★3.0.8 — API 재시도 대기 표시는 **메인 경로가 다시 움직이는 순간** 걷는다(사고·답변·도구·상태·
+  // 종결·카드). 백그라운드 통지(bg-tasks·subagent·workflow·terminal)는 그 사이에도 오므로 안 걷는다 —
+  // 메인 요청은 여전히 대기 중이다.
+  if (state.apiRetry && API_RETRY_CLEARERS.has(e.type)) state = { ...state, apiRetry: null }
   // 실행 경계 가드 — 죽어가는 이전 실행의 늦은 종결 이벤트인지. begin 직후(pending)면
   // 현 실행의 analyzing 전이므로 전부 잔재고, runId 채택 후엔 다른 id를 거른다.
   // curRunId=null(복원 등 출처 불명)은 통과 — 잘못 거르면 busy가 영영 안 풀린다.
@@ -1189,6 +1216,20 @@ export function reducer(state: SessionState, action: Action): SessionState {
     // 컴파일이 멈춘다. 무시한다는 사실을 이 줄이 말한다.
     case 'tooling':
       return state
+
+    case 'api-retry': {
+      // ★3.0.8 — CLI가 API 오류(과부하 529 · 5xx · 429 · 연결 실패)를 스스로 재시도하며 기다리는 중.
+      // 인디케이터가 랜덤 문구 대신 이 사실을 보이도록 상태에 올린다(카드·말풍선은 없다 — 성공하면
+      // 아무 일도 없었던 것처럼 답이 이어지고, 끝내 실패하면 `error`가 따로 온다). 답변 본문이 흐르다
+      // 끊긴 재시도면 `streaming`을 내려 인디케이터가 되돌아온다. 다음 진행 프레임이 지운다(위 가드).
+      if (staleRun(e.runId) || state.interrupted) return state
+      return {
+        ...state,
+        thinkingText: null,
+        streaming: false,
+        apiRetry: { attempt: e.attempt, maxRetries: e.maxRetries, retryInMs: e.retryInMs, status: e.status, error: e.error, at: Date.now() }
+      }
+    }
 
     case 'permission-request':
       return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine } }

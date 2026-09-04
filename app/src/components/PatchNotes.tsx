@@ -144,6 +144,28 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.8 — 2026-09-04 보고: 간단한 질문이 6분 38초 「작업 중」만 돌다 중단 → 그대로 재전송은 즉시 답(스크린샷 —
+  //   세션 파일 없음). 코드 대조: /clear 뒤 첫 전송 경로(StopAll→clear_queue·forget_thread·t1_spawn·reaper 대기)에는
+  //   결함 없음. 남은 침묵 후보는 CLI의 **API 재시도 대기** — claude.exe 2.1.260 실측: 과부하(529)·5xx·429·연결 실패에
+  //   스스로 재시도(한 번 최대 60초 · 지속 과부하 모드는 최대 5분 · 기본 횟수 상한)하며 `system/api_retry`
+  //   {attempt,max_retries,retry_delay_ms,error_status,error}를 낸다 → 3.0.7까지 frames.rs가 F21(미지)로 버려 화면은
+  //   랜덤 문구+초만 돌았다 → frames.rs ApiRetry(상태기계 무동작) + wire.rs `api-retry` 번역 + session.ts apiRetry
+  //   (메인 경로 진행·종결·카드에서 걷힘 · 스냅샷 null) + WorkingIndicator가 「API 오류 — 다시 시도를 기다리는 중 ·
+  //   3/10 · 서버 과부하 · 42초 뒤 다시」로 남은 초 카운트다운(앰버 · shimmer 없음). 테스트 2(frames·wire).
+  //   ② 「작업 폴더를 찾을 수 없어요 — C:\Users\<me>\Desktop」가 보낼 때마다 뜨다 몇 번째에 됨(제보 — 패널 칩은
+  //   ClaudeOffice): hub.ensure가 **디스크 정체성**(폴더 빈 채 저장)으로 런타임을 먼저 만들고 그다음 요청 picker를
+  //   패치했다 → 빈 폴더의 대체 `%USERPROFILE%\Desktop`이 OneDrive 리디렉션 계정엔 없어 CwdMissing으로 죽고 요청의
+  //   폴더는 읽히지도 않았다(렌더러 지연 저장이 정체성을 되쓴 뒤에야 성공) → ensure_for(seed): Run·IdentitySet의
+  //   패치를 런타임 생성 전에 얹음 + ident.rs desktop()이 SHGetKnownFolderPath(FOLDERID_Desktop) → %USERPROFILE%\Desktop
+  //   → %USERPROFILE% 순으로 **실재하는** 폴더를 고름 + reject_spawn 표면을 op별로(run만 스레드 band · 조회/재장전은
+  //   침묵 · 나머지는 verdict만 — /clear가 오류 말풍선을 앉히던 것도 이것) ③ 5·6분할 패널 헤더 칩 겹침(제보 화면 —
+  //   「MCP & SKILL」 위로 「작업 중 00:36」): .hfold(min-width:0) 안의 .ma-p-folder 버튼이 min-width:auto라 래퍼 밖으로
+  //   삐져나옴 → 칩 min-width:0(이름만 말줄임) + 제목 묶음 flex-shrink 10(제목이 먼저 양보).
+  //   ④ 보드 다이얼 2·3·4·5 반복 시 순서 드리프트(제보 — 「1번이던 패널이 5번에」): applyCount가 줄일 때 포커스
+  //   자리를 보이는 마지막 자리로 끌어올리며 panelOrder를 **영구히** 바꾸고 늘릴 땐 안 건드려, 5→1(포커스 5번)→5마다
+  //   원래 1‥4번이 한 칸씩 밀렸다 → lib/panelLayout.ts resizeLayout: 승격을 오버레이(promo{slot,base})로 두고 늘리면
+  //   base로 복원(승격 자리가 그래도 안 보이면 base 위에 다시 얹음) · 드래그/↥ 올리기는 오버레이 걷음 · 세션 레코드
+  //   (promo) + legacy_bridge 보드 왕복(sanitize_promo · null은 걷음, 키 없음만 지난 값) · poc-panel-layout.mjs 16건.
   // 3.0.7 — 2026-09-04 보고·요청 다섯: ① 채팅 완료 순간 「응답 없음」(사용자 hang-17248 미니덤프): notify.rs
   //   push()가 tokio 워커에서 PUSH_LOCK(std Mutex)을 쥔 채 build() → hwnd() → SetWindowLongPtrW(다른 스레드의 창 =
   //   메인으로 동기 SendMessage), 메인은 Focused(true) → clear_for_window → push → 같은 락 대기 → 교착 → 토스트 창
@@ -205,6 +227,145 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   model로 사망 — CLI의 합성 프레임 model:"<synthetic>"을 모델 전환으로 읽었다 → is_placeholder_model로
   //   차단 + 디스크의 오염 정체성 복구(ident.rs) + 종료 경로도 fallback_arms 정리 ⑤ 계정을 바꿔 보냈는데
   //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
+  '3.0.8': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '몇 분째 「작업 중」만 돌다가 중단하고 다시 보내면 바로 답하던 것(CLI의 API 재시도 대기가 화면에 없었다), 고른 적 없는 「C:\\Users\\…\\Desktop을 찾을 수 없어요」가 보낼 때마다 뜨던 것, 보드 자리 수를 오가면 패널 순서가 뒤틀리던 것, 좁은 패널 헤더의 칩이 서로 겹치던 것을 고쳤습니다.',
+      notes: [
+        {
+          tag: '채팅',
+          name: '간단한 질문이 몇 분째 「작업 중」만 돌다가, 중단하고 다시 보내면 바로 답하던 것 — API 재시도 대기가 화면에 없었다',
+          desc: (
+            <>
+              클로드 코드(CLI)는 API가 과부하(529)·서버 오류·연결 실패로 답하지 않으면 <b>스스로 기다렸다가 다시 요청</b>
+              합니다 — 한 번에 최대 60초, 과부하가 이어지면 최대 5분씩, 여러 번. 그동안 CLI는 「몇 번째 재시도 · 몇 초 뒤」를
+              앱에 프레임(<code>system/api_retry</code>)으로 알려 주는데, 앱은 이 프레임을 모르는 프레임으로 조용히
+              버렸습니다. 그래서 화면은 랜덤 문구와 초 수만 도는 「작업 중」이었고 사용자가 볼 수 있는 것은 아무것도
+              없었습니다(제보: 간단한 질문이 6분 38초 침묵 → 중단 → 그대로 다시 보내니 즉시 답). 이제 작업 인디케이터가 그
+              구간에 <b>「API 오류 — 다시 시도를 기다리는 중 · 3/10 · 서버 과부하 · 42초 뒤 다시」</b>처럼 사실을 적고 남은
+              초를 셉니다. 기다릴지, 중단하고 다시 보낼지는 그 줄을 보고 정할 수 있습니다. Codex 엔진은 같은 사정을 안내
+              줄로 이미 보이고 있었습니다. /clear 직후 첫 전송 경로는 코드로 다시 대조했고 3.0.5에서 고친 것 외의 결함은
+              없었습니다.
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '고른 적 없는 「작업 폴더를 찾을 수 없어요 — C:\\Users\\…\\Desktop」가 보낼 때마다 뜨다가 몇 번째에야 되던 것',
+          desc: (
+            <>
+              패널의 폴더 칩은 <code>ClaudeOffice</code>인데 보낼 때마다 「C:\Users\…\Desktop을 찾을 수 없어요」가 뜨고,
+              몇 번 더 보내면 그제야 됐습니다(제보). 원인은 둘이 겹친 것입니다. 첫째, 앱은 전송 요청에 실린 폴더를 읽기{' '}
+              <b>전에</b> 디스크에 저장된 정체성(폴더를 안 고른 채 저장돼 비어 있던)으로 엔진을 먼저 만들었고, 빈 폴더의
+              대체값인 <code>%USERPROFILE%\Desktop</code>이 OneDrive로 바탕화면이 옮겨진 계정에는 <b>없는 경로</b>라 거기서
+              죽었습니다 — 요청이 실어 온 멀쩡한 폴더는 읽히지도 않았고, 렌더러의 지연 저장이 정체성을 되쓴 뒤에야 성공했습니다.
+              이제 전송·설정 변경이 실어 온 폴더·모델을 <b>엔진을 만들기 전에</b> 얹어 첫 전송에 바로 뜨고, 빈 폴더의 대체는
+              Windows가 아는 실제 바탕화면(리디렉션 반영) → <code>%USERPROFILE%\Desktop</code> → <code>%USERPROFILE%</code>{' '}
+              순으로 <b>실제로 있는 폴더</b>를 고릅니다. 둘째, 같은 오류 말풍선이 /clear·부팅 재장전·설정 조회에도 앉았는데
+              이제 <b>전송에만</b> 앉고, 설정 변경은 카드 한 줄, 조회는 침묵합니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티 패널',
+          name: '자리 수(2·3·4·5)를 오가다 보면 패널 순서가 뒤틀리던 것 — 1번이던 패널이 5번에 가 있다',
+          desc: (
+            <>
+              자리 수를 <b>줄일</b> 때 포커스된 패널이 접히게 되면 그 패널을 보이는 마지막 자리로 끌어올립니다(현재
+              대화는 안 접힌다는 규칙). 그런데 그 이동이 순서를 <b>영구히</b> 바꿨고, 늘릴 때는 되돌리지 않았습니다.
+              그래서 5→1→5를 반복할 때마다 원래 1‥4번이 한 칸씩 밀렸습니다 — 패널 아무 데나 클릭해도 포커스가 잡히니
+              언제 그러는지 알 수 없어 「저절로 뒤틀린다」로 보였습니다(제보). 이제 그 끌어올림은 <b>임시</b>입니다: 줄일
+              때 끌어올리되 그 전 순서를 기억하고, 늘리면 그 순서로 돌아갑니다(끌어올린 패널이 그래도 안 보이는 수라면
+              그 순서 위에 다시 얹습니다). 헤더를 길게 눌러 끌거나 접힌 자리를 ↥로 올려 <b>손으로</b> 정한 순서는 그
+              순간부터 진짜 순서가 되어 되돌리지 않습니다.
+            </>
+          )
+        },
+        {
+          tag: '멀티 패널',
+          name: '5·6분할처럼 좁은 패널에서 헤더의 폴더·MCP & Skill·작업 중 칩이 서로 겹치던 것',
+          desc: (
+            <>
+              패널이 좁아지면 제목이 줄어드는 대신 폴더 칩과 「MCP &amp; SKILL」 칩이 자기 상자 밖으로 삐져나와 「작업 중
+              00:36」 칩 위에 포개졌습니다(제보 화면). 칩 버튼이 상자보다 작아질 수 없는 CSS 기본값 탓입니다. 이제 칩은 이름만
+              말줄임으로 줄고(아이콘·+N·화살표는 그대로), 제목이 먼저 양보하며, 아이콘 버튼과 「작업 중」 칩은 맨 마지막에야 줄어듭니다. 어느 너비에서도 서로 포개지지 않습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixes a turn that sat on "working" for minutes then answered instantly after stop and resend (the CLI\'s API retry wait was invisible), a "cannot find C:\\Users\\…\\Desktop" error on every send for a folder you never chose, panel order drifting when stepping the board\'s panel count, and header chips overlapping in narrow panels.',
+      notes: [
+        {
+          tag: 'Chat',
+          name: 'A simple question sat on "working" for minutes, then answered instantly after stop + resend — the API retry wait was invisible',
+          desc: (
+            <>
+              When the API does not answer (overloaded 529, server error, connection failure), Claude Code{' '}
+              <b>waits and retries on its own</b> — up to 60 seconds per attempt, up to 5 minutes each while the overload
+              persists, several times over. During that wait the CLI tells the app which attempt it is on and how long
+              until the next one (<code>system/api_retry</code>), but the app dropped that frame as unknown. So the
+              screen showed nothing but the rotating phrase and a second counter (reported: a simple question sat silent
+              for 6m 38s; stop, resend, instant answer). The working indicator now states the facts for that stretch —{' '}
+              <b>&quot;API error — waiting to retry · 3/10 · server overloaded · retry in 42s&quot;</b> — and counts down,
+              so you can decide whether to wait or stop and resend. The Codex engine already showed the same situation as
+              a notice line. The first-send-after-/clear path was re-checked in code; nothing beyond the 3.0.5 fix was
+              wrong there.
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: '"Cannot find the working folder — C:\\Users\\…\\Desktop" on every send, for a folder you never chose, until it randomly worked',
+          desc: (
+            <>
+              The panel\'s folder chip said <code>ClaudeOffice</code>, yet every send answered &quot;cannot find
+              C:\Users\…\Desktop&quot;, and after a few more tries it went through (reported). Two things overlapped.
+              First, the app built the engine from the identity stored on disk (saved with an empty folder before one was
+              picked) <b>before</b> reading the folder carried by the send request, and the stand-in for an empty folder,{' '}
+              <code>%USERPROFILE%\Desktop</code>, <b>does not exist</b> on accounts whose Desktop lives in OneDrive — so it died
+              there, never reading the perfectly good folder in the request, until the renderer\'s delayed save rewrote the
+              identity. The folder and model carried by a send or a settings change are now applied <b>before</b> the engine is
+              built, so the first send goes through, and the empty-folder stand-in is picked from folders that <b>actually
+              exist</b>: the Desktop Windows knows about (redirection included) → <code>%USERPROFILE%\Desktop</code> →{' '}
+              <code>%USERPROFILE%</code>. Second, the same error bubble also landed on /clear, boot reload and settings reads;
+              it now lands <b>only on a send</b>, a settings change gets a one-line card, and reads stay silent.
+            </>
+          )
+        },
+        {
+          tag: 'Multi-panel',
+          name: 'Panel order drifted while stepping the panel count through 2·3·4·5 — panel #1 ended up at #5',
+          desc: (
+            <>
+              When you <b>reduce</b> the panel count and the focused panel would fold away, it is pulled up into the last
+              visible seat (the current conversation never folds). That move changed the order <b>permanently</b>, and
+              raising the count never undid it, so every 5→1→5 round trip shifted the original #1‥#4 one seat to the
+              right — and since any click focuses a panel, it looked like the order scrambled on its own (reported).
+              The pull-up is now <b>temporary</b>: reducing remembers the order it started from and raising restores it
+              (if the pulled-up panel still would not be visible at that count, it is laid over the restored order
+              again). An order you set <b>by hand</b> — long-press-dragging a header or raising a folded seat with ↥ —
+              becomes the real order from then on and is never reverted.
+            </>
+          )
+        },
+        {
+          tag: 'Multi-panel',
+          name: 'Header chips (folder · MCP & Skill · Working) overlapping each other in narrow 5- and 6-panel layouts',
+          desc: (
+            <>
+              When a panel got narrow, the folder chip and the &quot;MCP &amp; SKILL&quot; chip spilled out of their boxes and
+              sat on top of the &quot;Working 00:36&quot; chip instead of the title giving way (reported screenshot) — a CSS
+              default that keeps a button from getting smaller than its content. Chips now shrink by truncating their
+              name only (icon, +N and chevron stay), the title yields first, and the icon buttons and the &quot;Working&quot; chip shrink last. Nothing overlaps at any width.
+            </>
+          )
+        }
+      ]
+    }
+  },
   '3.0.7': {
     ko: {
       eyebrow: 'FIXES',

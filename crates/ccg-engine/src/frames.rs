@@ -101,6 +101,19 @@ pub enum Frame {
         blocked: bool,
         resets_at: Option<u64>,
     },
+    /// ★3.0.8 — `system/api_retry`: CLI가 API 오류(과부하 529 · 5xx · 429 · 연결 실패)를 **스스로
+    /// 재시도하며 기다리는 중**이라는 진행 신호(SDK `SDKAPIRetryMessage` · CLI 2.1.260 실측
+    /// `{attempt, max_retries, retry_delay_ms, error_status, error}`). 상태·원장 무영향 — 표시
+    /// 전용이라 셸(`wire.rs`)이 옮기고 상태기계는 `SystemStatus`처럼 흘려보낸다.
+    /// 3.0.7까지는 F21(미지)로 버려져 몇 분의 재시도 대기가 화면에서 **침묵**이었다.
+    /// `error_status`는 HTTP 상태이고 연결 실패는 `None`이다(지어내지 않는다).
+    ApiRetry {
+        attempt: u64,
+        max_retries: u64,
+        retry_delay_ms: u64,
+        error_status: Option<u64>,
+        error: String,
+    },
     /// 미지 `type`/`subtype` — 조용히 버린다(F21).
     Unknown,
 }
@@ -243,6 +256,13 @@ impl Frame {
                 "model_refusal_fallback" => Frame::ModelRefusalFallback {
                     fallback_model: s(v, "fallback_model").unwrap_or_default(),
                 },
+                "api_retry" => Frame::ApiRetry {
+                    attempt: v["attempt"].as_u64().unwrap_or(0),
+                    max_retries: v["max_retries"].as_u64().unwrap_or(0),
+                    retry_delay_ms: v["retry_delay_ms"].as_u64().unwrap_or(0),
+                    error_status: v["error_status"].as_u64(),
+                    error: s(v, "error").unwrap_or_default(),
+                },
                 "notification" | "informational" => Frame::Notification {
                     text: s(v, "text")
                         .or_else(|| s(v, "message"))
@@ -324,3 +344,28 @@ pub fn ask_kind_of(subtype: &str, tool_name: Option<&str>) -> Option<AskKind> {
 /// 뺀 `rate limit`이 더해진 것 — 원본과 나란히 놓고 세는 자리가 없어서 안 보였다.
 /// 이 두 줄은 호출부 호환을 위한 얼굴이고, 판정과 그 근거는 전부 `limit.rs`에 있다.
 pub use crate::limit::{classify_limit_error, is_limit_error};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// ★3.0.8 — `system/api_retry`는 미지 프레임이 아니다(2026-09-04 보고: 간단한 질문이 6분
+    /// 38초 동안 아무 표시 없이 「작업 중」 — CLI는 과부하를 스스로 재시도하고 있었다).
+    #[test]
+    fn api_retry_is_a_known_frame() {
+        let f = Frame::parse(&json!({
+            "type": "system", "subtype": "api_retry", "attempt": 3, "max_retries": 10,
+            "retry_delay_ms": 42000, "error_status": 529, "error": "overloaded",
+            "uuid": "u", "session_id": "S1"
+        }));
+        assert_eq!(
+            f,
+            Frame::ApiRetry { attempt: 3, max_retries: 10, retry_delay_ms: 42000, error_status: Some(529), error: "overloaded".into() }
+        );
+        // 연결 실패는 HTTP 상태가 없다.
+        let g = Frame::parse(&json!({ "type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10,
+                                      "retry_delay_ms": 500, "error_status": null, "error": "unknown" }));
+        assert!(matches!(g, Frame::ApiRetry { error_status: None, attempt: 1, .. }));
+    }
+}

@@ -15,10 +15,48 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 /// 2.6.2 `engine.ts:38-44` 파리티 — 빈 cwd의 대체는 바탕화면.
+///
+/// ★3.0.8 — **실제 바탕화면**을 묻는다(`SHGetKnownFolderPath(FOLDERID_Desktop)`). 3.0.7까지는
+/// `%USERPROFILE%\Desktop`을 글자로 조립했는데, OneDrive 「알려진 폴더 이동」·그룹 정책 리디렉션
+/// 계정에서는 그 경로가 **없다**(바탕화면은 `…\OneDrive\Desktop`·`바탕 화면` 등). 그러면 폴더를
+/// 안 고른(또는 정체성에 폴더가 비어 저장된) 채팅의 정규화가 `CwdMissing("C:\Users\<me>\Desktop")`로
+/// 죽어, 사용자는 고른 적도 없는 폴더를 「찾을 수 없어요」로 듣는다(2026-09-04 제보). 후보를 차례로
+/// 실재 확인한다 — 알려진 폴더 → `%USERPROFILE%\Desktop` → `%USERPROFILE%`(항상 있다). 기본값은
+/// **있는 폴더**여야 한다 — 없는 경로를 기본값으로 내면 그 뒤의 모든 판정이 거짓 위에 선다.
 fn desktop() -> String {
-    std::env::var("USERPROFILE")
-        .map(|p| format!("{p}\\Desktop"))
-        .unwrap_or_else(|_| ".".into())
+    let profile = std::env::var("USERPROFILE").ok().filter(|p| !p.is_empty());
+    let mut candidates: Vec<String> = vec![];
+    if let Some(k) = known_desktop() {
+        candidates.push(k);
+    }
+    if let Some(p) = &profile {
+        candidates.push(format!("{p}\\Desktop"));
+        candidates.push(p.clone());
+    }
+    candidates
+        .into_iter()
+        .find(|p| std::path::Path::new(p).is_dir())
+        .unwrap_or_else(|| ".".into())
+}
+
+/// 셸이 아는 바탕화면(리디렉션 반영). 실패·빈 값은 `None` — 위가 다음 후보로 넘어간다.
+#[cfg(windows)]
+fn known_desktop() -> Option<String> {
+    use windows::Win32::UI::Shell::{SHGetKnownFolderPath, FOLDERID_Desktop, KNOWN_FOLDER_FLAG};
+    // SAFETY: 반환 버퍼는 호출자가 `CoTaskMemFree`로 돌려준다(crash.rs의 PWSTR 처리와 같은 규약).
+    unsafe {
+        let p = SHGetKnownFolderPath(&FOLDERID_Desktop, KNOWN_FOLDER_FLAG(0), None).ok()?;
+        if p.is_null() {
+            return None;
+        }
+        let s = p.to_string().ok();
+        windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as *const _));
+        s.filter(|s| !s.is_empty())
+    }
+}
+#[cfg(not(windows))]
+fn known_desktop() -> Option<String> {
+    None
 }
 
 /// 앱 홈의 사실 묶음. **읽기만** 한다.
@@ -90,6 +128,17 @@ pub fn defaults() -> IdentityDefaults {
         env_api_key_present: env_key.is_some(),
         env_key_answer,
         cwd_probe: CwdProbe::Fs,
+    }
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    /// ★3.0.8 — 빈 cwd의 대체는 **실재하는 폴더**여야 한다(OneDrive 리디렉션 계정에서
+    /// `%USERPROFILE%Desktop`이 없어 CwdMissing으로 죽던 것 — 2026-09-04 제보).
+    #[test]
+    fn the_empty_cwd_stand_in_exists() {
+        let d = super::desktop();
+        assert!(std::path::Path::new(&d).is_dir(), "기본 폴더가 없다: {d}");
     }
 }
 

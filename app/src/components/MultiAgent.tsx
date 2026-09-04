@@ -42,6 +42,8 @@ import { onChatIdentity, onChatVerdict } from '../api/unified'
 import { panelIdOfChat } from '../lib/accounts'
 import { panelSlotOfChat, pickerAfterLanding, queueAfterLanding } from '../lib/identityLanding'
 import { shellAuthored, verdictLine, verdictNote } from '../lib/verdict'
+// ★3.0.8 — 다이얼(자리 수) ↔ 표시 순서의 순수 규칙. 줄일 때의 포커스 자리 승격은 임시 오버레이다.
+import { resizeLayout, sanitizePromo, type LayoutPromo } from '../lib/panelLayout'
 import type { LimitHold } from '../lib/limitResume'
 import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
 import type { ChatSummary } from './Sidebar'
@@ -159,6 +161,9 @@ interface PersistedSession {
   // 자리 배치다. 슬롯 정체성(엔진 채널·훅·메타 인덱스·번호 칩)은 패널을 따라가고 그리드
   // 위치만 바뀐다. 없으면(예전 저장본) 기본 순서.
   panelOrder?: number[]
+  // ★3.0.8 — 자리 수를 줄이며 끌어올린 자리와 그 전의 순서(`lib/panelLayout.ts`). 늘릴 때 되돌리는 근거.
+  // null = 오버레이 없음. 없으면(예전 저장본) 오버레이 없음과 같다.
+  promo?: LayoutPromo | null
   panels: PersistedPanel[] // length SLOT_COUNT
   updatedAt?: number // 마지막 활동(실행 시작) 시각 — 사이드바 상대 시간 표시용
   // 패널 스냅샷이 메모리에 없다는 표식 — panels는 빈 배열이고 진짜는 디스크(maStore)에
@@ -179,6 +184,7 @@ interface MultiPersist {
 interface CommitPayload {
   count: number
   panelOrder: number[]
+  promo: LayoutPromo | null
   panels: PersistedPanel[]
 }
 
@@ -758,7 +764,7 @@ export const PanelView = memo(function PanelView({
                   onNotify={notify}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} />}
             </div>
           )}
           {/* 따라가기를 풀고 위를 읽는 중 — 본채팅과 같은 "맨 아래로" 점프 버튼 */}
@@ -1151,6 +1157,9 @@ function ActiveSession({
   // 그리고, 슬롯 정체성(엔진·대화·컬러 태그)은 패널을 따라간다. 세션에 영속.
   // 번호 칩은 자리 기준(1‥N) — 옮기면 그 자리의 번호를 새로 받는다.
   const [panelOrder, setPanelOrder] = useState<number[]>(() => sanitizePanelOrder(initial.panelOrder))
+  // ★3.0.8 — 다이얼을 줄이며 끌어올린 자리의 오버레이(`lib/panelLayout.ts`). 늘리면 `base`로 되돌아간다.
+  // 손으로 순서를 바꾸면(드래그·↥ 올리기) 그 순서가 새 진실이라 걷는다. 세션에 영속.
+  const [promo, setPromo] = useState<LayoutPromo | null>(() => sanitizePromo(initial.promo, SLOT_COUNT))
   // 지금 보이는 슬롯들, 자리 순서대로 — 번호(인덱스+1)·그리드 렌더의 단일 소스.
   //
   // ★ 3.0 M-UX (ux-chat-unify §2.2) — 판정 기준이 **슬롯 번호**에서 **order 내 위치**로
@@ -1305,16 +1314,17 @@ function ActiveSession({
   // 마지막 자리로 오면 1‥next-1번은 그대로고 밀리는 건 포커스 자리와 접히는 자리 사이뿐이다.
   // next=1이면 맨 앞이라 "현재 대화 = 1번 자리"(IDE 크롬)는 그대로 성립한다. 늘릴 때는
   // 어느 판에서도 순서를 안 건드린다.
+  //
+  // ★3.0.8 — 그 승격이 `panelOrder`를 **영구히** 바꿔 5→1(포커스 5번)→5를 되풀이할 때마다 원래
+  // 1‥4번이 한 칸씩 밀렸다(「1번이던 패널이 5번에 가 있다」 — 2026-09-04 제보). 이제 승격은
+  // 오버레이(`promo`)이고 늘릴 때 승격 전 순서로 되돌린다 — 규칙은 `lib/panelLayout.ts` 한 곳.
   const applyCount = useEvent((n: number) => {
     const next = clampCount(n)
     const cur = panelOrder
     const keep = focusedSlot != null && cur.includes(focusedSlot) ? focusedSlot : cur[0]
-    let promoted = cur
-    if (next < count && cur.indexOf(keep) >= next) {
-      promoted = cur.filter((s) => s !== keep)
-      promoted.splice(next - 1, 0, keep)
-    }
-    setVisible(promoted, next)
+    const r = resizeLayout({ order: cur, count, promo }, next, keep)
+    setPromo(r.promo)
+    setVisible(r.order, next)
   })
   // 접힌 자리를 1번 자리로 올린다(팝오버 ↥ · 사이드바 클릭). count는 그대로 —
   // 자리 수를 바꾸지 않고 **누가 보이는가**만 바꾼다. 밀려난 자리는 접힘 집합 맨 앞으로.
@@ -1324,6 +1334,7 @@ function ActiveSession({
       setFocusedSlot(slot) // 이미 보이는 자리 — 포커스만
       return
     }
+    setPromo(null) // 손으로 올린 순서가 새 진실 — 다이얼 오버레이는 걷는다(★3.0.8)
     setVisible([slot, ...cur.filter((s) => s !== slot)], count)
     setFocusedSlot(slot)
   })
@@ -1429,10 +1440,11 @@ function ActiveSession({
 
   // build the persistable form of this session (latest closure kept in a ref so the
   // unmount commit captures the final state)
-  const buildRef = useRef<() => CommitPayload>(() => ({ count, panelOrder: [...SLOTS], panels: [] }))
+  const buildRef = useRef<() => CommitPayload>(() => ({ count, panelOrder: [...SLOTS], promo: null, panels: [] }))
   buildRef.current = () => ({
     count,
     panelOrder,
+    promo,
     panels: SLOTS.map((i) => {
       const m = metas[i]
       return {
@@ -1453,7 +1465,7 @@ function ActiveSession({
     const t = setTimeout(() => onCommit(sessionId, buildRef.current()), 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, metas, sig, panelOrder])
+  }, [count, metas, sig, panelOrder, promo])
   useEffect(() => {
     return () => onCommit(sessionId, buildRef.current())
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1613,6 +1625,7 @@ function ActiveSession({
     if (!over || Number(over.dataset.slot) === d.slot) return
     const to = over.parentElement ? Array.prototype.indexOf.call(over.parentElement.children, over) : -1
     if (to < 0) return
+    setPromo(null) // 드래그로 정한 순서가 새 진실 — 다이얼 오버레이는 걷는다(★3.0.8)
     setPanelOrder((prev) => {
       const from = prev.indexOf(d.slot)
       if (from < 0 || to >= prev.length || from === to) return prev
@@ -2706,6 +2719,8 @@ export function useMultiSessions() {
       custom: prev?.custom ?? false,
       count: payload.count,
       panelOrder: payload.panelOrder,
+      // null도 그대로 싣는다 — 저장 쪽(legacy_bridge)은 키가 없을 때만 지난 값을 쓰므로, 걷은 오버레이가 되살아나지 않는다
+      promo: payload.promo,
       panels: payload.panels
     }
     scheduleSave()
@@ -2864,7 +2879,16 @@ export function useMultiSessions() {
   const setActiveCount = useEvent((n: number) => {
     const v = clampCount(n)
     const d = dataRef.current[activeId]
-    if (d) d.count = v
+    if (d) {
+      // ★3.0.8 — 순서 규칙(`lib/panelLayout.ts`)을 레코드에도 적용한다. 마운트 전(일반 채팅 크롬에서
+      // 2‥6을 고름)에는 이 레코드가 곧 `initial`이라, 여기서 안 되돌리면 접힌 채 굳은 오버레이가 남는다.
+      // 마운트돼 있으면 ActiveSession의 applyCount(포커스 기준)가 같은 규칙으로 다시 계산해 커밋으로 덮는다.
+      const cur = sanitizePanelOrder(d.panelOrder)
+      const r = resizeLayout({ order: cur, count: clampCount(d.count), promo: sanitizePromo(d.promo, SLOT_COUNT) }, v, cur[0])
+      d.count = v
+      d.panelOrder = r.order
+      d.promo = r.promo
+    }
     setCountSeed((c) => ({ n: v, seq: (c?.seq ?? 0) + 1 }))
   })
   // 사이드바에서 접힌 자리를 눌렀다 → 1번 자리로 올린다(§2.2-1b의 관문을 ActiveSession이 탄다)
@@ -2879,6 +2903,7 @@ export function useMultiSessions() {
     if (d) {
       const cur = sanitizePanelOrder(d.panelOrder)
       d.panelOrder = [slot, ...cur.filter((s) => s !== slot)]
+      d.promo = null // 손으로 올린 순서가 새 진실(★3.0.8)
     }
     setRaiseSeed((r) => ({ slot, seq: (r?.seq ?? 0) + 1 }))
   })

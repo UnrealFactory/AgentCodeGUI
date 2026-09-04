@@ -2531,7 +2531,7 @@ function MainApp({ user }: { user: AppUser }) {
                     canRevert
                   />
                 ))}
-                {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
+                {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} />}
               </div>
             )}
             {follow.showJump && (

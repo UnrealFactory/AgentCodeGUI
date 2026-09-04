@@ -470,6 +470,33 @@ fn empty_panel(g: &Globals) -> Value {
     Value::Object(o)
 }
 
+/// ★3.0.8 — `promo` 위생: `{slot: 0..6, base: 0..6의 순열}`만 인정, 아니면 없음(표시만 바꾸는 값이라
+/// 폴백이 안전하다 — `sanitize_order`와 같은 태도).
+pub fn sanitize_promo(v: Option<&Value>) -> Option<Value> {
+    let p = v?.as_object()?;
+    let slot = p.get("slot")?.as_u64()? as usize;
+    if slot >= SLOT_COUNT {
+        return None;
+    }
+    let base: Vec<usize> = p
+        .get("base")?
+        .as_array()?
+        .iter()
+        .map(|x| x.as_u64().map(|x| x as usize))
+        .collect::<Option<Vec<_>>>()?;
+    if base.len() != SLOT_COUNT || base.iter().any(|&b| b >= SLOT_COUNT) {
+        return None;
+    }
+    let mut seen = [false; SLOT_COUNT];
+    for &b in &base {
+        seen[b] = true;
+    }
+    if !seen.iter().all(|s| *s) {
+        return None;
+    }
+    Some(json!({ "slot": slot, "base": base }))
+}
+
 fn chat_index() -> std::collections::HashMap<String, Value> {
     crate::chats_v3::all_chats()
         .into_iter()
@@ -500,6 +527,11 @@ fn session_from_board(board: &Value, chats: &std::collections::HashMap<String, V
     o.insert("custom".into(), board.get("custom").cloned().unwrap_or(json!(false)));
     o.insert("count".into(), board.get("count").cloned().unwrap_or(json!(1)));
     o.insert("panelOrder".into(), board.get("order").cloned().unwrap_or(json!([0, 1, 2, 3, 4, 5])));
+    // ★3.0.8 — 다이얼을 줄이며 끌어올린 자리의 오버레이(승격 자리 + 승격 전 순서). 렌더러가 늘릴 때
+    // 되돌리는 근거라 표시 순서(`order`)와 함께 살아야 한다(`app/src/lib/panelLayout.ts`).
+    if let Some(p) = sanitize_promo(board.get("promo")) {
+        o.insert("promo".into(), p);
+    }
     if let Some(u) = board.get("updatedAt") {
         o.insert("updatedAt".into(), u.clone());
     }
@@ -627,6 +659,11 @@ pub fn ma_save(data: &Value) -> Vec<String> {
             )),
         );
         b.insert("slots".into(), Value::Array(slots));
+        // ★3.0.8 — 키가 **없을 때만** 지난 값을 쓴다. 렌더러는 걷은 오버레이를 `null`로 실어 보내므로
+        // 그때는 지난 값이 되살아나면 안 된다(늘렸는데 옛 승격이 되돌아오는 사고).
+        if let Some(p) = sanitize_promo(s.get("promo").or_else(|| prev.and_then(|x| x.get("promo")))) {
+            b.insert("promo".into(), p);
+        }
         if let Some(u) = s.get("updatedAt") {
             b.insert("updatedAt".into(), u.clone());
         }

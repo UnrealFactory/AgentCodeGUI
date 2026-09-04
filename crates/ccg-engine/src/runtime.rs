@@ -2649,7 +2649,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                 self.fire("F21");
                 self.emit(Event::UnknownFrameDropped);
             }
-            Frame::SystemStatus { .. } => {}
+            // ★3.0.8 — `api_retry`도 상태·원장 무영향이다. 프레임 자체는 `last_frame_at`을 갱신해
+            // 스트림이 살아 있다는 근거가 되고(위), 화면 표시는 셸(`wire.rs`)이 옮긴다.
+            Frame::SystemStatus { .. } | Frame::ApiRetry { .. } => {}
             Frame::ControlResponse { request_id, .. } => {
                 let is_probe = self
                     .stream

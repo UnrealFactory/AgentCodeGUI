@@ -327,7 +327,25 @@ fn cli_path() -> std::path::PathBuf {
 impl Hub {
     /// 이 채팅의 런타임을 보장한다. 정체성은 **디스크의 물질화값**이 1순위,
     /// 없으면 전역값으로 물질화한다(m-logic §2.4 규약 2).
-    fn ensure(&mut self, chat: &str) -> Option<&mut Slot> {
+    /// ★3.0.8 — 런타임 보장 + **요청이 실어 온 정체성 축(`seed`)을 런타임을 만들기 전에 얹는다.**
+    ///
+    /// 3.0.7까지 `Op::Run`은 ① 디스크의 정체성으로 런타임을 만들고 ② 그다음 요청의 picker(폴더·모델…)를
+    /// 패치로 넣었다. 그래서 디스크의 폴더가 비었거나(패널을 만들고 폴더를 안 고른 채 저장된 정체성)
+    /// 사라졌으면 ①에서 `CwdMissing`으로 죽었고, 요청이 멀쩡한 폴더(`C:/Rookiss/ClaudeOffice`)를 싣고
+    /// 왔어도 그 값은 **읽히지도 않았다** — 사용자는 고른 적 없는 「C:\Users\<me>\Desktop을 찾을 수
+    /// 없어요」를 듣고, 렌더러의 지연 저장이 정체성을 되쓸 때까지 같은 문장을 되풀이했다(2026-09-04 제보:
+    /// 네 번 튕기고 다섯 번째에 됐다). 이제 요청의 축을 먼저 얹고 정규화하므로 요청이 옳으면 첫 전송에
+    /// 뜬다. 정체성 이벤트(`origin: default`)가 곧 디스크 되끼움이라 다음 기동도 같은 값에서 출발한다.
+    ///
+    /// `cmd`는 거부 판정의 명령 이름(`None` = 침묵 — 조회성 op은 사유를 말할 자리가 아니다). 스레드에
+    /// 오류 말풍선(band)을 앉히는 것은 **전송(`Op::Run`)뿐**이다: 3.0.7까지는 /clear·부팅 재장전·
+    /// picker 조회까지 전부 「작업 폴더를 찾을 수 없어요」 말풍선을 그렸다(제보 화면의 반복 오류 일부).
+    fn ensure_for(
+        &mut self,
+        chat: &str,
+        seed: Option<&RawIdentityPatch>,
+        cmd: Option<&'static str>,
+    ) -> Option<&mut Slot> {
         if !self.slots.contains_key(chat) {
             // ★최종 파리티 T2 — **여기서 다시 고른다.** 부팅 때 한 번 고르고 마는 것이
             // R28까지의 모양이었는데, 그러면 엔진 미설치 안내 카드(EngineGate)로 방금
@@ -335,7 +353,10 @@ impl Hub {
             // 돈다 = "설치했는데도 안 된다". 런타임을 새로 만들 때만 도는 자리라
             // 값은 작은 JSON 한 번이다.
             self.cli = cli_path();
-            let raw = ident::raw_from_disk(chat).unwrap_or_else(|| ident::raw_default(""));
+            let mut raw = ident::raw_from_disk(chat).unwrap_or_else(|| ident::raw_default(""));
+            if let Some(p) = seed {
+                raw = raw.patched(p);
+            }
             let defaults = ident::defaults();
             let dump = std::env::var("CCG_ENGINE_LOG")
                 .ok()
@@ -367,7 +388,7 @@ impl Hub {
                 Err(e) => {
                     // 정규화 실패(폴더 없음·계정 없음)는 **거부 사유**로 화면에 낸다.
                     // 런타임을 못 만들었으므로 채팅은 여전히 정체성 미해결 상태다.
-                    self.reject_spawn(chat, &e);
+                    self.reject_spawn(chat, &e, cmd);
                     return None;
                 }
             };
@@ -435,8 +456,14 @@ impl Hub {
     ///
     /// `chat:verdict`도 그대로 낸다 — 구독자가 붙는 날의 기계 판독용이고, 지금 지우면
     /// 계약면이 한 번 더 흔들린다.
-    fn reject_spawn(&mut self, chat: &str, e: &ccg_engine::IdentityError) {
+    fn reject_spawn(&mut self, chat: &str, e: &ccg_engine::IdentityError, cmd: Option<&'static str>) {
         use ccg_engine::IdentityError as E;
+        // ★3.0.8 — 조회성 op(`None`)은 침묵한다. 전송(`run`)만 스레드 말풍선(band)까지 낸다 —
+        // 나머지(picker 변경·/clear·예약·카드 응답…)는 `chat:verdict`만 내고 문장은 렌더러가
+        // 짓는다(`message` 없음 = `verdict.ts`가 저자). 그래야 /clear 한 번에 「작업 폴더를
+        // 찾을 수 없어요」 오류 말풍선이 앉지 않는다.
+        let Some(cmd) = cmd else { return };
+        let band = cmd == "run";
         let why = match e {
             E::CwdMissing(p) => format!("작업 폴더를 찾을 수 없어요 — {p}"),
             E::AccountUnavailable(a) => {
@@ -446,11 +473,17 @@ impl Hub {
             E::EngineSwitchNeedsModel => "엔진을 바꾸려면 모델을 함께 골라야 해요".into(),
         };
         let panel = self.panel_alias(chat);
+        let mut verdict = json!({ "kind": "rejected", "reason": format!("{e:?}"), "cmd": cmd });
+        if band {
+            verdict["message"] = json!(why);
+        }
         self.emit_all(
             crate::ipc::ch::CHAT_VERDICT,
-            json!({ "chatId": chat, "panelId": panel, "verdict": { "kind": "rejected",
-                    "reason": format!("{e:?}"), "cmd": "ensure", "message": why } }),
+            json!({ "chatId": chat, "panelId": panel, "verdict": verdict }),
         );
+        if !band {
+            return;
+        }
         // 런타임이 없어 `wire`도 없다 — 런 id는 여기서 발급한다(짝이 없는 1회용).
         self.reject_seq += 1;
         let run = format!("x{}-{}", std::process::id(), self.reject_seq);
@@ -721,7 +754,29 @@ impl Hub {
             _ => {}
         }
 
-        let Some(slot) = self.ensure(&chat) else {
+        // ★3.0.8 — 요청이 실어 온 정체성 축을 런타임 생성 **전에** 얹고, 거부의 표면을 op별로 가른다
+        // (`ensure_for` 참고). `Op::Run`의 아래 `IdentitySet` 패치는 그대로 두었다 — 슬롯이 이미
+        // 있는 채팅(대부분)은 그 문이 정체성을 바꾸고, 방금 seed로 만든 런타임에서는 `Noop`이다.
+        let seed = match &op {
+            Op::Run(req) => Some(ident::patch_from_run_request(req)),
+            Op::IdentitySet { patch, .. } => Some(patch.clone()),
+            _ => None,
+        };
+        let cmd: Option<&'static str> = match &op {
+            Op::Run(_) => Some("run"),
+            Op::Cmd(c) => Some(c.name()),
+            Op::Respond { .. } => Some("respond"),
+            Op::IdentitySet { .. } => Some("identity_set"),
+            Op::IdentityRevert(_) => Some("identity_revert"),
+            Op::Enqueue(_) => Some("enqueue"),
+            Op::QueueMutate(_) => Some("queue.mutate"),
+            Op::ForceSettle(_) => Some("force_settle"),
+            Op::BgStop(_) => Some("bg_task.stop"),
+            Op::ResumeNow => Some("resume"),
+            // 조회·재장전·진단은 사유를 말할 자리가 아니다 — 전송이 그 요청의 폴더로 정확히 말한다.
+            Op::IdentityGet | Op::Reload { .. } | Op::ToolingGet | Op::SeatsChanged | Op::Dispose | Op::Debug => None,
+        };
+        let Some(slot) = self.ensure_for(&chat, seed.as_ref(), cmd) else {
             answer(Value::Null);
             return;
         };

@@ -1326,6 +1326,25 @@ impl Wire {
             // 그 경로를 **선언**하고 있고 커버리지 게이트가 그것을 센다. 텍스트 추출도
             // `frames.rs:246-250`이 여기와 같은 규칙(`text` → `message`)으로 한다.
             "system" if sub == "notification" || sub == "informational" => {}
+            // ★3.0.8 — `system/api_retry`: CLI가 API 오류를 **스스로 재시도하며 기다리는 중**(과부하
+            // 529 · 5xx · 429 · 연결 실패). CLI 2.1.260 실측: 한 번의 대기가 최대 60초, 과부하 지속
+            // 모드는 최대 5분이고 횟수 상한이 있어 **몇 분을 프레임 하나 없이** 보낼 수 있다.
+            // 3.0.7까지 이 프레임은 상태기계에서 F21(미지)로 버려져 화면은 「작업 중」만 돌았다
+            // (2026-09-04 보고: 간단한 질문이 6분 38초 침묵 → 중단 → 재전송은 즉시 답). 상태·원장에는
+            // 손대지 않는 표시 전용 값이라 여기서 옮긴다 — Codex는 같은 사정을 `system/notification`으로
+            // 보내 F18 안내가 되므로 두 엔진이 이제 같은 사실을 말한다. `status`는 HTTP 상태이고
+            // 연결 실패는 null 그대로다(지어내지 않는다).
+            "system" if sub == "api_retry" => {
+                out.push(json!({
+                    "type": "api-retry",
+                    "runId": run,
+                    "attempt": f["attempt"].as_u64().unwrap_or(0),
+                    "maxRetries": f["max_retries"].as_u64().unwrap_or(0),
+                    "retryInMs": f["retry_delay_ms"].as_u64().unwrap_or(0),
+                    "status": f.get("error_status").cloned().unwrap_or(Value::Null),
+                    "error": s(f, "error").unwrap_or_default(),
+                }));
+            }
             // ── Codex 합성 프레임(M4) ────────────────────────────────────────
             //
             // Codex에는 Claude 프레임에 **대응물이 없는 값**이 셋 있다. 억지로 Claude
@@ -1954,6 +1973,33 @@ mod tests {
         assert!(a.is_empty(), "셸이 또 옮기면 안내가 두 배로 나간다: {a:?}");
         let b = w.translate(&json!({ "type": "system", "subtype": "informational", "message": "안내" }));
         assert!(b.is_empty());
+    }
+
+    /// ★3.0.8 — `system/api_retry`는 **재시도 대기** 이벤트로 옮긴다(2026-09-04 보고: 간단한 질문이
+    /// 6분 38초 동안 아무 표시 없이 「작업 중」 — CLI는 과부하를 스스로 재시도하고 있었고 그 프레임을
+    /// 3.0.7까지 버렸다).
+    #[test]
+    fn an_api_retry_frame_becomes_a_retry_status() {
+        let mut w = wire();
+        let a = w.translate(&json!({
+            "type": "system", "subtype": "api_retry", "attempt": 3, "max_retries": 10,
+            "retry_delay_ms": 42000, "error_status": 529, "error": "overloaded",
+            "uuid": "u", "session_id": "S1"
+        }));
+        assert_eq!(types(&a), vec!["api-retry"]);
+        assert_eq!(a[0]["runId"], "r1");
+        assert_eq!(a[0]["attempt"], 3);
+        assert_eq!(a[0]["maxRetries"], 10);
+        assert_eq!(a[0]["retryInMs"], 42000);
+        assert_eq!(a[0]["status"], 529);
+        assert_eq!(a[0]["error"], "overloaded");
+        // 연결 실패는 HTTP 상태가 없다 — null 그대로(지어내지 않는다).
+        let b = w.translate(&json!({
+            "type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10,
+            "retry_delay_ms": 500, "error_status": null, "error": "unknown"
+        }));
+        assert_eq!(types(&b), vec!["api-retry"]);
+        assert!(b[0]["status"].is_null());
     }
 
     /// 첫 progress가 아예 없는 짧은 워크플로 — 알약이 REPLACE에서 서고 통지에서 닫힌다

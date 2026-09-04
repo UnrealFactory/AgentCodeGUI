@@ -28,7 +28,7 @@ import type {
 import { isEn, t, useLang } from '../lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
 import { ensureAccounts, ensureCodexAccounts, inUseLabel, liveAccountOf, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
-import { sameCwd, type ThreadItem } from '../store/session'
+import { sameCwd, type ApiRetryInfo, type ThreadItem } from '../store/session'
 import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
@@ -1605,13 +1605,26 @@ function rollPhraseColor(): string {
   return ''
 }
 
+// ★3.0.8 — API 재시도 대기(`api-retry`)의 사유 한 토막. CLI가 주는 `error`(SDKAssistantMessageError)와
+// HTTP 상태로 판정한다 — 둘 다 모르면 원문을 그대로 보인다(지어내지 않는다).
+export function apiRetryReason(r: { status: number | null; error: string }): string {
+  const st = r.status
+  if (r.error === 'overloaded' || st === 529) return t('서버 과부하', 'server overloaded')
+  if (r.error === 'rate_limit' || st === 429) return t('요청 제한', 'rate limited')
+  if (r.error === 'authentication_failed') return t('인증 실패', 'auth failed')
+  if (r.error === 'billing_error') return t('결제 문제', 'billing problem')
+  if (st === null) return t('연결 실패', 'connection failed')
+  if (r.error === 'server_error' || st >= 500) return t(`서버 오류 ${st}`, `server error ${st}`)
+  return r.error ? `${r.error} (${st})` : `HTTP ${st}`
+}
+
 // Persistent "working" indicator shown in the chat while the agent is busy, so
 // the user can always tell it's running (not stuck). 컨셉: 마스코트(선부터 그려지는
 // 루프) + 우리 커스텀 회전 문구 + 경과 초. 모델의 raw 사고 텍스트(Claude 한국어 산문·
 // Codex 영어 요약)는 여기 절대 넣지 않는다 — 두 엔진 모두 같은 브랜드 문구로 통일한다.
 // elapsed(초)는 useAgentSession 훅에서 내려온다 — 질문/승인 카드나 답변 스트리밍으로
 // 인디케이터가 잠시 언마운트돼도 훅이 계속 세고 있어 리셋되지 않는다
-export function WorkingIndicator({ elapsed }: { elapsed: number }) {
+export function WorkingIndicator({ elapsed, retry }: { elapsed: number; retry?: ApiRetryInfo | null }) {
   useLang() // 언어 전환 재렌더 구독 — 회전 문구가 즉시 따라온다
   const [i, setI] = useState(() => Math.floor(Math.random() * workingPhrases().length))
   const [color, setColor] = useState(rollPhraseColor)
@@ -1637,6 +1650,26 @@ export function WorkingIndicator({ elapsed }: { elapsed: number }) {
     schedule()
     return () => clearTimeout(id)
   }, [])
+  if (retry) {
+    // ★3.0.8 — CLI가 API 오류를 스스로 재시도하며 기다리는 중. 랜덤 문구 대신 사실을 적는다: 몇 번째
+    // 시도 · 사유 · 다음 시도까지 남은 시간(1초 틱은 elapsed 갱신에 실려 내려온다). 3.0.7까지 이 구간은
+    // 랜덤 문구만 돌아 6분 넘게 그냥 「작업 중」으로 보였다(2026-09-04 보고 — 중단 뒤 재전송은 즉시 답).
+    const left = Math.max(0, Math.ceil((retry.at + retry.retryInMs - Date.now()) / 1000))
+    const nth = retry.maxRetries > 0 ? `${retry.attempt}/${retry.maxRetries}` : `#${retry.attempt}`
+    const when = left > 0 ? t(`${fmtElapsedKo(left)} 뒤 다시`, `retry in ${fmtElapsedKo(left)}`) : t('다시 요청하는 중', 'retrying now')
+    return (
+      <div className="working-line">
+        <span className="working-spark">
+          <IconMascotDraw size={25} />
+        </span>
+        <span className="working-label retry">{t('API 오류 — 다시 시도를 기다리는 중', 'API error — waiting to retry')}</span>
+        <span className="working-time">
+          <span className="dot">·</span>
+          {`${nth} · ${apiRetryReason(retry)} · ${when} · ${fmtElapsedKo(elapsed)}`}
+        </span>
+      </div>
+    )
+  }
   const label = workingPhrases()[i]
   // 라이브 인디케이터 — 마스코트가 선부터 그려지는 루프(머리→귀→더듬이→점) + shimmer 문구.
   return (

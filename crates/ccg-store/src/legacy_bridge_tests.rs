@@ -354,3 +354,32 @@ fn a_brand_new_session_chat_lands_in_the_index() {
     let _ = chats_save(&blob);
     assert!(h.read_json("chats-v3/sc-1700000000000-1.json").is_some(), "본채팅 저장이 추가 채팅을 prune했다");
 }
+
+// ── ★3.0.8 다이얼 오버레이(promo) 왕복 ─────────────────────────────────────
+// 보드 다이얼을 줄이며 끌어올린 자리(`app/src/lib/panelLayout.ts`)는 표시 순서(`order`)와 함께 살아야
+// 늘릴 때 되돌릴 수 있다. 렌더러는 걷은 오버레이를 `null`로 실어 보내므로 **키가 없을 때만** 지난 값을 쓴다.
+#[test]
+fn the_dial_overlay_survives_the_board_round_trip_and_null_clears_it() {
+    let _h = migrated("bridge-promo");
+    let find = |id: &str| -> Value {
+        ma_get(false)["sessions"].as_array().unwrap().iter().find(|x| x["id"] == json!(id)).cloned().unwrap()
+    };
+    let mut s = ma_session("sess-A", false);
+    s["promo"] = json!({ "slot": 4, "base": [0, 1, 2, 3, 4, 5] });
+    let _ = ma_save(&json!({ "version": 2, "activeSessionId": "sess-A", "sessions": [s] }));
+    assert_eq!(find("sess-A")["promo"], json!({ "slot": 4, "base": [0, 1, 2, 3, 4, 5] }), "오버레이가 왕복에서 사라졌다");
+    // 키가 없으면(옛 렌더러·마커) 지난 값 유지
+    let mut s2 = ma_session("sess-A", false);
+    s2.as_object_mut().unwrap().remove("promo");
+    let _ = ma_save(&json!({ "version": 2, "activeSessionId": "sess-A", "sessions": [s2] }));
+    assert_eq!(find("sess-A")["promo"]["slot"], json!(4), "키 없는 저장이 오버레이를 지웠다");
+    // null = 걷음 — 지난 값이 되살아나면 안 된다(늘렸는데 옛 승격이 되돌아오는 사고)
+    let mut s3 = ma_session("sess-A", false);
+    s3["promo"] = Value::Null;
+    let _ = ma_save(&json!({ "version": 2, "activeSessionId": "sess-A", "sessions": [s3] }));
+    assert!(find("sess-A").get("promo").is_none(), "걷은 오버레이가 되살아났다");
+    // 위생 — 순열이 아니거나 슬롯이 범위 밖이면 없는 것
+    assert!(sanitize_promo(Some(&json!({ "slot": 1, "base": [0, 0, 2, 3, 4, 5] }))).is_none());
+    assert!(sanitize_promo(Some(&json!({ "slot": 6, "base": [0, 1, 2, 3, 4, 5] }))).is_none());
+    assert!(sanitize_promo(Some(&json!({ "slot": 2, "base": [5, 4, 3, 2, 1, 0] }))).is_some());
+}

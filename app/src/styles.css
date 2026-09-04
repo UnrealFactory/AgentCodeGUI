@@ -1234,6 +1234,9 @@ button.hsec:hover{ color:var(--text-3); }
   animation:fade .35s ease, shimmer-sweep 2.4s ease-in-out infinite;
 }
 @keyframes shimmer-sweep{ 0%{ background-position:100% 0; } 100%{ background-position:0% 0; } }
+/* ★3.0.8 — API 재시도 대기: 랜덤 문구 자리에 사실을 적는 줄이라 shimmer 없이 앰버 단색(한도 대기와 다른 사건이라
+   라임을 안 쓴다). 남은 초는 옆 .working-time이 tabular-nums로 센다. */
+.working-label.retry{ background:none; -webkit-background-clip:initial; background-clip:initial; color:var(--amber); animation:fade .35s ease; }
 
 /* 멘트 shimmer 색 — 랜덤멘트가 바뀔 때 Chat.tsx rollPhraseColor()가 추첨(화이트 59% / 단색 각 2% / 그라디언트 각 0.5%).
    단색 .wc는 기본 스윕 그대로 색만 교체(어두운 base 위로 밝은 hi 하이라이트가 지나감),
@@ -4101,6 +4104,19 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 .ma-p-folder svg{ flex:0 0 auto; }
 .ma-p-folder-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ★3.0.8 — 좁은 패널(5·6분할)에서 헤더 칩이 서로 겹치던 것: .hfold(min-width:0)는 줄어드는데 안의 칩
+   버튼은 flex 기본 min-width:auto라 내용 너비를 고집해 래퍼 밖으로 삐져나와 옆 상태 칩 위에 포개졌다
+   (제보 화면 — 「MCP & SKILL」 위로 「작업 중 00:36」). flex의 비례 축소로는 우선순위를 못 세우므로
+   **shrink 가중치 + 바닥(min-width)** 으로 양보 순서를 박는다(헤드리스 실측 340·260px):
+     ① 제목(가중치 100 · 바닥 16px=「…」) → ② 폴더·MCP 칩(8 · 바닥 60px=아이콘+「…」+화살표, 이름만 말줄임)
+     → ③ 아이콘 버튼(0.5 · 바닥 12px=아이콘만) → ④ 상태 칩(0.05 · 바닥 28px=스피너만). 어느 단계에서도 서로 겹치지 않는다.
+   래퍼 바닥(60px)이 안의 버튼 최소 너비와 같아야 버튼이 래퍼 밖으로 안 나온다 — 그것이 겹침의 원인이었다. */
+.ma-p-head .ma-p-tw{ flex:0 100 auto; min-width:16px; }
+.ma-p-head .hfold{ flex:0 8 auto; min-width:60px; }
+.ma-p-head .hfold > .ma-p-folder{ min-width:0; }
+.ma-p-head .hfold > .ma-p-folder .ma-p-folder-name{ min-width:14px; }
+.ma-p-head .ma-status{ flex:0 .05 auto; min-width:28px; overflow:hidden; }
+.ma-p-head .ma-p-expand{ flex:0 .5 auto; min-width:12px; }
 .ma-p-folder:hover{ background:rgba(255,255,255,.09); color:var(--text-2); }
 /* 폴더 칩이 작업 폴더 팝오버(FolderPop — 본채팅 헤더와 공용)를 띄우고 있는 동안의 활성 표시.
    구 파일 트리 팝오버(시안 B .pfm/FileTree)는 2.0에서 은퇴 — 폴더 선택은 공유 최근 폴더 목록으로 */
