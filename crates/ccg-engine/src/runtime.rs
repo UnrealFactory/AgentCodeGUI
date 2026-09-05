@@ -1405,7 +1405,15 @@ impl<D: CliDriver> ChatRuntime<D> {
         let now = self.now();
         match cmd {
             // ★3.0.5 — `Send`는 렌더러가 말풍선을 이미 그린 발화다(`echoed`). `Enqueue`는 아니다.
-            Cmd::Send { text } => self.accept_user_message(QueueInput::text(text), verdict, now, true),
+            Cmd::Send { text } => {
+                // The shell stages the request's picker before Send. While the
+                // previous turn is active, identity still describes that turn;
+                // freeze the settings that will land for this new message.
+                let picker = self.pending.as_ref().map(|staged| {
+                    resolve_fallback_conflicts(staged, &self.fallback_arms).0
+                });
+                self.accept_user_message(QueueInput { text, picker, ..Default::default() }, verdict, now, true)
+            }
             Cmd::Enqueue(input) => self.accept_user_message(input, verdict, now, false),
             Cmd::Interrupt => {
                 if verdict != Verdict::Accepted {
@@ -5058,10 +5066,15 @@ mod r4_queue_and_resume_tests {
         alive: bool,
         spawns: usize,
         fail: bool,
+        models: Vec<String>,
     }
     impl CliDriver for Cli {
-        fn spawn(&mut self, _spec: &SpawnSpec) -> std::io::Result<()> {
+        fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
             self.spawns += 1;
+            let model = spec.codex.as_ref().map(|p| p.model.as_str()).unwrap_or_else(|| {
+                spec.argv.windows(2).find(|a| a[0] == "--model").expect("model argument")[1].as_str()
+            });
+            self.models.push(model_alias(model));
             if self.fail {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -5162,6 +5175,83 @@ mod r4_queue_and_resume_tests {
         assert!(!items[1].echoed, "Enqueue는 렌더러가 안 그렸다 — 드레인 때 에코가 나가야 한다");
         // 첫 턴의 에코도 `Send`였으니 참이다(셸의 `expect_runs`와 별개로 안전하다).
         assert!(r.take_echo().expect("첫 턴 에코").echoed);
+    }
+
+    #[test]
+    fn a_send_keeps_the_selected_model_while_identity_change_is_deferred() {
+        for (engine, before, selected) in [
+            (EngineKind::Codex, "gpt-5.6-sol", "gpt-6-astra"),
+            (EngineKind::Claude, "opus", "fable"),
+        ] {
+            let mut r = rt(VirtualClock::new());
+            let mut patch = RawIdentityPatch::default();
+            patch.engine.kind = Some(engine);
+            patch.engine.model = Some(before.into());
+            assert_eq!(r.dispatch(Cmd::IdentitySet {
+                patch: patch.clone(), policy: ApplyPolicy::Now, op: PendingOp::Merge,
+            }), Verdict::Applied);
+            r.dispatch(Cmd::Send { text: "first turn".into() });
+            assert_eq!(r.state(), StateTag::Starting);
+            r.dispatch(Cmd::Enqueue(qin("already scheduled")));
+
+            // The shell applies the request's picker before sending. A previous
+            // process may still be starting or finishing despite an idle UI.
+            patch.engine.model = Some(selected.into());
+            assert_eq!(r.dispatch(Cmd::IdentitySet {
+                patch, policy: ApplyPolicy::Now, op: PendingOp::Merge,
+            }), Verdict::Deferred("turn_end"));
+            assert_eq!(r.dispatch(Cmd::Send { text: "next turn".into() }), Verdict::Queued);
+            let items: Vec<_> = r.queue_items().collect();
+            assert_eq!(items[0].identity.model(), before, "older reservation keeps its model");
+            let item = items[1];
+            assert_eq!(item.identity.model(), selected, "send must use the requested model");
+            assert!(item.echoed);
+            assert_eq!(r.identity().model(), before, "active turn keeps its identity");
+
+            // Process exits drain both messages with their own settings.
+            r.close_and_finish(CloseCause::AllClear);
+            assert_eq!(r.identity().model(), selected);
+            r.close_and_finish(CloseCause::AllClear);
+            assert_eq!(r.driver_ref().models, vec![before, before, selected]);
+            assert_eq!(r.queue_len(), 0);
+        }
+    }
+
+    #[test]
+    fn a_send_uses_all_staged_changes_without_reverting_a_later_fallback() {
+        let mut r = rt(VirtualClock::new());
+        r.dispatch(Cmd::Send { text: "first turn".into() });
+        let mut patch = RawIdentityPatch::default();
+        patch.engine.model = Some("fable".into());
+        r.dispatch(Cmd::IdentitySet {
+            patch, policy: ApplyPolicy::Now, op: PendingOp::Merge,
+        });
+        let mut patch = RawIdentityPatch::default();
+        patch.engine.effort = Some(EffortId::Xhigh);
+        r.dispatch(Cmd::IdentitySet {
+            patch, policy: ApplyPolicy::Now, op: PendingOp::Merge,
+        });
+        r.dispatch(Cmd::Send { text: "selected fable".into() });
+        let item = r.queue_items().next().unwrap();
+        assert_eq!(item.identity.model(), "fable", "merge must keep the earlier model selection");
+        assert_eq!(item.identity.effort(), EffortId::Xhigh);
+
+        // A later engine fallback wins over an earlier staged model, as it does
+        // at turn end. Only an explicit selection after that fallback overrides it.
+        r.frame_seq += 1;
+        r.fallback_signal("opus", FallbackVia::RefusalFrame);
+        r.dispatch(Cmd::Send { text: "after fallback".into() });
+        let item = r.queue_items().nth(1).unwrap();
+        assert_eq!(item.identity.model(), "opus");
+        assert_eq!(item.identity.effort(), EffortId::Xhigh);
+
+        let mut patch = RawIdentityPatch::default();
+        patch.engine.model = Some("fable".into());
+        r.dispatch(Cmd::IdentitySet {
+            patch, policy: ApplyPolicy::Now, op: PendingOp::Merge,
+        });
+        r.dispatch(Cmd::Send { text: "explicitly selected fable again".into() });
+        assert_eq!(r.queue_items().nth(2).unwrap().identity.model(), "fable");
     }
 
     #[test]

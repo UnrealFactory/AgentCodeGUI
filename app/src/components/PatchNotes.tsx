@@ -152,6 +152,22 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.0.12': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '모델을 바꾼 뒤 다음 메시지가 이전 모델로 실행될 수 있던 문제를 수정했습니다.',
+      notes: [
+        { tag: '모델', name: '다음 메시지에 선택한 모델 적용', desc: '이전 작업이 진행 중일 때 모델을 바꾸고 메시지를 보내면, 새 선택이 반영되지 않던 전송 오류를 수정했습니다. Codex와 Claude 모두 적용됩니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Fixed a case where the next message could run with the previous model after changing the selection.',
+      notes: [
+        { tag: 'Models', name: 'Use the selected model for the next message', desc: 'Fixed sends retaining the previous model when a model change was waiting for the active turn to finish. Applies to both Codex and Claude.' }
+      ]
+    }
+  },
   '3.0.11': {
     ko: {
       eyebrow: 'UPDATE',
