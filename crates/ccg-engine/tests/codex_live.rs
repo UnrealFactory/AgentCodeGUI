@@ -55,6 +55,7 @@ fn raw_mode(cwd: &str, mode: ModeId) -> RawIdentity {
             model: "gpt-5.6-terra".into(),
             effort: EffortId::Medium,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,

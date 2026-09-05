@@ -158,11 +158,32 @@ fn parse(result: &Value) -> Value {
                         .collect()
                 })
                 .unwrap_or_default();
+            // ★2026-09-05 — 속도 티어(스키마 `Model.serviceTiers[{id,name,description}]` · 실측
+            // gpt-6-astra `{priority, Fast, "2x speed, increased usage"}` · 5.6은 1.5x · 5.4-mini는 없음).
+            // `additionalSpeedTiers`는 스키마가 deprecated로 표시 — 읽지 않는다.
+            let tiers: Vec<Value> = m
+                .get("serviceTiers")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| {
+                            let id = t.get("id").and_then(Value::as_str)?;
+                            Some(json!({
+                                "id": id,
+                                "name": t.get("name").and_then(Value::as_str).unwrap_or(id),
+                                "desc": t.get("description").and_then(Value::as_str).unwrap_or(""),
+                            }))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             Some(json!({
                 "id": id,
                 "label": label,
                 "desc": m.get("description").and_then(Value::as_str).unwrap_or(""),
                 "efforts": efforts,
+                "tiers": tiers,
+                "defaultTier": m.get("defaultServiceTier").and_then(Value::as_str),
                 "defaultEffort": m.get("defaultReasoningEffort").and_then(Value::as_str).unwrap_or("medium"),
                 "isDefault": m.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
             }))
@@ -182,7 +203,9 @@ mod tests {
             {
                 "id": "gpt-5.6-terra", "displayName": "GPT-5.6-Terra", "description": "balanced",
                 "supportedReasoningEfforts": [{ "reasoningEffort": "low" }, { "reasoningEffort": "high" }],
-                "defaultReasoningEffort": "high", "isDefault": true
+                "defaultReasoningEffort": "high", "isDefault": true,
+                "serviceTiers": [{ "id": "priority", "name": "Fast", "description": "1.5x speed, increased usage" }],
+                "additionalSpeedTiers": ["fast"]
             },
             // `hidden`은 걸러진다.
             { "id": "gpt-old", "hidden": true },
@@ -196,6 +219,10 @@ mod tests {
         assert_eq!(a[0]["efforts"], json!(["low", "high"]));
         assert_eq!(a[0]["defaultEffort"], "high");
         assert_eq!(a[0]["isDefault"], json!(true));
+        // ★2026-09-05 — 속도 티어가 계약면으로 나온다(deprecated `additionalSpeedTiers`는 무시).
+        assert_eq!(a[0]["tiers"], json!([{ "id": "priority", "name": "Fast", "desc": "1.5x speed, increased usage" }]));
+        assert_eq!(a[0]["defaultTier"], Value::Null);
+        assert_eq!(a[1]["tiers"], json!([]), "티어를 안 주는 모델은 빈 배열");
         // ★모르는 새 모델이 그대로 통과한다 — 폴백 하드코딩이 못 하는 유일한 일이다.
         assert_eq!(a[1]["id"], "gpt-5.7");
         assert_eq!(a[1]["label"], "gpt-5.7-preview");

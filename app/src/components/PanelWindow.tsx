@@ -324,6 +324,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
         mode: pk.mode,
         engine: pk.engine,
         codexModel: pk.codexModel,
+        codexTier: pk.codexTier,
         cwd: dir,
         addDirs: extraDirs.length ? extraDirs : undefined,
         resume: state.session && sameCwd(state.session.cwd, dir) ? state.session.sessionId : undefined,

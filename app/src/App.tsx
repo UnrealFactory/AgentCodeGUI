@@ -123,6 +123,7 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
     // 실행 엔진 + Codex 모델 — codex가 아니면 필드를 지워 기본(Claude)으로
     engine: p?.engine === 'codex' ? 'codex' : undefined,
     codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
+    codexTier: typeof p?.codexTier === 'string' && p.codexTier ? p.codexTier : undefined,
     // 실행 계정(이메일) — 등록 목록과의 대조는 비동기라 여기선 형태만 확인. 목록에서
     // 사라진 계정은 picker가 경고 항목으로 보여주고, 실행 시 엔진이 에러로 알린다.
     account: typeof p?.account === 'string' && p.account ? p.account : undefined,
@@ -200,6 +201,7 @@ function buildRunRequest(a: {
     mode: pk.mode,
     engine: pk.engine,
     codexModel: pk.codexModel,
+    codexTier: pk.codexTier,
     cwd: a.cwd,
     addDirs: extraDirs.length ? extraDirs : undefined,
     // 세션 id는 폴더 스코프다 — 폴더가 바뀌었으면 이어붙이지 않는다("No conversation found")

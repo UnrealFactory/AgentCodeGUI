@@ -32,6 +32,7 @@
 import { useSyncExternalStore } from 'react'
 import type { AccountInfo, AccountUsage, ChatStatusLite, CodexAccountInfo, CodexAccountUsage } from '@shared/protocol'
 import { t } from './i18n'
+import { anyRolled, nextReset, nowSec } from './usageWindow'
 
 // ── 상태 ─────────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,55 @@ let usageQueued: Promise<Record<string, AccountUsage>> | null = null
 let cxUsageFlight: Promise<Record<string, CodexAccountUsage>> | null = null
 let lastWarmAt = 0
 
+// ── ★2026-09-05 — 지난 창은 저절로 다시 묻는다 ──────────────────────────────
+//
+// 제보: Anthropic이 한도를 초기화해 줬는데 화면은 「Fable 0% 남음 · 곧」 그대로. 표면은
+// 열 때 한 번만 묻고(설정 탭은 주기 폴링이 없다 — usage API 예산) 캐시는 나이만 봤다.
+// 여기서는 값이 들어올 때마다 창의 `resetsAt`을 읽어 **그 시각에** 한 번 다시 묻는다:
+//  · 이미 지난 창이 있으면 지금(계정당 1분에 한 번 — 조회가 실패해도 여기서 돌지 않게),
+//  · 아니면 가장 이른 리셋 시각 + 2초에 타이머 하나.
+// HTTP는 셸이 정한다 — 디스크 캐시 적중이면 IPC 왕복뿐이고, 셸도 지난 창은 적중으로 안
+// 본다(`ipc/parity/usage.rs`). 격리(429 장기 차단)된 계정은 셸이 건너뛴다.
+/** 지난 창의 재조회 최소 간격 — 실패가 이어져도 분당 IPC 한 번(HTTP는 셸의 격리가 막는다). */
+const ROLLED_MIN_GAP = 60_000
+/** 미래 리셋 타이머의 상한 — 그보다 멀면 그때 가서 다시 잡는다(setTimeout 32비트 한계 안). */
+const ROLLED_TIMER_MAX = 30 * 60_000
+let rolledTimer: ReturnType<typeof setTimeout> | null = null
+const rolledAskedAt: Record<string, number> = {}
+
+function scheduleRolledRefresh(usage: Record<string, AccountUsage>): void {
+  const nowMs = Date.now()
+  const now = nowSec()
+  let due: string | null = null
+  let nextMs = Infinity
+  for (const u of Object.values(usage)) {
+    if (!u?.email) continue
+    if (anyRolled(u, now)) {
+      const asked = rolledAskedAt[u.email] ?? 0
+      if (nowMs - asked >= ROLLED_MIN_GAP) due = due ?? u.email
+      else nextMs = Math.min(nextMs, asked + ROLLED_MIN_GAP)
+    }
+    const nr = nextReset(u, now)
+    if (nr != null) nextMs = Math.min(nextMs, nr * 1000 + 2_000)
+  }
+  if (rolledTimer) {
+    clearTimeout(rolledTimer)
+    rolledTimer = null
+  }
+  if (due) {
+    rolledAskedAt[due] = nowMs
+    // 우선 조회 대상은 지난 창의 계정 — 훑기 자체는 전 계정이라 다른 지난 창도 같은 벌에 돈다.
+    void refreshUsage({ priority: due, rolled: true })
+    return
+  }
+  if (!Number.isFinite(nextMs)) return
+  const delay = Math.max(1_000, Math.min(nextMs - nowMs, ROLLED_TIMER_MAX))
+  rolledTimer = setTimeout(() => {
+    rolledTimer = null
+    void refreshUsage({ rolled: true })
+  }, delay)
+}
+
 function byEmail<T extends { email: string }>(rows: T[]): Record<string, T> {
   const m: Record<string, T> = {}
   for (const r of rows) if (r?.email) m[r.email] = r
@@ -168,6 +218,11 @@ export interface UsageQuery {
    * 실려, 연속 실패로 격리된 계정은 사용자가 눌러도 3분 동안 조회가 안 나갔다.
    */
   force?: boolean
+  /**
+   * ★2026-09-05 — 지난 창 재조회(`scheduleRolledRefresh`). 렌더러 1분 TTL만 넘고, 셸의
+   * 격리는 넘지 않는다(`retry`가 아니다 — 사람이 누른 게 아니라 시계가 울린 것이다).
+   */
+  rolled?: boolean
 }
 
 /**
@@ -197,6 +252,7 @@ function runUsage(q: UsageQuery): Promise<Record<string, AccountUsage>> {
       usageFlight = null
       const map = byEmail(rows)
       emit({ usage: map, loading: false, at: Date.now() })
+      scheduleRolledRefresh(map)
       return map
     })
     .catch(() => {
@@ -230,7 +286,7 @@ export function refreshUsage(q: UsageQuery = {}): Promise<Record<string, Account
     }
     return usageQueued
   }
-  if (!q.force && state.at && Date.now() - state.at < USAGE_TTL) return Promise.resolve(state.usage)
+  if (!q.force && !q.rolled && state.at && Date.now() - state.at < USAGE_TTL) return Promise.resolve(state.usage)
   return runUsage(q)
 }
 
@@ -264,7 +320,10 @@ export function primeUsageFromDisk(): Promise<void> {
       if (!rows.length) return
       // 이미 실조회 값이 들어와 있으면 낡은 값으로 덮지 않는다.
       if (state.at) return
-      emit({ usage: byEmail(rows) })
+      const map = byEmail(rows)
+      emit({ usage: map })
+      // 디스크의 마지막 값에 지난 창이 있으면(앱을 켜자마자 「곧」) 곧바로 다시 묻는다.
+      scheduleRolledRefresh(map)
     })
     .catch(() => {})
 }

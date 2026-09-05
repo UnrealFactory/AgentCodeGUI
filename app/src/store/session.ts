@@ -856,6 +856,16 @@ export function reducer(state: SessionState, action: Action): SessionState {
           bgTasks: state.bgTasks.filter((t) => t.status === 'running')
         }
       }
+      // ★ PENDING 매듭 풀기(2026-09-04 보고: /clear 뒤 첫 전송이 '작업 중'에 2분 굳고,
+      //   중단+재전송하면 6초 만에 됐다). 실행 채택은 analyzing **하나**에만 걸려 있어,
+      //   그 이벤트가 전송 중 한 번 유실되면 curRunId가 PENDING에 영영 묶인다 — 그 뒤
+      //   working·result·done이 전부 잔재(staleRun)로 버려져 스피너가 영영 안 풀리고
+      //   답이 와도 화면이 안 받는다(begin이 세운 '작업 중'만 남는다). working은 **살아
+      //   있는 턴의 첫 도구 신호**라 죽어가는 이전 실행의 잔재일 수 없다(잔재는 done/error다).
+      //   그래서 PENDING에서 실 runId의 working을 만나면 그 실행을 채택해 매듭을 푼다 —
+      //   begin이 이미 이 턴의 turnAt·turnMark·openGroupId를 세웠으므로 여기선 채택만 한다.
+      if (state.curRunId === PENDING_RUN && e.status === 'working')
+        return { ...state, status: 'working', curRunId: e.runId, interrupted: false, messages: stripSilentTail(state.messages) }
       if (staleRun(e.runId)) return state
       // 같은 실행의 재점등(done→working: 무음 오판 뒤 진짜 턴 재개) — 방금 붙인
       // '응답 없이 끝났어요' 안내는 오탐이었으므로 걷어낸다

@@ -4,7 +4,7 @@
  * 그 턴이 실제로 남아 화면과 어긋났다. 새 동작: 흔적은 그대로 + '중단함' 마커 + 늦은
  * 프레임(델타/마무리/result/error) 무시. 시나리오별로 스레드 모양을 단언한다.
  *
- * 실행: npx esbuild src/renderer/src/store/session.ts --bundle --format=esm \
+ * 실행: npx esbuild app/src/store/session.ts --bundle --format=esm \
  *        --outfile=.poc-session.mjs --external:react --alias:@shared=./src/shared
  *       node scripts/poc-interrupt-turn.mjs
  * (아래에서 둘 다 자동으로 한다)
@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url'
 const root = path.resolve(import.meta.dirname, '..')
 const bundle = path.join(root, '.poc-session.mjs')
 execSync(
-  'npx esbuild src/renderer/src/store/session.ts --bundle --format=esm ' +
+  'npx esbuild app/src/store/session.ts --bundle --format=esm ' +
     `--outfile=${JSON.stringify(bundle)} --external:react --alias:@shared=./src/shared`,
   { cwd: root, stdio: 'pipe' }
 )
@@ -93,7 +93,7 @@ const ev = (event) => ({ type: 'engine', event })
     { type: 'interrupt-turn' }
   ])
   const card = s.messages.find((m) => m.kind === 'cmdresult')
-  check('4 카드 정착: 중단 제목 + 스피너 꺼짐', card && !card.running && card.failed && card.title === '명령을 중단했어요', card)
+  check('4 카드 정착: 중단 제목 + 스피너 꺼짐', card && !card.running && card.failed && card.title === '중단했어요', card)
   check('4 마커 없음 + pendingCommand 해제', kinds(s) === 'cmdresult' && s.pendingCommand === null, kinds(s))
 }
 

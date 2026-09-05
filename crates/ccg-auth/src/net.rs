@@ -54,6 +54,14 @@ pub enum NetError {
     /// 수는 없어서 여기서 멈췄다"*이고, 호출부는 마지막 캐시로 갈음하면 된다 —
     /// 사용자가 Account 탭을 직접 열면 그때는 구역 밖이라 옛 규약대로 교환까지 간다.
     RotateForbidden(String),
+    /// ★2026-09-05 — **429인데 서버가 부른 대기가 재시도 상한([`usage::RETRY_AFTER_MAX_MS`])보다
+    /// 길다**, 또는 자고 나서 한 번 더 물었는데도 429다. 실측 `Retry-After: 3600`(계정 단위
+    /// 시간 차단). 이 착지는 *"이 계정은 이만큼 건드리지 마라"*이고, 호출자의 격리 장부가
+    /// 그 길이를 그대로 쓴다. 자거나 되묻지 않는다 — 차단 중 요청 하나하나가 차단을 늘린다.
+    RateLimited {
+        /// 서버가 부른 대기(ms) — [`usage::RETRY_AFTER_HOLD_MAX_MS`]까지만 믿는다.
+        retry_after_ms: u64,
+    },
 }
 
 impl std::fmt::Display for NetError {
@@ -67,6 +75,7 @@ impl std::fmt::Display for NetError {
             NetError::TokenLost(m) => write!(f, "rotated refresh token could not be saved: {m}"),
             NetError::RotateBackoff(m) => write!(f, "refresh exchange backing off: {m}"),
             NetError::RotateForbidden(m) => write!(f, "refresh exchange forbidden here: {m}"),
+            NetError::RateLimited { retry_after_ms } => write!(f, "http 429, retry after {}s", retry_after_ms / 1000),
         }
     }
 }
@@ -558,9 +567,21 @@ pub fn fetch_account_usage(email: &str) -> Result<AccountUsage, NetError> {
         }
     }
     // ② 레이트리밋 — 예산이 매우 빡빡한 엔드포인트(분당 1~2건 실측).
+    //
+    // ★2026-09-05 — 서버가 부른 대기가 **재시도 상한(30s)보다 길면 자지도 되묻지도 않는다.**
+    // 실측 `Retry-After: 3600`을 30초로 잘라 자고 곧바로 다시 두드렸고(그 사이 직렬 큐가
+    // 통째로 30초 멈춘다), 실패 → 3분 격리 → 또 2건… 차단 중인 계정에 시간당 수십 건이
+    // 나가 차단이 풀리지 않았다. 그 길이는 호출자의 격리 장부로 넘긴다.
     if resp.status == 429 {
-        std::thread::sleep(Duration::from_millis(retry_after_ms(&resp)));
+        let wait = retry_after_ms(&resp);
+        if wait > usage::RETRY_AFTER_MAX_MS {
+            return Err(NetError::RateLimited { retry_after_ms: wait });
+        }
+        std::thread::sleep(Duration::from_millis(wait));
         resp = send(&req)?;
+        if resp.status == 429 {
+            return Err(NetError::RateLimited { retry_after_ms: retry_after_ms(&resp) });
+        }
     }
     if !(200..300).contains(&resp.status) {
         return Err(NetError::Status(resp.status));
@@ -576,6 +597,10 @@ pub fn fetch_account_usage(email: &str) -> Result<AccountUsage, NetError> {
 ///
 /// 2.6.2는 `parseInt`라 `"3.9"`는 3이고 `"120, 60"`도 120이다. 헤더는 초 단위 정수가
 /// 규약(RFC 9110)이라 여기서도 **앞자리 정수만** 읽는다.
+///
+/// ★2026-09-05 — 상한은 [`usage::RETRY_AFTER_HOLD_MAX_MS`](1시간)다. 30초([`usage::RETRY_AFTER_MAX_MS`])는
+/// *자고 되묻는* 상한이고 그 판정은 [`fetch_account_usage`]가 한다 — 여기서 30초로 잘라
+/// 버리면 서버가 부른 「1시간」이 사라져 격리 장부가 3분짜리 곡선으로 되돌아간다.
 fn retry_after_ms(resp: &HttpResponse) -> u64 {
     let from_header = resp.header("retry-after").and_then(|v| {
         let digits: String = v.trim().chars().take_while(char::is_ascii_digit).collect();
@@ -593,7 +618,7 @@ fn retry_after_ms(resp: &HttpResponse) -> u64 {
                 .map(|s| (s * 1000.0) as u64)
         })
         .unwrap_or(usage::RETRY_AFTER_DEFAULT_MS)
-        .clamp(0, usage::RETRY_AFTER_MAX_MS)
+        .clamp(0, usage::RETRY_AFTER_HOLD_MAX_MS)
 }
 
 /// 생사검증 — [`crate::verify::preflight`]의 `probe`를 던져 판정까지 간다.
@@ -893,9 +918,14 @@ mod tests {
         assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":3}"#, &[])), 3_000);
         assert_eq!(retry_after_ms(&resp(429, r#"{"error":{"retry_after":2.5}}"#, &[])), 2_500);
         assert_eq!(retry_after_ms(&resp(429, "nope", &[])), usage::RETRY_AFTER_DEFAULT_MS);
-        // 상한 — 서버가 10분을 불러도 계정 훑기를 그만큼 세울 수는 없다.
-        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "600")])), usage::RETRY_AFTER_MAX_MS);
-        assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":600}"#, &[])), usage::RETRY_AFTER_MAX_MS);
+        // ★2026-09-05 — 긴 값은 **잘리지 않고 그대로** 온다(격리 장부가 그 길이를 쓴다). 자고
+        // 되묻는 30초 상한은 `fetch_account_usage`의 판정이지 이 함수의 몫이 아니다.
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "600")])), 600_000, "10분은 10분이다");
+        assert_eq!(retry_after_ms(&resp(429, r#"{"retry_after":600}"#, &[])), 600_000);
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "3600")])), usage::RETRY_AFTER_HOLD_MAX_MS, "실측 3600 = 1시간");
+        // 그래도 상한은 있다 — 서버가 하루를 불러도 계정을 하루 동안 잊지는 않는다.
+        assert_eq!(retry_after_ms(&resp(429, "", &[("retry-after", "86400")])), usage::RETRY_AFTER_HOLD_MAX_MS);
+        assert!(usage::RETRY_AFTER_HOLD_MAX_MS > usage::RETRY_AFTER_MAX_MS, "격리 상한이 재시도 상한보다 길어야 판정이 갈린다");
     }
 
     /// ★T3T4 R2(확인 크리틱 [부분]) — **전역 게이트가 실제로 간격을 벌리는가.**

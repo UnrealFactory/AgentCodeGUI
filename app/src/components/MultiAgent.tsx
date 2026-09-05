@@ -117,6 +117,7 @@ export function sanitizePanelPicker(p?: Partial<PickerState> | null): PickerStat
     // 실행 엔진 + Codex 모델 — 버리면 GPT 패널이 복원 때마다 Claude로 폴백한다
     engine: p?.engine === 'codex' ? 'codex' : undefined,
     codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
+    codexTier: typeof p?.codexTier === 'string' && p.codexTier ? p.codexTier : undefined,
     // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
     account: typeof p?.account === 'string' && p.account ? p.account : undefined,
     codexAccount: typeof p?.codexAccount === 'string' && p.codexAccount ? p.codexAccount : undefined
@@ -2098,6 +2099,7 @@ function ActiveSession({
       // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
       engine: pk.engine,
       codexModel: pk.codexModel,
+      codexTier: pk.codexTier,
       cwd: dir,
       addDirs: extraDirs.length ? extraDirs : undefined,
       // 패널별 프롬프트 — 매 실행 시스템 프롬프트에 append (없으면 생략)

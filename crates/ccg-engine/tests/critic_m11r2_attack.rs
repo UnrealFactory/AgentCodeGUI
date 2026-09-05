@@ -83,7 +83,7 @@ impl CliDriver for AcctCli {
 
 fn raw(account: &str) -> RawIdentity {
     RawIdentity {
-        engine: RawEngine { kind: EngineKind::Claude, model: "haiku".into(), effort: EffortId::Minimal, codex_account: None },
+        engine: RawEngine { kind: EngineKind::Claude, model: "haiku".into(), effort: EffortId::Minimal, codex_account: None , codex_tier: None },
         billing: RawBilling { kind: BillingKind::Subscription, account: Some(account.into()), drop_env_key: Some(false) },
         cwd: r"C:\ccg-fixture\work".into(),
         add_dirs: vec![],

@@ -121,6 +121,7 @@ fn pick<'a>(picker: &'a Value, key: &str) -> Option<&'a str> {
 /// | `picker.model` / `picker.codexModel` | `engine.model` |
 /// | `picker.effort` | `engine.effort` |
 /// | `picker.codexAccount` | `engine.codexAccount` |
+/// | `picker.codexTier` | `engine.codexTier` (Codex·값 있을 때만 — 없으면 키도 없다) |
 /// | `picker.account` + `api.mode`(또는 패널 `api`) | `billing` |
 /// | `picker.mode` | `mode` |
 /// | 전역 `claude.outputStyle` | `outputStyle` (물질화) |
@@ -152,6 +153,11 @@ pub fn to_raw_identity(rec: &Value, source: Source, g: &Globals) -> Value {
             _ => Value::Null,
         },
     );
+    // ★2026-09-05 — 속도 티어. 값이 있을 때만 키를 둔다(옛 레코드·Claude의 원시값이 그대로라
+    // 마이그레이션 무손실 비교가 안 흔들린다). `"default"`는 표준 = 없음.
+    if let Some(t) = pick(&picker, "codexTier").filter(|t| is_codex && !t.is_empty() && *t != "default") {
+        engine.insert("codexTier".into(), json!(t));
+    }
 
     // 과금 — 멀티 패널은 패널별 `api`가 이기고, 나머지는 그 시점 전역값(§4.2 표)
     let api = match source {
@@ -228,6 +234,9 @@ pub fn to_legacy(identity: &Value, source: Source) -> Map<String, Value> {
         picker.insert("codexModel".into(), json!(engine.get("model").and_then(Value::as_str).unwrap_or("")));
         if let Some(a) = engine.get("codexAccount").and_then(Value::as_str) {
             picker.insert("codexAccount".into(), json!(a));
+        }
+        if let Some(t) = engine.get("codexTier").and_then(Value::as_str).filter(|t| !t.is_empty()) {
+            picker.insert("codexTier".into(), json!(t));
         }
     }
     let api = billing.get("kind").and_then(Value::as_str) == Some("api_key");
@@ -361,6 +370,23 @@ mod tests {
         assert_eq!(raw["engine"]["kind"], "codex");
         assert_eq!(raw["engine"]["model"], "gpt-5.6-sol"); // claude model이 새어 들어오지 않는다
         assert_eq!(raw["engine"]["codexAccount"], "o@p.q");
+        // ★2026-09-05 — 티어를 안 골랐으면 키 자체가 없다(옛 원시값과 동일).
+        assert!(raw["engine"].get("codexTier").is_none(), "티어 미지정인데 키가 생겼다: {raw}");
+    }
+
+    /// ★2026-09-05 — 속도 티어(Fast)는 picker ↔ engine을 왕복하고, 표준(`default`)은 키를 남기지 않는다.
+    #[test]
+    fn codex_speed_tier_round_trips_and_default_leaves_no_key() {
+        let rec = json!({ "picker": { "engine": "codex", "codexModel": "gpt-6-astra", "codexTier": "priority" } });
+        let raw = to_raw_identity(&rec, Source::Chat, &g());
+        assert_eq!(raw["engine"]["codexTier"], "priority");
+        let back = to_legacy(&raw, Source::Chat);
+        assert_eq!(back["picker"]["codexTier"], "priority", "되접기에서 티어가 사라졌다: {back:?}");
+
+        let std = to_raw_identity(&json!({ "picker": { "engine": "codex", "codexModel": "gpt-6-astra", "codexTier": "default" } }), Source::Chat, &g());
+        assert!(std["engine"].get("codexTier").is_none(), "표준(default)인데 키가 남았다: {std}");
+        let claude = to_raw_identity(&json!({ "picker": { "engine": "claude", "model": "opus", "codexTier": "priority" } }), Source::Chat, &g());
+        assert!(claude["engine"].get("codexTier").is_none(), "Claude 정체성에 Codex 티어가 새어 들어왔다: {claude}");
     }
 
     #[test]

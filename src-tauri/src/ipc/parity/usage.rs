@@ -89,6 +89,22 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+fn now_sec() -> i64 {
+    (now_ms() / 1000) as i64
+}
+
+/// ★2026-09-05 — `UsageInfo` 모양(`usage:get`의 메모리 캐시)에서 **지난 창**이 있나.
+/// 창의 `resetsAt`(unix 초)이 `now` 이하면 그 퍼센트는 지난 창의 값이다 — TTL이 남았어도
+/// 적중이 아니다(`AccountUsage::rolled`와 같은 판정, 모양만 다르다).
+fn info_rolled(v: &Value, now_sec: i64) -> bool {
+    ["fiveHour", "weekly", "weeklyFable"].iter().any(|k| {
+        v.get(k)
+            .and_then(|w| w.get("resetsAt"))
+            .and_then(Value::as_i64)
+            .is_some_and(|r| r <= now_sec)
+    })
+}
+
 /// 메모리 캐시 1항목 — 2.6.2 `{ at, token, data }`.
 ///
 /// **토큰을 함께 들고 있는 이유**(2.6.2 `index.ts:1030` `hit.token === tk.token`):
@@ -120,7 +136,10 @@ fn lane(email: &str) -> Arc<Mutex<()>> {
 fn cached(email: &str, token: &str, ttl: u64) -> Option<Value> {
     let g = cache().lock().unwrap_or_else(|e| e.into_inner());
     let e = g.get(email)?;
-    (e.token == token && now_ms().saturating_sub(e.at) < ttl).then(|| e.data.clone())
+    // ★2026-09-05 — 지난 창이 든 값은 TTL이 남았어도 적중이 아니다(한도가 초기화됐는데
+    // 5분 동안 옛 「100%」를 돌려주던 자리 — 워크바 게이지·한도 재검증이 이 캐시를 본다).
+    (e.token == token && now_ms().saturating_sub(e.at) < ttl && !info_rolled(&e.data, now_sec()))
+        .then(|| e.data.clone())
 }
 
 /// 만료를 무시한 마지막 값 — 2.6.2 `fetchUsage`의 실패 폴백
@@ -270,12 +289,29 @@ fn is_dead(email: &str) -> bool {
     g.get(email).is_some_and(|d| d.fails >= DEAD_AFTER_FAILS && now_ms() < d.until)
 }
 
-fn note_fail(email: &str) {
+/// 실패 한 건을 적는다. `hold_ms`는 **서버가 부른 대기**([`ccg_auth::net::NetError::RateLimited`]) —
+/// 있으면 사다리를 세지 않고 **즉시** 그 길이만큼 격리한다(실측 `Retry-After: 3600`: 두 번
+/// 실패를 기다렸다 3분만 쉬고 되두드리면 차단이 안 풀린다).
+fn note_fail(email: &str, hold_ms: Option<u64>) {
     let mut g = dead_book().lock().unwrap_or_else(|e| e.into_inner());
     let d = g.entry(email.to_string()).or_insert(Dead { fails: 0, until: 0 });
     d.fails = d.fails.saturating_add(1);
-    // 지수는 안 쓴다 — 이 격리는 벌이 아니라 **큐를 안 막기 위한 우회**다.
-    d.until = now_ms() + DEAD_BACKOFF_MS;
+    match hold_ms {
+        Some(hold) => {
+            d.fails = d.fails.max(DEAD_AFTER_FAILS);
+            d.until = now_ms() + hold.clamp(DEAD_BACKOFF_MS, ccg_auth::usage::RETRY_AFTER_HOLD_MAX_MS);
+        }
+        // 지수는 안 쓴다 — 이 격리는 벌이 아니라 **큐를 안 막기 위한 우회**다.
+        None => d.until = now_ms() + DEAD_BACKOFF_MS,
+    }
+}
+
+/// 실패에서 **서버가 부른 대기**를 꺼낸다 — 429의 Retry-After만 그렇다.
+fn rate_hold(e: &ccg_auth::net::NetError) -> Option<u64> {
+    match e {
+        ccg_auth::net::NetError::RateLimited { retry_after_ms } => Some(*retry_after_ms),
+        _ => None,
+    }
 }
 
 fn note_ok(email: &str) {
@@ -338,6 +374,7 @@ fn fresh_on_disk(email: &str, now: i64) -> Option<ccg_auth::usage::CachedUsage> 
     ccg_auth::usage::read_usage_cache()
         .remove(email)
         .filter(|c| (now - c.at) >= 0 && ((now - c.at) as u64) < ccg_auth::usage::ACCT_USAGE_TTL_MS)
+        .filter(|c| !c.data.rolled(now / 1000))
 }
 
 /// 조회 한 건의 **유일한 문**.
@@ -431,9 +468,13 @@ pub fn accounts_usage(opts: &Value) -> Value {
         if retry {
             clear_dead(&email);
         }
+        // ★2026-09-05 — 2분 안이어도 **지난 창**이 든 행은 적중이 아니다. 리셋 시각을 넘긴
+        // 퍼센트는 지난 창의 값이라(Anthropic이 초기화해 줬는데 화면은 「0% 남음 · 곧」)
+        // 지금 물어야 한다. 격리·워밍 문은 그대로 지나므로 예산은 그 문들이 지킨다.
         let hit = disk
             .get(&email)
             .filter(|c| (now - c.at) >= 0 && ((now - c.at) as u64) < ccg_auth::usage::ACCT_USAGE_TTL_MS)
+            .filter(|c| !c.data.rolled(now / 1000))
             .map(|c| c.data.clone());
         if let Some(d) = hit {
             rows[i] = Some(row_of(&d, &email));
@@ -470,8 +511,12 @@ pub fn accounts_usage(opts: &Value) -> Value {
                 ccg_auth::usage::merge_usage_cache(&[(email.clone(), entry.clone())]);
                 disk.insert(email, entry);
             }
-            Err(_) => {
-                note_fail(&email);
+            Err(e) => {
+                // 429의 Retry-After가 길면(실측 3600) 그 길이만큼 **즉시** 격리 — 되두드리지 않는다.
+                if let Some(hold) = rate_hold(&e) {
+                    eprintln!("[usage] {email}: {e} — {}초 동안 조회를 건너뛴다", hold / 1000);
+                }
+                note_fail(&email, rate_hold(&e));
                 rows[i] = Some(fallback_row(&disk, &email));
             }
         }
@@ -784,8 +829,8 @@ mod tests {
         let emails = seed_three(&h, &[]);
         let target = emails[0].clone();
         // 연속 2회 실패 = 격리(3분).
-        note_fail(&target);
-        note_fail(&target);
+        note_fail(&target, None);
+        note_fail(&target, None);
         assert!(is_dead(&target), "전제: 격리 상태");
 
         // ① 표식 없는 조회 — 건너뛴다. 장부는 그대로(다시 실패로 오르지 않는다).
@@ -805,14 +850,127 @@ mod tests {
         assert_eq!(rows.as_array().map(Vec::len), Some(3));
 
         // ③ `cachedOnly`가 함께 오면 캐시 팔이 이긴다(HTTP 0회의 계약이 더 강하다).
-        note_fail(&target);
-        note_fail(&target);
+        note_fail(&target, None);
+        note_fail(&target, None);
         let before = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
         let _ = accounts_usage(&json!({ "cachedOnly": true, "retry": true }));
         let after = { dead_book().lock().unwrap().get(&target).map(|d| d.fails) };
         assert_eq!(after, before, "★ cachedOnly인데 조회가 나갔다 — 첫 페인트의 계약이 깨진다");
 
         std::env::remove_var("CCG_NO_NET");
+        forget_dead();
+        drop(h);
+    }
+
+    // ── ★2026-09-05 — 지난 창은 적중이 아니다 · 긴 Retry-After는 즉시 격리 ────────
+
+    /// **리셋 시각을 지난 행은 2분 TTL 안이어도 다시 묻는다.**
+    ///
+    /// 제보: Anthropic이 한도를 초기화해 줬는데 설정·picker는 「Fable 0% 남음 · 곧」을 붙들고
+    /// 있었다. 캐시는 나이만 봤고, 지난 창의 값인지는 아무도 안 봤다. 여기서는 `CCG_NO_NET`으로
+    /// 조회를 죽여 두고 **조회가 나갔는지**를 `stale` 표식으로 잰다(적중이면 표식이 없다).
+    #[test]
+    fn a_rolled_window_inside_the_ttl_is_a_miss_not_a_hit() {
+        let h = ccg_store::testhome::take("parity-usage-rolled");
+        forget_dead();
+        std::env::set_var("CCG_NO_NET", "1");
+        let email = "rolled@usage.test";
+        let store = json!({ "version": 3, "defaultEmail": email, "accounts": [{ "email": email }] });
+        std::fs::write(h.dir.join("accounts.json"), store.to_string()).expect("스토어 시드");
+        let now = now_ms() as i64;
+        let seed = |fable_resets_at: i64| {
+            let mut m = std::collections::BTreeMap::new();
+            m.insert(
+                email.to_string(),
+                ccg_auth::usage::CachedUsage {
+                    at: now - 30_000, // 30초 전 = TTL 안
+                    data: ccg_auth::usage::AccountUsage {
+                        fable_pct: Some(100),
+                        fable_resets_at: Some(fable_resets_at),
+                        weekly_pct: Some(52),
+                        weekly_resets_at: Some(now / 1000 + 6 * 86_400),
+                        ..ccg_auth::usage::AccountUsage::empty(email)
+                    },
+                },
+            );
+            ccg_auth::usage::write_usage_cache(&m);
+        };
+
+        // ① 창이 아직 안 지났다(1시간 뒤 리셋) — 적중. 표식 없음.
+        seed(now / 1000 + 3600);
+        let row = accounts_usage(&Value::Null).as_array().expect("배열")[0].clone();
+        println!("[ROLLED] 미래 리셋 = {row}");
+        assert!(row.get("stale").is_none(), "안 지난 창인데 조회가 나갔다(TTL 무시)");
+        assert_eq!(row["fablePct"], json!(100));
+
+        // ② 창이 지났다(10초 전 리셋) — TTL 안이어도 **조회가 나간다**. 실패하니 stale로 떨어진다.
+        seed(now / 1000 - 10);
+        let row = accounts_usage(&Value::Null).as_array().expect("배열")[0].clone();
+        println!("[ROLLED] 지난 리셋 = {row}");
+        assert_eq!(row["stale"], json!(true), "★ 리셋을 지난 값을 신선한 적중으로 돌려줬다 — 화면이 「0% 남음 · 곧」을 붙든다");
+        assert_eq!(row["fablePct"], json!(100), "실패하면 마지막 값은 지킨다(렌더러가 「초기화됨」으로 읽는다)");
+
+        // ③ 메모리 캐시(`usage:get`)도 같은 규칙 — 지난 창이 든 값은 적중이 아니다.
+        cache().lock().unwrap().clear();
+        cache().lock().unwrap().insert(
+            email.into(),
+            Entry {
+                at: now_ms(),
+                token: "tok".into(),
+                data: json!({ "fiveHour": { "pct": 3, "resetsAt": now / 1000 + 600 }, "weeklyFable": { "pct": 100, "resetsAt": now / 1000 - 5 } }),
+            },
+        );
+        assert!(cached(email, "tok", 60_000).is_none(), "★ 지난 Fable 창이 든 값을 신선하다고 돌려줬다");
+        assert!(stale(email).is_some(), "실패 폴백으로는 여전히 쓴다(게이지가 빈 칸이 되지 않게)");
+        cache().lock().unwrap().clear();
+
+        std::env::remove_var("CCG_NO_NET");
+        forget_dead();
+        drop(h);
+    }
+
+    /// **`Retry-After: 3600`은 3분짜리 사다리가 아니다** — 그 길이만큼 즉시 건너뛴다.
+    ///
+    /// 실측: 한 계정의 usage API가 `429 · Retry-After: 3600`을 돌려줬고, 앱은 30초 자고
+    /// 되묻고(429) → 실패 1 → 다음 훑기 또 2건 → 실패 2 → 3분 격리 → 또… 차단 중인 계정에
+    /// 시간당 수십 건이 나가 19시간째 캐시가 그대로였다.
+    #[test]
+    fn a_long_retry_after_isolates_the_account_for_that_long_at_once() {
+        let h = ccg_store::testhome::take("parity-usage-ratelimit");
+        forget_dead();
+        fn limited(_e: &str, _w: bool) -> Result<ccg_auth::usage::AccountUsage, ccg_auth::net::NetError> {
+            Err(ccg_auth::net::NetError::RateLimited { retry_after_ms: 3_600_000 })
+        }
+        set_test_fetch(Some(limited));
+        let emails = seed_three(&h, &[]);
+        let target = emails[1].clone();
+
+        let rows = accounts_usage(&json!({ "priority": target.clone() }));
+        let (fails, until) = {
+            let g = dead_book().lock().unwrap();
+            let d = g.get(&target).expect("장부에 올라야 한다");
+            (d.fails, d.until)
+        };
+        let left_s = (until as i64 - now_ms() as i64) / 1000;
+        println!("[RL] 첫 실패 뒤 fails={fails} until-now={left_s}s");
+        assert!(is_dead(&target), "★ 429 한 번에 바로 격리돼야 한다 — 두 번째 실패를 기다리면 그게 곧 되두드리기다");
+        assert!(left_s >= 3_500, "★ 격리 길이가 서버가 부른 1시간이 아니라 3분 사다리다(until-now = {left_s}s)");
+        // 행은 낡은 캐시로 갈음(stale) — 계정이 목록에서 사라지지 않는다.
+        let row = rows.as_array().expect("배열")[1].clone();
+        assert_eq!(row["stale"], json!(true));
+
+        // 격리 중의 다음 훑기는 이 계정에 **조회를 안 낸다**(fails가 안 오른다).
+        let _ = accounts_usage(&Value::Null);
+        let fails2 = dead_book().lock().unwrap().get(&target).map(|d| d.fails);
+        assert_eq!(fails2, Some(fails), "★ 격리 중인데 또 두드렸다 — 차단이 안 풀리는 그 경로");
+
+        // 사람이 「다시 시도」를 누르면 그때는 나간다(F5의 규약 그대로) — 또 429면 다시 그 길이.
+        let _ = accounts_usage(&json!({ "priority": target.clone(), "retry": true }));
+        let fails3 = dead_book().lock().unwrap().get(&target).map(|d| d.fails);
+        assert!(fails3.is_some_and(|f| f >= DEAD_AFTER_FAILS), "재시도가 429면 다시 그 길이로 격리된다");
+        assert!(is_dead(&target));
+
+        set_test_fetch(None);
         forget_dead();
         drop(h);
     }
@@ -929,9 +1087,9 @@ mod tests {
         forget_dead();
         let e = "dead@acct.test";
         assert!(!is_dead(e), "처음부터 격리면 안 된다");
-        note_fail(e);
+        note_fail(e, None);
         assert!(!is_dead(e), "한 번 실패로 격리하면 잠깐의 네트워크 끊김에 계정이 사라진다");
-        note_fail(e);
+        note_fail(e, None);
         assert!(is_dead(e), "★ 연속 실패인데 매번 5초를 태운다");
         note_ok(e);
         assert!(!is_dead(e), "성공하면 즉시 풀린다");

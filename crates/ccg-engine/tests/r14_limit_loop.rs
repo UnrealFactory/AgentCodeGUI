@@ -70,6 +70,7 @@ fn rt(clock: Arc<VirtualClock>, err: &str) -> ChatRuntime<LimitedCli> {
             model: "haiku".into(),
             effort: EffortId::Minimal,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,
@@ -392,6 +393,7 @@ fn rt_codex(clock: Arc<VirtualClock>, err: &str) -> ChatRuntime<LimitedCli> {
             model: "gpt-5.6-codex".into(),
             effort: EffortId::Medium,
             codex_account: Some("cx@openai.com".into()),
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,

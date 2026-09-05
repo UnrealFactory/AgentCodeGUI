@@ -5,7 +5,8 @@ import type {
   LspServerInfo,
   ApiConfigStatus,
   AccountUsage,
-  CodexAccountUsage
+  CodexAccountUsage,
+  UpdateStatus
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 // ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
@@ -57,11 +58,15 @@ import {
   IconMouse,
   IconContrast,
   IconGlobe,
+  IconDownload,
+  IconSparkles,
+  IconInfo,
   type IconProps
 } from './icons'
 import { getLang, isEn, setLang, t, type UiLang } from '../lib/i18n'
 import { GestureGlyph, GESTURE_DEFAULTS, MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { remainTone } from './Chat'
+import { nowSec, windowRolled } from '../lib/usageWindow'
 import {
   DEFAULT_HIDE_DIRS,
   DEFAULT_HIDE_FILES,
@@ -75,7 +80,7 @@ import {
 
 // ★3.0 R3 — 'mcp'·'skill' 탭 제거(2026-09-01 사용자 결정): 목록·토글이 패널 헤더의
 // 「MCP & Skill」 칩(McpSkillView)으로 옮겨 갔다 — 설정에 남기면 같은 일이 두 곳이 된다.
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'app'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -104,6 +109,18 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
         { id: 'lsp', label: 'Code', Icon: IconCode, keys: '코드 언어 서버 lsp 하이라이트 심볼 code language server highlight symbol' },
         { id: 'explorer', label: 'Explorer', Icon: IconFilter, keys: '탐색기 숨김 필터 폴더 explorer hide filter folder' },
         { id: 'gesture', label: 'Gestures', Icon: IconMouse, keys: '제스처 마우스 우클릭 gesture mouse right click' }
+      ]
+    },
+    {
+      label: t('앱', 'App'),
+      items: [
+        {
+          id: 'app',
+          // 사이드바 항목은 다른 항목처럼 영어 고정(Profile·Account·…) — 2026-09-05 사용자 요청. 본문 제목은 t()로 언어를 따른다.
+          label: 'Updates',
+          Icon: IconInfo,
+          keys: '앱 버전 업데이트 확인 설치 재시작 패치노트 소식 app version update check install restart relaunch patch notes changelog whats new'
+        }
       ]
     }
   ]
@@ -308,9 +325,20 @@ const ACCT_SORTS: { id: AcctSort; ko: string; en: string }[] = [
 // 계정(토큰 만료·아직 로딩 전)은 Infinity로 맨 뒤 — 동률 비교의 NaN은 sort 규약상 0 취급.
 type AcctSortKeys = { reset: number; left: number }
 function antSortKeys(u?: AccountUsage): AcctSortKeys {
-  const weekly = [u?.fableResetsAt, u?.weeklyResetsAt].filter((x): x is number => x != null)
-  const resets = weekly.length ? weekly : [u?.fiveHourResetsAt].filter((x): x is number => x != null)
-  const lefts = [u?.fiveHourPct, u?.fablePct, u?.weeklyPct].filter((x): x is number => x != null).map((p) => 100 - p)
+  // ★2026-09-05 — 지난 창(리셋 시각을 넘긴 값)은 정렬 재료가 아니다: 그 창은 이미 돌아왔고
+  // (잔량은 100으로 읽는다) 그 시각은 「임박」이 아니라 과거다 — 조회가 막힌 계정이
+  // 「곧」인 채 임박순 맨 위에 눌러앉던 자리.
+  const now = nowSec()
+  const win = (pct: number | null | undefined, at: number | null | undefined): { left: number | null; reset: number | null } =>
+    windowRolled(at, now)
+      ? { left: pct != null ? 100 : null, reset: null }
+      : { left: pct != null ? 100 - pct : null, reset: at ?? null }
+  const fh = win(u?.fiveHourPct, u?.fiveHourResetsAt)
+  const fb = win(u?.fablePct, u?.fableResetsAt)
+  const wk = win(u?.weeklyPct, u?.weeklyResetsAt)
+  const weekly = [fb.reset, wk.reset].filter((x): x is number => x != null)
+  const resets = weekly.length ? weekly : [fh.reset].filter((x): x is number => x != null)
+  const lefts = [fh.left, fb.left, wk.left].filter((x): x is number => x != null)
   return { reset: resets.length ? Math.min(...resets) : Infinity, left: lefts.length ? Math.min(...lefts) : Infinity }
 }
 function cxSortKeys(u?: CodexAccountUsage): AcctSortKeys {
@@ -756,12 +784,57 @@ function fmtResetIn(ts?: number | null): string | null {
   return hh ? t(`${d}일 ${hh}시간 뒤`, `in ${d}d ${hh}h`) : t(`${d}일 뒤`, `in ${d}d`)
 }
 
+// 벽시계(unix 초)를 `stepMs`마다 다시 읽는 훅 — 「n분 뒤」·「초기화됨」처럼 시간이 지나면
+// 저절로 바뀌어야 하는 표기를 마운트 시각에 얼려 두지 않기 위해.
+function useNowSec(stepMs = 30_000): number {
+  const [now, setNow] = useState(nowSec)
+  useEffect(() => {
+    const id = setInterval(() => setNow(nowSec()), stepMs)
+    return () => clearInterval(id)
+  }, [stepMs])
+  return now
+}
+
 // 한도 게이지 한 행 — 라벨 · 잔여 바 · "n% 남음" · 초기화까지 남은 시간. 맨숫자는 방향(남은량/
 // 소모량)을 못 말해줘 "남음"을 숫자마다 붙인다(컨텍스트 팝오버와 같은 표기). 잔량이
 // 낮으면(잔량 톤) 바·숫자가 색으로 도드라진다.
 // 시간 칸은 창 길이와 무관하게 남은 시간('7일 3시간 뒤') — 절대 시각은 호버 툴팁.
 // 초기화 시각을 모르는 항목(구 캐시 등)도 빈 칸을 그려 열 정렬을 유지한다.
-function LimRow({ label, left, resetsAt }: { label: string; left: number; resetsAt?: number | null }): React.ReactElement {
+// ★2026-09-05 — `rolled`(리셋 시각을 지난 값): 퍼센트는 지난 창의 것이라 「0% 남음 · 곧」로
+// 그리면 거짓이다(Anthropic이 초기화해 줬는데 화면은 옛 값 — 제보). 바는 가득, 글자는
+// 「초기화됨」, 시간 칸은 「새 값 확인 중」 — 값이 오면(accounts.ts가 그 순간 다시 묻는다)
+// 보통 행으로 돌아온다.
+function LimRow({
+  label,
+  left,
+  resetsAt,
+  rolled
+}: {
+  label: string
+  left: number
+  resetsAt?: number | null
+  rolled?: boolean
+}): React.ReactElement {
+  if (rolled) {
+    return (
+      <div
+        className="lim rolled"
+        title={t(
+          '초기화 시각이 지났어요 — 이 숫자는 지난 창의 값이라 새 값을 다시 조회하고 있어요',
+          'The reset time has passed — this number is from the previous window, so a fresh value is being fetched'
+        )}
+      >
+        <span className="ll">{label}</span>
+        <div className="g2">
+          <i style={{ width: '100%' }} />
+        </div>
+        <span className="lv">
+          <b>{t('초기화됨', 'Reset')}</b>
+        </span>
+        <span className="lr">{t('새 값 확인 중', 'Checking…')}</span>
+      </div>
+    )
+  }
   const tone = remainTone(left)
   return (
     <div className={'lim' + (tone ? ' ' + tone : '')}>
@@ -828,10 +901,16 @@ function AccountLimits({
   loading?: boolean
   onRetry?: () => void
 }): React.ReactElement | null {
-  const rows: { label: string; left: number; resetsAt?: number | null }[] = []
-  if (u?.fiveHourPct != null) rows.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct, resetsAt: u.fiveHourResetsAt })
-  if (u?.fablePct != null) rows.push({ label: 'Fable', left: 100 - u.fablePct, resetsAt: u.fableResetsAt })
-  if (u?.weeklyPct != null) rows.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct, resetsAt: u.weeklyResetsAt })
+  // 30초마다 시계를 다시 읽는다 — 카드가 떠 있는 동안 리셋 시각이 지나면 「n분 뒤」가
+  // 「곧」에 머물지 않고 「초기화됨」으로 넘어가야 한다(재조회는 accounts.ts의 타이머가 낸다).
+  const now = useNowSec()
+  const rows: { label: string; left: number; resetsAt?: number | null; rolled: boolean }[] = []
+  if (u?.fiveHourPct != null)
+    rows.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct, resetsAt: u.fiveHourResetsAt, rolled: windowRolled(u.fiveHourResetsAt, now) })
+  if (u?.fablePct != null)
+    rows.push({ label: 'Fable', left: 100 - u.fablePct, resetsAt: u.fableResetsAt, rolled: windowRolled(u.fableResetsAt, now) })
+  if (u?.weeklyPct != null)
+    rows.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct, resetsAt: u.weeklyResetsAt, rolled: windowRolled(u.weeklyResetsAt, now) })
   if (!rows.length) {
     if (loading) {
       return (
@@ -857,7 +936,7 @@ function AccountLimits({
   return (
     <div className="limits">
       {rows.map((r) => (
-        <LimRow key={r.label} label={r.label} left={r.left} resetsAt={r.resetsAt} />
+        <LimRow key={r.label} label={r.label} left={r.left} resetsAt={r.resetsAt} rolled={r.rolled} />
       ))}
       {/* 「마지막으로 확인한 값」 stale 캡션은 뺐다(2026-09-01 사용자) — 게이지가 항상
           마지막 조회값인 건 당연해서 줄 하나의 값어치가 없다 */}
@@ -2967,6 +3046,116 @@ function HideListSection({
   )
 }
 
+// ── 앱 · 업데이트 (앱 버전 · 즉시 업데이트 · 패치노트) ───────────────────────
+// 사용자 요청(2026-09-04): ① 카드가 스스로 뜰 때까지 기다리거나 앱을 껐다 켜지 않고,
+//   여기서 「업데이트 확인하기」를 눌러 곧바로 확인→받기→설치(재시작)까지 가게. 셸의
+//   자동 흐름(updater.rs)과 **같은 상태·같은 설치 문**을 쓴다(app.checkForUpdate /
+//   app.installUpdate) — 이 화면은 그 진행을 보여 주고 준비되면 지금 설치를 부른다.
+//   ② 「패치노트 보기」로 지난 소식 카드를 언제든 다시 연다(PatchNotes가 듣는 창 이벤트).
+function AppView(): React.ReactElement {
+  const [ver, setVer] = useState('')
+  const [st, setSt] = useState<UpdateStatus | null>(null)
+  // '확인하기'를 눌렀다 — 결론(none/downloaded/error)이 날 때까지 도는 중 표시
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    window.api.app.getVersion().then(setVer).catch(() => {})
+    window.api.app.getUpdateStatus().then(setSt).catch(() => {})
+    return window.api.app.onUpdateEvent(setSt)
+  }, [])
+
+  const phase = st?.phase
+  const inFlight = phase === 'checking' || phase === 'available' || phase === 'downloading'
+  useEffect(() => {
+    if (phase && !inFlight) setChecking(false)
+  }, [phase, inFlight])
+
+  const ready = phase === 'downloaded'
+  const upToDate = phase === 'none'
+  const errored = phase === 'error' && st?.version != null
+  const busy = checking || inFlight
+  const newVer = st?.version ?? null
+
+  const onCheck = (): void => {
+    setChecking(true)
+    window.api.app.checkForUpdate()
+    // 개발 실행에선 셸이 업데이터를 통째로 끄므로(updater.rs `disabled`) 아무 이벤트도 안
+    // 온다 — 그 경우에도 '확인 중…'이 굳지 않게 스스로 접는다. 진짜 다운로드가 도는 중이면
+    // `inFlight`(phase 유래)가 `busy`를 계속 참으로 잡으므로 이 초기화가 진행을 끊지 않는다.
+    window.setTimeout(() => setChecking(false), 5000)
+  }
+
+  const statusLine = (): React.ReactElement | null => {
+    if (phase === 'checking') return <><span className="set-spin" /> {t('업데이트를 확인하는 중…', 'Checking for updates…')}</>
+    if (phase === 'available') return <><span className="set-spin" /> {t(`새 버전 v${newVer}을(를) 찾았어요 · 받기 시작`, `Found v${newVer} · starting download`)}</>
+    if (phase === 'downloading') return <><span className="set-spin" /> {t(`새 버전 v${newVer} 받는 중 — ${st?.percent ?? 0}%`, `Downloading v${newVer} — ${st?.percent ?? 0}%`)}</>
+    if (ready) return <span style={{ color: 'var(--green)' }}>{t(`새 버전 v${newVer} 준비 완료 — 지금 설치하면 앱이 다시 시작돼요`, `v${newVer} ready — installing now restarts the app`)}</span>
+    if (upToDate) return <span style={{ color: 'var(--green)' }}>{t('이미 최신 버전이에요', 'You’re on the latest version')}</span>
+    if (errored) return <span style={{ color: 'var(--red)' }}>{st?.error || t('업데이트에 실패했어요 · 잠시 후 다시 시도해요', 'Update failed · try again shortly')}</span>
+    return null
+  }
+
+  return (
+    <>
+      <div className="set-h1">{t('앱 · 업데이트', 'App · Update')}</div>
+      <div className="set-h1-sub">
+        {t(
+          '지금 이 자리에서 새 버전을 확인하고 바로 설치해요 — 자동 안내를 기다리거나 앱을 껐다 켤 필요 없이. 지난 업데이트 소식도 여기서 다시 볼 수 있어요.',
+          'Check for and install a new version right here — no waiting for the auto prompt or restarting the app. You can also reopen past update news from here.'
+        )}
+      </div>
+
+      <div className="set-sec">{t('버전', 'Version')}</div>
+      <div className="sc2 row2">
+        <div className="set-tile"><IconInfo size={18} /></div>
+        <div className="rmain">
+          <div className="em">
+            AgentCodeGUI
+            {ver && <span className="set-badge">v{ver}</span>}
+          </div>
+          <div className="meta">{statusLine() ?? t('설치된 앱 버전이에요.', 'The installed app version.')}</div>
+        </div>
+        <span className="sp" />
+        {ready ? (
+          <button
+            className="set-chipbtn go"
+            onClick={() => window.api.app.installUpdate()}
+          >
+            <IconDownload size={13} /> {t('지금 설치 · 재시작', 'Install now · Restart')}
+          </button>
+        ) : (
+          <button className="set-chipbtn" disabled={busy} onClick={onCheck}>
+            <IconRefresh size={13} /> {busy ? t('확인 중…', 'Checking…') : t('업데이트 확인하기', 'Check for update')}
+          </button>
+        )}
+      </div>
+
+      <div className="set-sec">{t('소식', 'News')}</div>
+      <div className="sc2 row2">
+        <div className="set-tile"><IconSparkles size={18} /></div>
+        <div className="rmain">
+          <div className="em">{t('업데이트 소식', "What's new")}</div>
+          <div className="meta">{t('이번 버전과 지난 버전들의 변경 사항을 봐요.', 'See what changed in this and previous versions.')}</div>
+        </div>
+        <span className="sp" />
+        <button
+          className="set-chipbtn"
+          onClick={() => window.dispatchEvent(new CustomEvent('ccg-open-patchnotes'))}
+        >
+          <IconSparkles size={13} /> {t('패치노트 보기', 'View patch notes')}
+        </button>
+      </div>
+
+      <div className="set-note2">
+        {t(
+          '받아둔 새 버전은 다음 실행에 다시 쓰여요. 설치는 눈에 보이는 이 버튼으로만 일어나요 — 종료할 때 몰래 설치하지 않아요.',
+          'A downloaded version is reused on the next launch. Installing only happens from this visible button — never silently on quit.'
+        )}
+      </div>
+    </>
+  )
+}
+
 export function SettingsModal({
   onClose,
   initialView
@@ -3041,6 +3230,7 @@ export function SettingsModal({
               {view === 'lsp' && <LspView />}
               {view === 'explorer' && <ExplorerView />}
               {view === 'gesture' && <GestureView />}
+              {view === 'app' && <AppView />}
             </div>
           </main>
         </div>

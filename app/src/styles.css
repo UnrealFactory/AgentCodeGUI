@@ -1474,7 +1474,18 @@ button.hsec:hover{ color:var(--text-3); }
 /* 추론 슬라이더 — 선택한 모델 아래로 슬라이드 오픈 (PoC .edrawer) */
 .edrawer{ max-height:0; overflow:hidden; transition:max-height .22s ease; }
 .edrawer.open{ max-height:44px; }
+/* ★2026-09-05 Codex — 추론 슬라이더 아래 속도 줄이 있으면 드로어가 한 줄 더 큰다 */
+.edrawer.open.tall{ max-height:80px; }
 .eslide{ display:flex; align-items:center; gap:10px; padding:4px 10px 10px 20px; }
+.eslide.espeed{ padding-top:0; }
+.eseg{ display:flex; gap:4px; flex:0 0 auto; }
+.eseg-b{
+  font-size:10px; font-weight:600; color:var(--text-3); background:rgba(255,255,255,.05);
+  padding:3px 9px; border-radius:99px; white-space:nowrap; transition:background .1s, color .1s;
+}
+.eseg-b:hover{ background:rgba(255,255,255,.09); color:var(--text); }
+.eseg-b.on{ background:var(--accent); color:var(--on-accent); }
+.espeed .ecur{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .elabel{ font-size:10.5px; color:var(--text-4); flex:0 0 auto; }
 .etrack{ position:relative; flex:1; height:18px; cursor:pointer; }
 .etrack::before{ content:''; position:absolute; left:0; right:0; top:7.5px; height:3px; border-radius:99px; background:rgba(255,255,255,.10); }
@@ -3317,10 +3328,14 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .em .set-badge{ margin-left:7px; vertical-align:1.5px; }
 .set-badge.warn{ color:var(--yellow); background:rgba(217,192,99,.12); }
 .set-badge.off{ color:var(--text-3); background:rgba(255,255,255,.06); }
-.set-chipbtn{ flex:0 0 auto; font-size:11px; font-weight:600; color:var(--text-2); background:rgba(255,255,255,.07); padding:6.5px 13px; border-radius:9px; transition:background .1s; }
+.set-chipbtn{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-2); background:rgba(255,255,255,.07); padding:6.5px 13px; border-radius:9px; transition:background .1s; }
 .set-chipbtn:hover{ background:rgba(255,255,255,.11); color:var(--text); }
+.set-chipbtn:disabled{ opacity:.5; pointer-events:none; }
 .set-chipbtn.danger{ color:var(--red); background:rgba(221,122,107,.10); }
 .set-chipbtn.danger:hover{ background:rgba(221,122,107,.18); }
+/* 준비된 새 버전 설치(재시작) — 눈에 띄는 accent 채움. 즉시 업데이트의 그 버튼. */
+.set-chipbtn.go{ color:var(--on-accent); background:var(--accent); }
+.set-chipbtn.go:hover{ color:var(--on-accent); background:var(--accent); filter:brightness(1.08); }
 /* 계정 정렬 칩 행 — 뷰 정렬 3종(기본/초기화 임박/한도 적음). on = 현재 정렬 */
 .set-sortrow{ display:flex; align-items:center; gap:6px; margin:16px 1px 0; }
 .set-sortrow .sl{ font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--text-4); margin-right:3px; }
@@ -3359,6 +3374,11 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .lim.warn .lv, .lim.warn .lv b{ color:var(--amber); }
 .lim.crit .g2 i{ background:var(--red); }
 .lim.crit .lv, .lim.crit .lv b{ color:var(--red); }
+/* ★2026-09-05 지난 창(리셋 시각을 넘긴 값) — 「초기화됨 · 새 값 확인 중」. 바는 가득이지만 실측이
+   아니라는 뜻으로 무채색·반투명(잔량 톤 어느 것도 아니다). */
+.lim.rolled .g2 i{ background:var(--text-4); opacity:.45; }
+.lim.rolled .lv b{ color:var(--text-3); font-weight:500; }
+.lim.rolled .lr{ color:var(--text-4); font-style:italic; }
 /* 창 초기화 시각 — '7/18 (토) 15:00' 풀 표기. 조회 전/구 캐시는 빈 칸으로 열 정렬 유지 */
 .lim .lr{ font-size:9.5px; color:var(--text-4); width:86px; flex:0 0 auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .g2{ flex:1; height:3px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }

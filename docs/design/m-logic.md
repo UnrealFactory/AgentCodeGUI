@@ -417,6 +417,7 @@ impl IdentityField { pub fn axis(self) -> IdentityAxis; }   // 15 → 8
 | `billing.key_fp` | `blake3(키 원문)[..8]` hex. 키 없음 = 정규화 실패(`api_key_missing`) | 키 교체가 재스폰을 만든다 (**P1e**) |
 | `billing.drop_env_key` | 전역 `ANTHROPIC_API_KEY` 없으면 `false` 고정. 있으면 그 키 지문에 저장된 사용자 답(`apiConfig` 파리티), 미응답이면 안전값 `true`(구독) | 답이 정체성이므로 답이 바뀌면 재스폰 (**P1e**) |
 | `engine` | 엔진별 모델 id 공간 분리, `effort`는 엔진 축 안, `codex_account`는 Codex 변형 안 | `codexModel`/`codexAccount`가 claude 정체성에 남지 않음 |
+| `engine.codex_tier` | (★2026-09-05) Codex 속도 티어 id(app-server `serviceTier` · `"priority"` = Fast). 빈 값·`"default"` → `None`(표준). 직렬화 생략 — 티어 없는 정체성의 원시값·해시가 종전과 같다 | 「Fast ↔ 표준」이 재스폰 사유가 되고, 옛 채팅 파일은 한 글자도 안 바뀐다 |
 | `tools` | 전역 pref → `BTreeMap`/`BTreeSet`으로 정렬·중복제거. 빈 컨테이너 = 기본값(직렬화 생략) | 순서가 재스폰을 못 만든다 (**P1e**) |
 | `mode` | 그대로(닫힌 열거형) | — |
 
@@ -437,7 +438,7 @@ fn identity_axis_set_is_frozen() {
 fn identity_leaf_set_is_frozen() {          // ★R3 (N2)
     // 리프 15개. `IdentityField`가 곧 UI 문구·정착 사유·드리프트 보고의 어휘다.
     assert_eq!(IdentityField::ALL.map(|f| f.path()), [
-        "engine.kind","engine.model","engine.effort","engine.codexAccount",
+        "engine.kind","engine.model","engine.effort","engine.codexAccount","engine.codexTier",
         "billing.kind","billing.account","billing.dropEnvKey","billing.keyFp",
         "cwd","addDirs","mode","systemPrompt","outputStyle",
         "tools.skillOverrides","tools.deniedMcp",

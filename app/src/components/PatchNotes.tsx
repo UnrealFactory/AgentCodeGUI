@@ -144,6 +144,195 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   → spawn_blocking ③ 렌더러 토큰당 hasRunningBash 전체 스캔·도구 행 무memo·bgTasks/stderr/
   //   sent_user_texts/revisions 무캡·저장 디바운스 → 캡·memo·2초 ④ UI 스레드 감시 + 미니덤프
   //   ⑤ 파일 뷰어 본문을 등장 애니 뒤에 마운트·자동숨김 사이드바 그림자 ::after ⑥ 도구 행 툴팁 제거.
+  // 3.0.9 — 2026-09-05 제보: Anthropic이 한도를 초기화해 줬는데(결제 직후·지원 처리) 설정·picker는 「Fable 0% 남음 · 곧」
+  //   그대로(스크린샷). 실측: 디스크 캐시는 몇 분 뒤 정상값(Fable 1%)으로 갱신됐지만 그 사이 화면은 옛 값 — 캐시(셸 2분·
+  //   메모리 5분·렌더러 1분)가 값의 나이만 보고 **리셋 시각을 지난 값**인지는 아무도 안 봤다 + 설정 탭은 주기 갱신 없음.
+  //   같은 화면의 lmg 계정은 19시간 전 값: usage API가 429 + Retry-After 3600을 돌려주는데 30초 상한으로 잘라 자고 되묻고
+  //   3분 격리 뒤 또(워커도 따로) → 차단이 안 풀림. → usage.rs AccountUsage::rolled + parity/usage.rs 디스크·메모리 적중에서
+  //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
+  //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
+  //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.0.9': {
+    ko: {
+      eyebrow: 'FIX',
+      lead: '한도가 초기화됐는데 설정 · 계정 picker가 「0% 남음 · 곧」을 붙들던 것과 한 계정의 한도가 19시간째 옛 값이던 것, /clear 뒤 첫 전송이 「작업 중」에 굳던 것을 실측으로 고쳤습니다. 설정에 Updates 페이지(확인 · 설치 · 패치노트)가 생겼고, OpenAI 모델 목록에 GPT-6-Astra를 올리고 GPT-5.3 같은 구세대를 빼고 속도(Fast · Ultrafast)를 고를 수 있게 했습니다.',
+      notes: [
+        {
+          tag: '계정',
+          name: '한도가 초기화됐는데 설정·계정 picker는 「0% 남음 · 곧」을 붙들고 있던 것 — 리셋 시각을 지난 값을 아무도 지난 값으로 안 봤다',
+          desc: (
+            <>
+              한도 게이지는 마지막 조회값을 그리고, 캐시(셸 디스크 2분 · 메모리 5분 · 렌더러 1분)는 값의 <b>나이</b>만
+              봤습니다. 창의 초기화 시각이 지났다는 사실은 「곧」이라는 글자로만 남고, 그 퍼센트가 <b>지난 창의 값</b>이라는
+              판정은 어디에도 없었습니다. 그래서 Anthropic이 한도를 초기화해 준 뒤에도(결제 직후 · 지원 처리 등) 캐시가
+              살아 있는 동안은 옛 「Fable 0% 남음 · 곧」이 그대로였고, 설정 탭은 주기 갱신이 없어 닫고 다시 열기 전엔 바뀌지
+              않았습니다(제보 스크린샷 — 그 사이 디스크 캐시는 정상값으로 갱신돼 있었습니다). 이제 리셋 시각을 지난 창은{' '}
+              <b>지난 창의 값</b>으로 읽습니다: 앱은 그 행을 캐시 적중으로 치지 않고 다시 묻고(디스크·메모리 둘 다), 화면은
+              값이 들어올 때마다 가장 이른 리셋 시각에 시계를 걸어 <b>그 순간</b> 다시 묻습니다(이미 지난 창이 있으면 곧바로 ·
+              계정당 1분에 한 번). 그 사이 게이지(설정 · 계정 picker · 작업 바 팝오버)는 「초기화됨 · 새 값 확인 중」으로 그리고, 소진 숨김 필터 · 「주간 소진」
+              줄 · 정렬(임박순 · 적게 남은순)도 지난 창을 소진으로 세지 않습니다 — 엔진의 자동 전환이 이미 쓰던 판정과 같은
+              규칙입니다.
+            </>
+          )
+        },
+        {
+          tag: '계정',
+          name: '한 계정의 한도가 19시간째 옛 값이던 것 — usage API의 「1시간 뒤 다시」를 30초로 잘라 되두드렸다',
+          desc: (
+            <>
+              한도 조회 API는 계정 단위로 세게 제한돼 429에 <code>Retry-After: 3600</code>(1시간)을 돌려주기도 합니다(실측).
+              앱은 그 값을 30초 상한으로 잘라 자고 곧바로 한 번 더 물었고(그동안 직렬 조회 큐가 통째로 멈춤), 실패하면 3분
+              뒤 또 2건, 자동 전환 워커도 따로 20초→5분 곡선으로 또 — 차단 중인 계정에 <b>시간당 수십 건</b>이 나가 차단이
+              풀리지 않았고, 화면엔 19시간 전 값이 실측처럼 남았습니다. 이제 서버가 부른 대기가 30초보다 길면 자지도
+              되묻지도 않고 <b>그 길이(최대 1시간)만큼</b> 그 계정의 조회를 건너뜁니다 — 설정 조회와 자동 전환 워커 둘 다.
+              「다시 시도」를 직접 누르면 그때는 묻습니다. 낡은 값은 그대로 보이되, 지난 창이면 위의 「초기화됨」으로 읽힙니다.
+            </>
+          )
+        },
+        {
+          tag: 'Codex',
+          name: 'OpenAI 모델 목록 — GPT-6-Astra 추가 · GPT-5.3 같은 구세대 제거 · 한국어 설명 · 속도(Fast) 선택',
+          desc: (
+            <>
+              Codex CLI 0.153의 모델 목록(<code>model/list</code>)을 실측해 맞췄습니다. <b>GPT-6-Astra</b>(가장 뛰어난
+              모델 · 복잡하고 까다로운 작업)가 맨 위에 오르고, 설명은 서버 영어 원문 대신 GPT-5.6-Sol처럼 한국어로
+              적힙니다(Sol은 「믿음직한 에이전트 일꾼 · 일상 작업」으로 서버 설명에 맞춰 고쳤습니다). 서버가 목록에 아직
+              남겨 둔 구세대(GPT-5.3-Codex-Spark · 5.4-Mini · 5.5)는 이름표가 아니라 <b>세대 규칙</b>(5.6 미만)으로
+              걸러 앞으로 나올 옛 모델도 같이 빠집니다 — 6.x·모르는 새 모델은 그대로 뜹니다. 그리고 서버가 모델마다
+              광고하는 <b>속도 티어</b>(Astra 「Fast · 2배」 · 5.6 「Fast · 1.5배」 · Sol은 「Ultrafast」도 · 5.4-Mini 없음)를 선택한 모델의 추론 슬라이더 아래
+              「속도」 줄에서 <b>표준 / Fast / Ultrafast</b>로 고를 수 있습니다. 고른 값은 채팅 정체성의 축(<code>engine.codexTier</code>)
+              이 되어 <code>thread/start</code>·<code>thread/resume</code>·<code>turn/start</code>의{' '}
+              <code>serviceTier</code>로 실리고, 칩에는 「GPT-6-Astra · Fast」로 붙고, 티어가 없는 모델로 바꾸면
+              내려놓습니다. 티어를 고르지 않은 채팅의 저장 파일과 정체성 해시는 한 글자도 바뀌지 않습니다. 그리고 Codex 스레드마다 채팅에 앉던 「Under-development features enabled … suppress_unstable_features_warning」 경고 카드는 스레드 설정에 그 억제 키를 실어 더 뜨지 않습니다(app-server에 직접 확인).
+            </>
+          )
+        },
+        {
+          tag: '채팅',
+          name: '/clear 뒤 첫 전송이 「작업 중」에 몇 분씩 굳고, 중단 후 다시 보내면 몇 초 만에 답하던 것 — 실행 채택이 이벤트 하나에만 걸려 있었다',
+          desc: (
+            <>
+              3.0.5(유휴 중지) · 3.0.7(한도 대기) · 3.0.8(CLI의 API 재시도 대기)에서 매번 다른 원인으로 짚었던 제보입니다.
+              이번엔 세션 파일로 실측했습니다: CLI는 <b>3초 만에 답을 다 썼는데</b>(사고 · 본문 · 파일 읽기 2회) 화면은
+              아무것도 받지 못했습니다 — 앱 쪽 유실입니다. 렌더러는 새 실행의 id를 <code>status:analyzing</code> 이벤트{' '}
+              <b>하나</b>에서만 채택하고, 그 전까지 오는 이벤트는 전부 「지난 실행의 잔재」로 버립니다. 그 한 이벤트가 전송 중
+              유실되면 실행 id가 영영 「대기」에 묶여 뒤따르는 working · result · done이 모두 버려지고, 전송이 세운 「작업 중」만
+              남습니다 — 중단+재전송이 유일한 복구였던 이유입니다. 이제 대기 상태에서 실 실행의 <code>working</code>(살아
+              있는 턴의 첫 도구 신호 — 잔재는 done/error라 혼동될 수 없다)을 만나면 그 실행을 채택해 매듭을 풉니다.{' '}
+              <code>scripts/poc-pending-adopt.mjs</code>가 유실을 재현하고 채택을 단언합니다. 한계: 이벤트 스트림 자체가 전송
+              계층에서 끊기면 working도 오지 않아 이 처방이 닿지 않습니다 — 재발하면 <code>CCG_ENGINE_LOG</code>로 전송과
+              리듀서를 가릅니다.
+            </>
+          )
+        },
+        {
+          tag: '앱',
+          name: '설정 › Updates — 업데이트 확인 · 설치 · 재시작과 패치노트를 한 자리에서',
+          desc: (
+            <>
+              설정 왼쪽 「앱」 그룹에 <b>Updates</b> 페이지가 생겼습니다. 설치된 버전 카드의 「업데이트 확인하기」를 누르면
+              확인 → 받기 → 「지금 설치 · 재시작」까지 이 자리에서 끝납니다(「이미 최신 버전이에요」 · 실패 안내 포함). 자동
+              안내를 기다리거나 앱을 껐다 켤 필요가 없습니다. 「패치노트 보기」는 이미 본 버전이라도 이번 · 지난 버전들의 변경
+              사항 창을 다시 엽니다. 받아 둔 새 버전은 다음 실행에 쓰이고, 설치는 이 버튼으로만 일어납니다 — 종료할 때 몰래
+              설치하지 않습니다.
+            </>
+          )
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'FIX',
+      lead: 'Fixes Settings and the account picker holding on to "0% left · soon" after your limits were reset, one account showing a 19-hour-old limit value, and the first send after /clear freezing on "working" — all measured, not guessed. Adds a Settings › Updates page (check · install · patch notes), puts GPT-6-Astra on the OpenAI model list, drops GPT-5.3-era models, and lets you pick the speed tier (Fast · Ultrafast).',
+      notes: [
+        {
+          tag: 'Accounts',
+          name: 'Limits were reset, but Settings and the account picker kept showing "0% left · soon" — nobody treated a value past its reset time as old',
+          desc: (
+            <>
+              The limit gauges draw the last fetched value, and the caches (shell disk 2 min · memory 5 min · renderer 1 min)
+              only looked at the value&apos;s <b>age</b>. That a window&apos;s reset time had passed showed up only as the word
+              &quot;soon&quot;; nothing decided that the percentage was <b>from the previous window</b>. So after Anthropic reset
+              your limits (right after a payment, a support reset), the old &quot;Fable 0% left · soon&quot; stayed as long as
+              the cache lived, and the Settings tab has no periodic refresh, so it did not change until you closed and reopened
+              it (reported screenshot — the disk cache had already been refreshed with the correct value by then). A window past
+              its reset time is now read as <b>the previous window&apos;s value</b>: the app no longer counts that row as a cache
+              hit and asks again (disk and memory), and the UI arms a timer at the earliest reset time whenever a value arrives, so
+              it asks again <b>at that moment</b> (immediately if a window has already passed · once a minute per account). Until
+              the new value lands the gauge reads &quot;Reset · Checking…&quot;, and the exhausted-hide filters, the &quot;Weekly
+              exhausted&quot; line and the sort orders (resets soonest · least left) no longer count a passed window as exhausted —
+              the same rule the engine&apos;s auto-switch already used.
+            </>
+          )
+        },
+        {
+          tag: 'Accounts',
+          name: 'One account showed a 19-hour-old value — the usage API\'s "retry in an hour" was cut to 30 seconds and hammered',
+          desc: (
+            <>
+              The usage API is tightly limited per account and sometimes answers 429 with <code>Retry-After: 3600</code> (one
+              hour; measured). The app capped that at 30 seconds, slept, and asked once more right away (stalling the serial
+              query queue for the whole wait), then failed, then asked twice more three minutes later, while the auto-switch
+              worker retried on its own 20s→5min curve — <b>dozens of requests an hour</b> into a blocked account, so the block
+              never lifted and a 19-hour-old value sat on screen as if current. When the server asks for more than 30 seconds
+              the app now neither sleeps nor retries; it skips that account <b>for that long (up to an hour)</b> — in the Settings
+              query and in the auto-switch worker alike. Pressing &quot;Retry&quot; yourself still asks. The old value stays
+              visible, and if its window has passed it reads as &quot;Reset&quot; per the note above.
+            </>
+          )
+        },
+        {
+          tag: 'Codex',
+          name: 'OpenAI model list — GPT-6-Astra added · GPT-5.3-era models removed · Korean descriptions · speed (Fast) selection',
+          desc: (
+            <>
+              The list now matches what Codex CLI 0.153 actually advertises (<code>model/list</code>). <b>GPT-6-Astra</b>
+              (most capable · complex, demanding work) sits on top, and descriptions are written in the app&apos;s language
+              instead of the server&apos;s English (Sol now reads &quot;reliable agentic workhorse · everyday tasks&quot;, matching
+              the server). Previous-generation models the server still lists (GPT-5.3-Codex-Spark · 5.4-Mini · 5.5) are hidden
+              by a <b>generation rule</b> (below 5.6) rather than by name, so future old models drop out too — 6.x and unknown new
+              models still show. And the <b>speed tier</b> each model advertises (Astra &quot;Fast · 2x&quot; · 5.6 &quot;Fast · 1.5x&quot; · Sol also &quot;Ultrafast&quot; · 5.4-Mini none) can be chosen on a &quot;Speed&quot; row under the selected model, below the reasoning slider:{' '}
+              <b>Standard / Fast / Ultrafast</b>. The choice becomes an identity axis of the chat (<code>engine.codexTier</code>), rides on{' '}
+              <code>thread/start</code> · <code>thread/resume</code> · <code>turn/start</code> as <code>serviceTier</code>, shows on
+              the chip as &quot;GPT-6-Astra · Fast&quot;, and is dropped when you switch to a model without that tier. Saved files and
+              identity hashes of chats that never picked a tier do not change by a single byte. The &quot;Under-development features enabled … suppress_unstable_features_warning&quot; warning card that landed in the chat on every Codex thread no longer appears — the thread config now carries that suppression key (verified directly against the app-server).
+            </>
+          )
+        },
+        {
+          tag: 'Chat',
+          name: 'The first send after /clear froze on "working" for minutes, then answered in seconds after stop + resend — run adoption hung on a single event',
+          desc: (
+            <>
+              The same report was pinned on a different cause in 3.0.5 (idle stop), 3.0.7 (limit wait) and 3.0.8 (the CLI&apos;s
+              API retry wait). This time the session file settled it: the CLI had <b>finished the whole answer in about 3
+              seconds</b> (thinking · text · two file reads) while the panel showed nothing — the drop was on the app side. The
+              renderer adopts a new run&apos;s id only from the single <code>status:analyzing</code> event and treats everything
+              before that as leftovers of the previous run. If that one event is lost in transit, the run id stays pending
+              forever, every following working · result · done is discarded, and only the &quot;working&quot; set by the send
+              remains — which is exactly why stop + resend was the only way out. Now, while pending, a real run&apos;s{' '}
+              <code>working</code> (the first tool signal of a live turn — leftovers are done/error, so it cannot be confused)
+              adopts that run and unties the knot. <code>scripts/poc-pending-adopt.mjs</code> reproduces the loss and asserts the
+              adoption. Limit: if the whole event stream is cut at the transport layer, no working arrives either — if it
+              recurs, capture <code>CCG_ENGINE_LOG</code> to tell transport from reducer.
+            </>
+          )
+        },
+        {
+          tag: 'App',
+          name: 'Settings › Updates — check · install · restart and the patch notes in one place',
+          desc: (
+            <>
+              A new <b>Updates</b> page lives under the &quot;App&quot; group in Settings. &quot;Check for updates&quot; on the
+              installed-version card runs check → download → &quot;Install now · restart&quot; right there (including &quot;already
+              up to date&quot; and failure notes), so there is no waiting for the automatic prompt or restarting the app. &quot;View
+              patch notes&quot; reopens the changes of this and previous versions even if you have already seen them. A downloaded
+              version is used on the next launch, and installing happens only through this button — never silently on exit.
+            </>
+          )
+        }
+      ]
+    }
+  },
   // 3.0.8 — 2026-09-04 보고: 간단한 질문이 6분 38초 「작업 중」만 돌다 중단 → 그대로 재전송은 즉시 답(스크린샷 —
   //   세션 파일 없음). 코드 대조: /clear 뒤 첫 전송 경로(StopAll→clear_queue·forget_thread·t1_spawn·reaper 대기)에는
   //   결함 없음. 남은 침묵 후보는 CLI의 **API 재시도 대기** — claude.exe 2.1.260 실측: 과부하(529)·5xx·429·연결 실패에
@@ -1974,6 +2163,24 @@ export function PatchNotes(): ReactNode {
         setSel(RELEASES[v] ? v : noteVersions()[0])
       })
       .catch(() => {})
+  }, [])
+
+  // 설정 › 앱 · 업데이트의 「패치노트 보기」 — SEEN 도장과 무관하게 언제든 다시 연다
+  // (Settings.tsx의 window.dispatchEvent(new CustomEvent('ccg-open-patchnotes'))).
+  useEffect(() => {
+    const open = (): void => {
+      window.api.app
+        .getVersion()
+        .then((v) => {
+          const ver = v || noteVersions()[0]
+          if (!ver) return
+          setVersion(ver)
+          setSel(RELEASES[ver] ? ver : noteVersions()[0])
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('ccg-open-patchnotes', open)
+    return () => window.removeEventListener('ccg-open-patchnotes', open)
   }, [])
 
   const close = (): void => {

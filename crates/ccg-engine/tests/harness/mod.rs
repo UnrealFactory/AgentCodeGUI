@@ -465,6 +465,7 @@ pub fn raw(model: &str, effort: EffortId, account: &str) -> RawIdentity {
             model: model.into(),
             effort,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,

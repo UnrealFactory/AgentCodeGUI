@@ -238,7 +238,7 @@ mod tests {
     fn runtime(alive: bool) -> ccg_engine::runtime::ChatRuntime<Fake> {
         use ccg_engine::identity::*;
         let raw = RawIdentity {
-            engine: RawEngine { kind: EngineKind::Claude, model: "opus".into(), effort: EffortId::Xhigh, codex_account: None },
+            engine: RawEngine { kind: EngineKind::Claude, model: "opus".into(), effort: EffortId::Xhigh, codex_account: None , codex_tier: None },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
                 account: Some("one@ccg.test".into()),

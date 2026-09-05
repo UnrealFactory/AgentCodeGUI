@@ -232,6 +232,7 @@ fn rt(clock: Arc<VirtualClock>, cli: WcapCli) -> ChatRuntime<WcapCli> {
             model: "haiku".into(),
             effort: EffortId::Minimal,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,

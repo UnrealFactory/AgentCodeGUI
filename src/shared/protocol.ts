@@ -587,6 +587,8 @@ export interface RunRequest {
   // 실행 엔진 — 생략하면 'claude'. 'codex'면 codexModel(GPT 모델 id)로 Codex CLI가 돈다.
   engine?: EngineId
   codexModel?: string
+  /** ★2026-09-05 — Codex 속도 티어 id(`"priority"` = Fast). 없거나 `"default"` = 표준. */
+  codexTier?: string
   resume?: string // session id to resume — carries this chat's conversation history
   // resume와 함께 켜면 그 세션을 '이어쓰기'가 아니라 '포크'한다 — 원본 세션 파일은 그대로
   // 두고 새 세션 id로 컨텍스트만 복제(SDK forkSession). /btw 질문 창의 첫 실행이 쓴다.
@@ -711,6 +713,15 @@ export interface CodexModelInfo {
   efforts: string[]
   defaultEffort: string
   isDefault: boolean
+  /** ★2026-09-05 — 속도 티어(app-server `serviceTiers`). 실측: `{id:"priority", name:"Fast", desc:"2x speed, increased usage"}`.
+   *  빈 배열 = 그 모델엔 속도 선택이 없다. (2.6.2 main은 안 싣는다 = `undefined`.) */
+  tiers?: CodexModelTier[]
+  defaultTier?: string | null
+}
+export interface CodexModelTier {
+  id: string
+  name: string
+  desc: string
 }
 
 // ── Window ───────────────────────────────────────────────────
@@ -1415,7 +1426,7 @@ export const IPC = {
  *  평평하게 두면 "codexModel은 claude일 때 무시" 같은 암묵 규칙이 비교식에 스며든다. */
 export type EngineAxis =
   | { kind: 'claude'; model: ModelId; effort: EffortId }
-  | { kind: 'codex'; model: string; effort: EffortId; account?: string | null }
+  | { kind: 'codex'; model: string; effort: EffortId; account?: string | null; tier?: string | null }
 
 /** 과금·자격 경로. `api_mode` 불리언 + `account` 문자열 두 필드로 두면
  *  "useApi면 account 무시"라는 규칙이 비교식 밖에 남는다 → 하나로 접는다. */
@@ -1435,7 +1446,7 @@ export interface ToolPolicyAxis {
  *  정준 직렬화다(O12 수정판). 부분 override 필드는 **없다** — "미지정"이라는 상태가
  *  저장 스키마에 존재하지 않으므로 전역 pref가 정체성에 개입할 수 없다. */
 export interface RawIdentity {
-  engine: { kind: EngineId; model: string; effort: EffortId; codexAccount?: string | null }
+  engine: { kind: EngineId; model: string; effort: EffortId; codexAccount?: string | null; codexTier?: string | null }
   billing: { kind: 'subscription' | 'api_key'; account?: string | null; dropEnvKey?: boolean }
   cwd: string
   addDirs: string[]
@@ -1449,7 +1460,7 @@ export interface RawIdentity {
  *  ★ `engine.kind`를 지정하면 `engine.model`을 반드시 함께 지정해야 한다(모델 id 공간이 갈린다).
  *  ★ `billing.keyFp`는 여기 없다 — 키 원문이 계약면에 오르지 않으므로 Rust가 저장된 키에서 계산한다. */
 export interface RawIdentityPatch {
-  engine?: { kind?: EngineId; model?: string; effort?: EffortId; codexAccount?: string | null }
+  engine?: { kind?: EngineId; model?: string; effort?: EffortId; codexAccount?: string | null; codexTier?: string | null }
   billing?: { kind?: 'subscription' | 'api_key'; account?: string; dropEnvKey?: boolean }
   cwd?: string
   addDirs?: string[] // 전체 교체(집합이라 서브필드가 없다)
@@ -1475,12 +1486,13 @@ export interface RunIdentity {
   hash: string // 16바이트 hex — 큐 항목·리비전·로그가 참조하는 키
 }
 
-/** 리프 경로 15개 — diff·정착 사유·드리프트 보고·UI 문구의 어휘. */
+/** 리프 경로 16개 — diff·정착 사유·드리프트 보고·UI 문구의 어휘(★2026-09-05 `engine.codexTier`). */
 export type IdentityField =
   | 'engine.kind'
   | 'engine.model'
   | 'engine.effort'
   | 'engine.codexAccount'
+  | 'engine.codexTier'
   | 'billing.kind'
   | 'billing.account'
   | 'billing.dropEnvKey'

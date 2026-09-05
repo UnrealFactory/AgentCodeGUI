@@ -85,6 +85,7 @@ function sanitizePicker(p?: Partial<PickerState> | null): PickerState {
     // 실행 엔진 + Codex 모델 — codex가 아니면 필드를 지워 기본(Claude)으로
     engine: p?.engine === 'codex' ? 'codex' : undefined,
     codexModel: typeof p?.codexModel === 'string' && p.codexModel ? p.codexModel : undefined,
+    codexTier: typeof p?.codexTier === 'string' && p.codexTier ? p.codexTier : undefined,
     // 실행 계정(이메일) — 형태만 확인 (등록 목록 대조는 picker·엔진이 담당)
     account: typeof p?.account === 'string' && p.account ? p.account : undefined,
     codexAccount: typeof p?.codexAccount === 'string' && p.codexAccount ? p.codexAccount : undefined
@@ -680,6 +681,7 @@ export function SessionWindow(): React.ReactElement {
       // 실행 엔진(claude/codex) + Codex GPT 모델 — 생략하면 Claude
       engine: pk.engine,
       codexModel: pk.codexModel,
+      codexTier: pk.codexTier,
       cwd, // 지정한 작업 폴더. 빈 값이면 엔진이 바탕화면으로 폴백
       addDirs: extraDirs.length ? extraDirs : undefined,
       resume: rs.resume,

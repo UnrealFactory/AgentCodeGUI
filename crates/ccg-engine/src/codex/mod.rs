@@ -54,10 +54,15 @@ pub const SYNTH: &str = "ccg_codex";
 /// - `features.default_mode_request_user_input`: Default 모드 라우터가
 ///   "unavailable in Default mode"로 막는 것을 푼다.
 /// - `features.unified_exec`: 명령을 PTY 세션으로 — 안 끝나는 명령이 턴을 막지 않는다.
+/// - `suppress_unstable_features_warning`(★2026-09-05): 위 features가 「Under-development features
+///   enabled … To suppress this warning, set suppress_unstable_features_warning = true」 `warning`
+///   알림(0.153 실측)을 매 스레드마다 내고 그게 채팅에 안내 카드로 앉았다. 같은 config 오버라이드에
+///   실으면 그 알림이 안 온다(app-server thread/start 직접 실측 — 있으면 warning 0건).
 pub fn thread_config(add_dirs: &[String]) -> Value {
     let mut c = json!({
         "tools": { "experimental_request_user_input": {} },
-        "features": { "default_mode_request_user_input": true, "unified_exec": true }
+        "features": { "default_mode_request_user_input": true, "unified_exec": true },
+        "suppress_unstable_features_warning": true
     });
     if !add_dirs.is_empty() {
         // Codex에는 `--add-dir`이 없다 — workspace-write 샌드박스의 쓰기 루트로 얹는다
@@ -89,6 +94,10 @@ pub struct CodexPlan {
     /// 격리 `CODEX_HOME` 물질화는 **셸**이 한다(`ccg-auth`가 auth.json·정션을 만든다) —
     /// 엔진 크레이트는 계정 스토어를 모른다.
     pub account: Option<String>,
+    /// ★2026-09-05 — 속도 티어 id(app-server `serviceTier` · 실측 `"priority"` = Fast).
+    /// `None` = 표준(파라미터를 싣지 않는다 — 서버 기본). `thread/start`·`thread/resume`·
+    /// `turn/start` 셋에 다 싣는다: 스레드 값이 바뀌어도(TUI /fast 등) 우리 정체성이 이긴다.
+    pub service_tier: Option<String>,
 }
 
 impl CodexPlan {
@@ -102,6 +111,9 @@ impl CodexPlan {
         });
         if let Some(d) = &self.developer_instructions {
             p["developerInstructions"] = json!(d);
+        }
+        if let Some(t) = &self.service_tier {
+            p["serviceTier"] = json!(t);
         }
         p
     }
@@ -189,6 +201,7 @@ pub fn build_plan(id: &RunIdentity, resume: Option<&str>) -> CodexPlan {
         resume: resume.map(str::to_string),
         api_mode: matches!(id.billing(), crate::identity::BillingAxis::ApiKey { .. }),
         account: id.codex_account().map(str::to_string),
+        service_tier: id.codex_tier().map(str::to_string),
     }
 }
 
@@ -298,6 +311,8 @@ mod tests {
         assert!(c["tools"]["experimental_request_user_input"].is_object());
         assert_eq!(c["features"]["default_mode_request_user_input"], true);
         assert_eq!(c["features"]["unified_exec"], true);
+        // ★2026-09-05 — 실험 기능 경고 억제. 없으면 스레드마다 「Under-development features enabled」 카드.
+        assert_eq!(c["suppress_unstable_features_warning"], true);
         assert!(c.get("sandbox_workspace_write").is_none());
         let c2 = thread_config(&["C:\\ref".to_string()]);
         assert_eq!(c2["sandbox_workspace_write"]["writable_roots"][0], "C:\\ref");

@@ -177,6 +177,7 @@ pub fn raw_default(cwd: &str) -> RawIdentity {
             model: "opus".into(),
             effort: EffortId::Xhigh,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,
@@ -237,6 +238,15 @@ pub fn patch_from_run_request(req: &Value) -> RawIdentityPatch {
                 .to_string(),
         );
         p.engine.codex_account = Some(req.get("codexAccount").and_then(Value::as_str).map(str::to_string));
+        // ★2026-09-05 — 속도 티어(Fast = "priority"). 요청에 없거나 "default"면 **표준으로 되돌린다**
+        // (계정 축과 같은 규약: Codex 요청은 이 축을 항상 지정한다 — 안 그러면 한 번 켠 Fast가 끄기 없이 남는다).
+        p.engine.codex_tier = Some(
+            req.get("codexTier")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("default"))
+                .map(str::to_string),
+        );
     } else if let Some(m) = req.get("model").and_then(Value::as_str) {
         p.engine.kind = Some(EngineKind::Claude);
         p.engine.model = Some(m.to_string());

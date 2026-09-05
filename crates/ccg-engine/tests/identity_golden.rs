@@ -29,6 +29,7 @@ fn fixture_raw() -> RawIdentity {
             model: "fable".into(),
             effort: EffortId::Medium,
             codex_account: None,
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,
@@ -71,7 +72,7 @@ fn identity_axis_set_is_frozen() {
     //   렌더러가 읽는 쪽(계약면)에 맞췄다 — 두 표기가 동시에 참일 수 없어 하나를 골랐다.
 }
 
-/// 리프 15개 동결 + 패치가 실을 수 있는 리프 동결.
+/// 리프 16개 동결 + 패치가 실을 수 있는 리프 동결(★2026-09-05 `engine.codexTier` 추가 — Codex 속도 티어).
 #[test]
 fn identity_leaf_set_is_frozen() {
     let paths: Vec<&str> = IdentityField::ALL.iter().map(|f| f.path()).collect();
@@ -82,6 +83,7 @@ fn identity_leaf_set_is_frozen() {
             "engine.model",
             "engine.effort",
             "engine.codexAccount",
+            "engine.codexTier",
             "billing.kind",
             "billing.account",
             "billing.dropEnvKey",
@@ -103,7 +105,7 @@ fn identity_leaf_set_is_frozen() {
         .filter(|p| *p != "billing.keyFp")
         .collect();
     assert_eq!(RawIdentityPatch::leaf_paths(), patchable);
-    assert_eq!(paths.len(), 15);
+    assert_eq!(paths.len(), 16);
 }
 
 /// 저장된 큐/리비전의 해시가 릴리즈 간에 살아야 한다.

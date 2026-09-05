@@ -33,9 +33,17 @@ pub const ACCT_USAGE_TTL_MS: u64 = 2 * 60 * 1000;
 /// 컨텍스트 팝오버 한도 캐시 TTL / 강제 새로고침의 바닥 TTL.
 pub const USAGE_TTL_MS: u64 = 5 * 60 * 1000;
 pub const USAGE_TTL_FRESH_MS: u64 = 15 * 1000;
-/// 429의 Retry-After 상한(2.6.2: 기본 15s, 최대 30s).
+/// 429의 Retry-After — **자고 나서 한 번 더 물어볼** 상한(2.6.2: 기본 15s, 최대 30s).
 pub const RETRY_AFTER_DEFAULT_MS: u64 = 15_000;
 pub const RETRY_AFTER_MAX_MS: u64 = 30_000;
+/// ★2026-09-05 — 서버가 그보다 길게 부르면(실측: `Retry-After: 3600` — 계정 단위의 시간
+/// 단위 차단) **자지도 재시도하지도 않고** 그 길이를 [`crate::net::NetError::RateLimited`]에
+/// 실어 돌려준다. 호출자(격리 장부)가 그만큼 그 계정을 건너뛴다. 이 값이 그 길이의 상한.
+///
+/// 왜: 30초 상한으로 잘라 자고 곧바로 다시 두드리면(그리고 3분 뒤 또, 워커도 따로 또)
+/// 차단 중인 계정에 **시간당 수십 건**이 나가 차단이 풀리지 않았다 — lmg 계정 하나가
+/// 19시간 동안 캐시 그대로였던 실측이 그것이다.
+pub const RETRY_AFTER_HOLD_MAX_MS: u64 = 60 * 60 * 1000;
 pub const USAGE_CACHE_FILE: &str = "usage-cache.json";
 
 // ── 요청 조립 ───────────────────────────────────────────────────────────────
@@ -88,7 +96,23 @@ pub struct AccountUsage {
     pub fable_resets_at: Option<i64>,
 }
 
+/// 창 하나가 **이미 지났나** — `resets_at`이 `now`(unix 초) 이하면 그 퍼센트는 지난 창의
+/// 값이라 지금을 말하지 않는다(`switch::window_state`의 `Rolled`와 같은 판정).
+pub fn window_rolled(resets_at: Option<i64>, now_sec: i64) -> bool {
+    resets_at.is_some_and(|r| r <= now_sec)
+}
+
 impl AccountUsage {
+    /// ★2026-09-05 — 세 창 중 하나라도 리셋 시각을 지났으면 이 행은 **낡았다**: 캐시 TTL이
+    /// 아무리 남았어도 적중이 아니다. 지난 창의 「0% 남음 · 곧」이 TTL만큼(그리고 조회가
+    /// 실패하면 무한히) 실측처럼 그려지던 것이 이 판정이 없어서였다 — Anthropic이 한도를
+    /// 초기화해 줬는데 화면은 옛 값을 붙들고 있던 제보.
+    pub fn rolled(&self, now_sec: i64) -> bool {
+        window_rolled(self.five_hour_resets_at, now_sec)
+            || window_rolled(self.weekly_resets_at, now_sec)
+            || window_rolled(self.fable_resets_at, now_sec)
+    }
+
     pub fn empty(email: &str) -> AccountUsage {
         AccountUsage {
             email: email.into(),

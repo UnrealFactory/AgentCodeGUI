@@ -11,6 +11,7 @@ import type {
   CodexAccountInfo,
   CodexAccountUsage,
   CodexModelInfo,
+  CodexModelTier,
   ToolLogItem,
   AgentQuestion,
   SkillInfo,
@@ -30,6 +31,7 @@ import { isEn, t, useLang } from '../lib/i18n'
 import { ensureAccounts, ensureCodexAccounts, inUseLabel, liveAccountOf, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
 import { sameCwd, type ApiRetryInfo, type ThreadItem } from '../store/session'
 import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
+import { nowSec, windowRolled } from '../lib/usageWindow'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
@@ -157,6 +159,8 @@ export interface PickerState {
   engine?: EngineId
   // engine==='codex'일 때의 GPT 모델 id (예: gpt-5.6-terra)
   codexModel?: string
+  // ★2026-09-05 engine==='codex'일 때의 속도 티어 id("priority" = Fast) — 없으면 표준
+  codexTier?: string
   // 이 채팅의 실행 계정(등록 계정 이메일) — 없으면 기본 계정을 따른다. 과금이
   // '구독'일 때만 의미가 있다(API 모드 실행에선 엔진이 무시).
   account?: string
@@ -170,19 +174,39 @@ export interface CodexModelOpt {
   v: string
   id: string
   d: string
+  /** ★2026-09-05 — 속도 티어(서버 `serviceTiers`). 비어 있으면 그 모델엔 속도 선택이 없다. */
+  tiers?: CodexModelTier[]
 }
-// model/list 실측(0.144, 2026-07) 순서 그대로 — 서버 영어 설명의 한국어 번역이
+// 서버 Fast 티어 실측(0.153.4 models_cache · 2026-09-05): astra 「2x speed, increased usage」 · 5.6 「1.5x」
+function fastTier(mult: string): CodexModelTier {
+  return { id: 'priority', name: 'Fast', desc: t(`${mult}배 속도 · 사용량 더 씀`, `${mult}x speed · uses more quota`) }
+}
+// CLI 내장 카탈로그(0.153.4 model/list · 로그인 없이도 온다) — sol만 광고: "The fastest available responses for latency-sensitive work."
+function ultrafastTier(): CodexModelTier {
+  return { id: 'ultrafast', name: 'Ultrafast', desc: t('가장 빠른 응답 · 지연에 민감한 작업', 'Fastest responses · latency-sensitive work') }
+}
+// model/list 실측(0.153.4, 2026-09-05) 순서 그대로 — 서버 영어 설명의 한국어 번역이
 // codexDescKo를 통해 실제 목록에도 입혀진다 (여기 없는 새 모델만 영어 원문)
 function codexFallback(): CodexModelOpt[] {
   return [
-    { v: 'GPT-5.6-Sol', id: 'gpt-5.6-sol', d: t('최신 프론티어 · 가장 어려운 작업', 'Newest frontier · hardest work') },
-    { v: 'GPT-5.6-Terra', id: 'gpt-5.6-terra', d: t('균형 에이전트 코딩 · 일상 작업', 'Balanced agentic coding · everyday work') },
-    { v: 'GPT-5.6-Luna', id: 'gpt-5.6-luna', d: t('빠르고 경제적 · 가벼운 작업', 'Fast and economical · light work') }
+    // "Our most capable model for complex, demanding work."
+    { v: 'GPT-6-Astra', id: 'gpt-6-astra', d: t('가장 뛰어난 모델 · 복잡하고 까다로운 작업', 'Most capable · complex, demanding work'), tiers: [fastTier('2')] },
+    // "Reliable agentic workhorse for everyday tasks."
+    { v: 'GPT-5.6-Sol', id: 'gpt-5.6-sol', d: t('믿음직한 에이전트 일꾼 · 일상 작업', 'Reliable agentic workhorse · everyday tasks'), tiers: [fastTier('1.5'), ultrafastTier()] },
+    { v: 'GPT-5.6-Terra', id: 'gpt-5.6-terra', d: t('균형 에이전트 코딩 · 일상 작업', 'Balanced agentic coding · everyday work'), tiers: [fastTier('1.5')] },
+    { v: 'GPT-5.6-Luna', id: 'gpt-5.6-luna', d: t('빠르고 경제적 · 가벼운 작업', 'Fast and economical · light work'), tiers: [fastTier('1.5')] }
   ]
 }
-// 구세대(5.5·5.4) 모델은 picker에서 숨긴다(유저 결정) — 서버 목록에 있어도 걸러낸다.
-// 모르는 새 모델(예: 5.7)은 그대로 통과해 목록에 뜬다.
-const CODEX_HIDDEN = new Set(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'])
+// 구세대 모델은 picker에서 숨긴다(유저 결정 — 2026-09-05 「GPT 5.3 같은 옛것 제거」) — 서버 목록에 있어도
+// 걸러낸다. 이름표 대신 **세대 규칙**이다: `gpt-<세대>`가 5.6 미만이면 구세대(5.5 · 5.4-mini · 5.3-codex-spark …).
+// 세대를 못 읽는 id(codex-…)와 5.6 이상·6.x·모르는 새 모델은 그대로 통과해 목록에 뜬다.
+const CODEX_HIDDEN = new Set(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'])
+const CODEX_MIN_GEN = 5.6
+export function codexHidden(id: string): boolean {
+  if (CODEX_HIDDEN.has(id)) return true
+  const m = /^gpt-(\d+(?:\.\d+)?)(?:-|$)/.exec(id)
+  return !!m && parseFloat(m[1]) < CODEX_MIN_GEN
+}
 // 엔진을 codex로 바꿀 때의 기본 모델 — 서버 기본(sol)이 아니라 균형형(terra)을 유지
 export const CODEX_DEFAULT_MODEL = 'gpt-5.6-terra'
 // 캐시는 서버 원본(raw)으로 둔다 — 표시 목록(설명)은 읽는 순간 만들어야 언어 전환이 따라온다
@@ -196,8 +220,19 @@ function codexDescKo(id: string, desc?: string, isDefault?: boolean): string {
 // 서버 원본 목록 → picker 표시 옵션 (숨김 모델 제외 + 설명 번역)
 function codexOptsOf(list: CodexModelInfo[]): CodexModelOpt[] {
   return list
-    .filter((m) => !CODEX_HIDDEN.has(m.id))
-    .map((m) => ({ v: m.label, id: m.id, d: codexDescKo(m.id, m.desc, m.isDefault) }))
+    .filter((m) => !codexHidden(m.id))
+    .map((m) => ({ v: m.label, id: m.id, d: codexDescKo(m.id, m.desc, m.isDefault), tiers: codexTiersKo(m) }))
+}
+// 서버 티어 → 표시. 아는 티어(priority=Fast)는 서버 설명 「2x speed, increased usage」를 한국어로 옮기고,
+// 모르는 티어는 서버 원문. 서버가 티어를 안 실어 주면(구 CLI) 아는 모델의 폴백 표를 쓴다.
+function codexTiersKo(m: CodexModelInfo): CodexModelTier[] {
+  const raw = m.tiers ?? codexFallback().find((f) => f.id === m.id)?.tiers ?? []
+  return raw.map((x) => {
+    const mult = /(\d+(?:\.\d+)?)x/.exec(x.desc)?.[1]
+    if (x.id === 'priority' && mult) return fastTier(mult)
+    if (x.id === 'ultrafast') return { ...ultrafastTier(), name: x.name || 'Ultrafast' }
+    return x
+  })
 }
 function fetchCodexModels(): Promise<CodexModelOpt[]> {
   if (codexModelCache) return Promise.resolve(codexOptsOf(codexModelCache))
@@ -3010,18 +3045,23 @@ function usageLineNode(parts: { label: string; left: number }[]): ReactNode {
 // 조회 못 한 항목은 조용히 빠진다(저장 토큰 만료 등 — 실행하면 CLI가 리프레시한다).
 function acctUsageLine(u?: AccountUsage): ReactNode {
   if (!u) return null
+  // ★2026-09-05 — 리셋 시각을 지난 창은 **지난 창의 값**이라 소진이 아니다(엔진의 자동 전환
+  // 판정 `window_state → Rolled`와 같은 규칙). 잔량 100으로 읽고, 「주간 소진 · 곧 초기화」로
+  // 못 박지 않는다 — Anthropic이 초기화해 줬는데 picker가 옛 값을 붙들던 제보.
+  const now = nowSec()
+  const left = (pct: number, at: number | null | undefined): number => (windowRolled(at, now) ? 100 : 100 - pct)
   // 주간 소진 계정(「주간 소진 숨김」 알약을 끄면 보임 · 유효 계정은 상시)은 잔여 % 대신 "언제 돌아오는지"가
   // 정보다 — 자동 이어서로 이 계정을 골라 기다리는 흐름의 판단 재료
-  if (u.weeklyPct != null && u.weeklyPct >= 100)
+  if (u.weeklyPct != null && u.weeklyPct >= 100 && !windowRolled(u.weeklyResetsAt, now))
     return (
       <>
         <span className="crit">{t('주간 소진', 'Weekly exhausted')}</span> · {resetText(u.weeklyResetsAt ?? null, true)}
       </>
     )
   const parts: { label: string; left: number }[] = []
-  if (u.fiveHourPct != null) parts.push({ label: t('5시간', '5h'), left: 100 - u.fiveHourPct })
-  if (u.fablePct != null) parts.push({ label: 'Fable', left: 100 - u.fablePct })
-  if (u.weeklyPct != null) parts.push({ label: t('주간', 'Weekly'), left: 100 - u.weeklyPct })
+  if (u.fiveHourPct != null) parts.push({ label: t('5시간', '5h'), left: left(u.fiveHourPct, u.fiveHourResetsAt) })
+  if (u.fablePct != null) parts.push({ label: 'Fable', left: left(u.fablePct, u.fableResetsAt) })
+  if (u.weeklyPct != null) parts.push({ label: t('주간', 'Weekly'), left: left(u.weeklyPct, u.weeklyResetsAt) })
   if (!parts.length) return null
   return usageLineNode(parts)
 }
@@ -3077,6 +3117,33 @@ function useCodexUsage(engine: EngineId | undefined, codexAccount: string | unde
 // 컴포저의 칩 하나("Fable 5 · 매우 높음 · 자동 허용")로 연다:
 // [Anthropic|OpenAI] 엔진 세그먼트 → 모델 목록(선택한 모델 아래로 추론 슬라이더가
 // 슬라이드 오픈) → 모드 → 과금(구독/API) → 계정. 점/아이콘 없는 플레인 텍스트+체크.
+
+// ★2026-09-05 — Codex 속도 줄(추론 슬라이더와 같은 .eslide 문법): 「속도  [표준][Fast][Ultrafast]   1.5배 속도 · 사용량 더 씀」.
+// 알약은 이름만, 설명은 오른쪽 .ecur(선택된 것)과 툴팁. 「표준」 = 티어 없음(서버 기본).
+function SpeedRow({ tiers, value, onChange }: { tiers: CodexModelTier[]; value?: string; onChange: (id: string | undefined) => void }) {
+  const cur = tiers.find((x) => x.id === value)
+  // 오른쪽 칸은 짧게 — 팝오버 폭(≈200px)에 알약 셋이 앉으면 긴 설명은 알약 위로 겹친다(실측). 전체 설명은 툴팁.
+  const mult = cur ? /(\d+(?:\.\d+)?)\s*(?:배|x|×)/.exec(cur.desc)?.[1] : undefined
+  const short = !cur ? '' : mult ? t(`${mult}배`, `${mult}×`) : cur.id === 'ultrafast' ? t('최고 속도', 'fastest') : cur.name
+  return (
+    <div className="eslide espeed">
+      <span className="elabel">{t('속도', 'Speed')}</span>
+      <div className="eseg">
+        <button className={'eseg-b' + (!cur ? ' on' : '')} title={t('서버 기본 속도', 'Standard server speed')} onClick={() => onChange(undefined)}>
+          {t('표준', 'Standard')}
+        </button>
+        {tiers.map((x) => (
+          <button key={x.id} className={'eseg-b' + (cur?.id === x.id ? ' on' : '')} title={x.desc} onClick={() => onChange(x.id)}>
+            {x.name}
+          </button>
+        ))}
+      </div>
+      <span className="ecur" title={cur?.desc ?? t('서버 기본 속도', 'Standard server speed')}>
+        {short}
+      </span>
+    </div>
+  )
+}
 
 // 추론 슬라이더 — 6단계 스냅 (최소~최대, EFFORTS.level 0~5)
 function EffortSlide({ effort, onChange }: { effort: EffortId; onChange: (e: EffortId) => void }) {
@@ -3303,8 +3370,11 @@ export function PickerChip({
     setPref(k === 'fable' ? 'accounts.hideFableExhausted' : 'accounts.hideWeeklyExhausted', next[k])
     setHide(next)
   }
-  const fableOut = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.fablePct ?? 0) >= 100
-  const weeklyOut = (a: AccountInfo): boolean => a.email !== effective && (aUsage[a.email]?.weeklyPct ?? 0) >= 100
+  // ★2026-09-05 — 리셋 시각을 지난 창은 소진이 아니다(지난 창의 값) — 초기화된 계정을 「소진 숨김」이 감추지 않게.
+  const fableOut = (a: AccountInfo): boolean =>
+    a.email !== effective && (aUsage[a.email]?.fablePct ?? 0) >= 100 && !windowRolled(aUsage[a.email]?.fableResetsAt)
+  const weeklyOut = (a: AccountInfo): boolean =>
+    a.email !== effective && (aUsage[a.email]?.weeklyPct ?? 0) >= 100 && !windowRolled(aUsage[a.email]?.weeklyResetsAt)
   const usableAccounts = accounts.filter((a) => !(hide.fable && fableOut(a)) && !(hide.weekly && weeklyOut(a)))
   // Codex 계정엔 Fable 창이 없다 — 주간 체크만 적용(Claude와 같은 프리프)
   const cxWeeklyOut = (a: CodexAccountInfo): boolean => {
@@ -3317,7 +3387,9 @@ export function PickerChip({
 
   // 칩 라벨 = 모델·추론·모드 + 계정. 계정은 항상 표시(기본 계정 포함) — API 모드면
   // 계정 대신 'API'. 계정 목록이 아직 안 왔으면(유효 계정 미상) 꼬리표를 생략한다.
-  const modelLabel = engine === 'claude' ? modelOpt.v : codexOpt.v
+  // Codex 속도 티어(Fast)가 켜져 있으면 칩에도 붙인다 — 「GPT-6-Astra · Fast」
+  const codexTierName = engine === 'codex' ? codexOpt.tiers?.find((x) => x.id === picker.codexTier)?.name : undefined
+  const modelLabel = engine === 'claude' ? modelOpt.v : codexOpt.v + (codexTierName ? ' · ' + codexTierName : '')
   let extra = ''
   if (apiMode) {
     extra = ' · API'
@@ -3372,10 +3444,30 @@ export function PickerChip({
               ))
             : codexModels.map((m) => (
                 <Fragment key={m.id}>
-                  <PPRow sel={m.id === codexId} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, codexModel: m.id })} />
-                  <div className={'edrawer' + (m.id === codexId ? ' open' : '')}>
+                  <PPRow
+                    sel={m.id === codexId}
+                    main={m.v}
+                    sub={m.d}
+                    // 모델을 바꾸면 그 모델이 모르는 티어는 내려놓는다(5.4-mini엔 Fast가 없다)
+                    onClick={() =>
+                      setPicker({
+                        ...picker,
+                        codexModel: m.id,
+                        codexTier: m.tiers?.some((x) => x.id === picker.codexTier) ? picker.codexTier : undefined
+                      })
+                    }
+                  />
+                  {/* ★2026-09-05 — 선택한 모델의 드로어: 추론 슬라이더 아래에 속도 줄(사용자 결정 — 별도
+                      섹션이 아니라 Claude의 추론처럼 모델 밑에서 열린다). 서버가 그 모델에 티어를 광고할
+                      때만 줄이 생기고(astra Fast · sol Fast+Ultrafast · 5.4-mini 없음) 드로어가 그만큼 큰다. */}
+                  <div className={'edrawer' + (m.id === codexId ? ' open' : '') + (m.tiers?.length ? ' tall' : '')}>
                     {m.id === codexId && (
-                      <EffortSlide effort={picker.effort} onChange={(id) => setPicker({ ...picker, effort: id })} />
+                      <>
+                        <EffortSlide effort={picker.effort} onChange={(id) => setPicker({ ...picker, effort: id })} />
+                        {!!m.tiers?.length && (
+                          <SpeedRow tiers={m.tiers} value={picker.codexTier} onChange={(id) => setPicker({ ...picker, codexTier: id })} />
+                        )}
+                      </>
                     )}
                   </div>
                 </Fragment>
@@ -3793,6 +3885,8 @@ function leafLabel(f: string): string {
       return t('모델', 'model')
     case 'engine.effort':
       return t('사고 강도', 'effort')
+    case 'engine.codexTier':
+      return t('속도', 'speed')
     case 'engine.account':
     case 'billing.account':
       return t('계정', 'account')
@@ -3978,6 +4072,18 @@ function resetText(resetsAt: number | null, useDays: boolean): string {
 // 실데이터의 초기화 남은 시간.
 type CtxRow = { label: string; sub: string; end: ReactNode; bar: number | null; tone?: '' | 'warn' | 'crit' }
 function limitRow(label: string, w: UsageWindow | null, useDays: boolean): CtxRow {
+  // ★2026-09-05 — 리셋 시각을 지난 창은 지난 창의 값(설정 게이지·picker와 같은 규칙). 「곧 초기화」에
+  // 옛 퍼센트를 붙여 두지 않고 「초기화됨 · 새 값 확인 중」 — 셸 메모리 캐시도 이 값을 적중으로 안
+  // 보므로 다음 조회가 새 값을 들고 온다.
+  if (w && windowRolled(w.resetsAt)) {
+    return {
+      label,
+      sub: t('초기화됨 · 새 값 확인 중', 'Reset · checking…'),
+      end: <b>{t('초기화됨', 'Reset')}</b>,
+      bar: 100,
+      tone: ''
+    }
+  }
   const rem = w ? Math.max(0, 100 - Math.round(w.pct)) : null
   return {
     label,

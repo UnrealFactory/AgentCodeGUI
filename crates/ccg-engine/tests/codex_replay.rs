@@ -678,6 +678,7 @@ fn raw_codex(model: &str, account: Option<&str>) -> RawIdentity {
             model: model.into(),
             effort: EffortId::Minimal,
             codex_account: account.map(str::to_string),
+            codex_tier: None,
         },
         billing: RawBilling {
             kind: BillingKind::Subscription,

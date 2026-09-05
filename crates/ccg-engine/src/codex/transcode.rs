@@ -411,13 +411,18 @@ impl Transcoder {
         if let Some(prev) = self.turn_id.take() {
             self.remember_ended(prev);
         }
-        let params = json!({
+        let mut params = json!({
             "threadId": self.thread_id.clone().unwrap_or_default(),
             // `text_elements`는 실측 스키마의 필수 자리(engine.ts:1654).
             "input": [{ "type": "text", "text": text, "text_elements": [] }],
             "model": self.plan.model,
             "effort": self.plan.effort,
         });
+        // ★2026-09-05 — 속도 티어(스키마 `TurnStartParams.serviceTier`: "이 턴과 이후 턴의 티어를
+        // 덮어쓴다"). 표준이면 싣지 않는다 — 스레드가 든 값을 건드리지 않는 것이 서버 기본.
+        if let Some(t) = &self.plan.service_tier {
+            params["serviceTier"] = json!(t);
+        }
         self.req("turn/start", params, Pending::Turn)
     }
 
@@ -1438,6 +1443,32 @@ mod tests {
         assert_eq!(f[0]["session_id"], "th-1", "threadId가 곧 session_id(resume 키)다");
         assert_eq!(r[0]["method"], "turn/start");
         assert_eq!(r[0]["params"]["input"][0]["text"], "안녕");
+    }
+
+    /// ★2026-09-05 — 속도 티어는 `thread/start`와 `turn/start` **둘 다**에 `serviceTier`로 실리고,
+    /// 표준(`None`)이면 키 자체가 없다(서버 기본을 건드리지 않는다).
+    #[test]
+    fn the_speed_tier_rides_on_thread_start_and_turn_start_and_standard_sends_nothing() {
+        let run = |tier: Option<&str>| {
+            let mut p = plan();
+            p.service_tier = tier.map(str::to_string);
+            let mut t = Transcoder::new(p);
+            let _ = t.on_outgoing(&crate::driver::initialize_request("init-1", None), 0);
+            let _ = t.on_outgoing(&crate::driver::user_message("안녕"), 0);
+            let c = t.on_rpc(&json!({ "id": 1, "result": {} }), 10);
+            let thread = rpcs(c)[0].clone();
+            let d = t.on_rpc(&json!({ "id": 2, "result": { "thread": { "id": "th-1" } } }), 20);
+            let turn = rpcs(d)[0].clone();
+            assert_eq!(thread["method"], "thread/start");
+            assert_eq!(turn["method"], "turn/start");
+            (thread["params"].clone(), turn["params"].clone())
+        };
+        let (th, tu) = run(Some("priority"));
+        assert_eq!(th["serviceTier"], "priority", "thread/start에 티어가 없다: {th}");
+        assert_eq!(tu["serviceTier"], "priority", "turn/start에 티어가 없다: {tu}");
+        let (th, tu) = run(None);
+        assert!(th.get("serviceTier").is_none(), "표준인데 thread/start에 키가 있다: {th}");
+        assert!(tu.get("serviceTier").is_none(), "표준인데 turn/start에 키가 있다: {tu}");
     }
 
     #[test]

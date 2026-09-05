@@ -184,6 +184,10 @@ pub enum EngineAxis {
         model: ModelId,
         effort: EffortId,
         account: Option<String>,
+        /// ★2026-09-05 — 속도 티어 id(`"priority"` = Fast). `None` = 표준. 직렬화 생략으로
+        /// 티어 없는 Codex 정체성의 `hash()`가 3.0.8과 같다(재스폰 사유가 생기지 않는다).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tier: Option<String>,
     },
 }
 
@@ -287,6 +291,13 @@ impl RunIdentity {
             EngineAxis::Claude { .. } => None,
         }
     }
+    /// ★2026-09-05 — Codex 속도 티어 id(`"priority"` = Fast). 표준·Claude면 `None`.
+    pub fn codex_tier(&self) -> Option<&str> {
+        match &self.engine {
+            EngineAxis::Codex { tier, .. } => tier.as_deref(),
+            EngineAxis::Claude { .. } => None,
+        }
+    }
 
     /// 16바이트 hex. 정준 직렬화 기반이라 프로세스 간·릴리즈 간에 같다(canon.rs).
     pub fn hash(&self) -> String {
@@ -310,15 +321,16 @@ impl RunIdentity {
     /// 정규화값 → 원시값 되접기. 저장·마이그레이션 2단 비교(O12 수정판)가 쓴다.
     /// `normalize(to_raw(x)) == x`는 골든 테스트가 강제한다.
     pub fn to_raw(&self) -> RawIdentity {
-        let (kind, model, effort, codex_account) = match &self.engine {
+        let (kind, model, effort, codex_account, codex_tier) = match &self.engine {
             EngineAxis::Claude { model, effort } => {
-                (EngineKind::Claude, model.clone(), *effort, None)
+                (EngineKind::Claude, model.clone(), *effort, None, None)
             }
             EngineAxis::Codex {
                 model,
                 effort,
                 account,
-            } => (EngineKind::Codex, model.clone(), *effort, account.clone()),
+                tier,
+            } => (EngineKind::Codex, model.clone(), *effort, account.clone(), tier.clone()),
         };
         let billing = match &self.billing {
             BillingAxis::Subscription {
@@ -341,6 +353,7 @@ impl RunIdentity {
                 model,
                 effort,
                 codex_account,
+                codex_tier,
             },
             billing,
             cwd: self.cwd.as_str().to_string(),
@@ -452,6 +465,7 @@ impl RunIdentity {
                     model: raw.engine.model.clone(),
                     effort: raw.engine.effort,
                     account,
+                    tier: normalize_tier(raw.engine.codex_tier.as_deref()),
                 }
             }
         };
@@ -493,6 +507,11 @@ pub struct RawEngine {
     pub effort: EffortId,
     #[serde(default)]
     pub codex_account: Option<String>,
+    /// ★2026-09-05 — Codex **속도 티어**(app-server `serviceTier` · 실측 `model/list`의
+    /// `serviceTiers[{id:"priority", name:"Fast"}]`). `None` = 표준. Claude 정체성에는 없다.
+    /// 옛 파일에는 키가 없다 → `default`; 없으면 직렬화도 생략해 옛 정체성의 원시값이 그대로다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -586,6 +605,9 @@ impl RawIdentity {
         if let Some(a) = &p.engine.codex_account {
             r.engine.codex_account = a.clone();
         }
+        if let Some(t) = &p.engine.codex_tier {
+            r.engine.codex_tier = t.clone();
+        }
         if let Some(k) = p.billing.kind {
             r.billing.kind = k;
         }
@@ -649,6 +671,9 @@ impl RawIdentity {
         if p.engine.codex_account.is_some() {
             v.push(F::EngineCodexAccount);
         }
+        if p.engine.codex_tier.is_some() {
+            v.push(F::EngineCodexTier);
+        }
         if p.billing.kind.is_some() {
             v.push(F::BillingKind);
         }
@@ -683,13 +708,19 @@ impl RawIdentity {
     }
 }
 
+/// ★2026-09-05 — 속도 티어 정규화: 빈 문자열·`"default"`(app-server의 「표준」 표기)는 `None`.
+/// 그래야 「표준으로 되돌림」이 렌더러 표기와 무관하게 한 값이고, 티어 없는 정체성의 해시가 안 흔들린다.
+fn normalize_tier(t: Option<&str>) -> Option<String> {
+    t.map(str::trim).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("default")).map(str::to_string)
+}
+
 /// **정규화값**에서 리프 하나를 JSON 값으로 뽑는다 — `diff()`의 유일한 비교 근거.
 fn norm_leaf_value(r: &RunIdentity, f: IdentityField) -> serde_json::Value {
     use serde_json::json;
     use IdentityField as F;
-    let (kind, codex_account) = match &r.engine {
-        EngineAxis::Claude { .. } => (EngineKind::Claude, None),
-        EngineAxis::Codex { account, .. } => (EngineKind::Codex, account.clone()),
+    let (kind, codex_account, codex_tier) = match &r.engine {
+        EngineAxis::Claude { .. } => (EngineKind::Claude, None, None),
+        EngineAxis::Codex { account, tier, .. } => (EngineKind::Codex, account.clone(), tier.clone()),
     };
     let (bkind, account, drop_env_key, key_fp) = match &r.billing {
         BillingAxis::Subscription {
@@ -710,6 +741,7 @@ fn norm_leaf_value(r: &RunIdentity, f: IdentityField) -> serde_json::Value {
         F::EngineModel => json!(r.model()),
         F::EngineEffort => json!(r.effort()),
         F::EngineCodexAccount => json!(codex_account),
+        F::EngineCodexTier => json!(codex_tier),
         F::BillingKind => json!(bkind),
         F::BillingAccount => json!(account),
         F::BillingDropEnvKey => json!(drop_env_key),
@@ -743,6 +775,8 @@ pub struct EnginePatch {
     pub model: Option<ModelId>,
     pub effort: Option<EffortId>,
     pub codex_account: Option<Option<String>>,
+    /// ★2026-09-05 — `Some(None)` = 표준으로 되돌린다.
+    pub codex_tier: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -808,6 +842,9 @@ impl RawIdentityPatch {
         if other.engine.codex_account.is_some() {
             self.engine.codex_account = other.engine.codex_account;
         }
+        if other.engine.codex_tier.is_some() {
+            self.engine.codex_tier = other.engine.codex_tier;
+        }
         if other.billing.kind.is_some() {
             self.billing.kind = other.billing.kind;
         }
@@ -848,6 +885,7 @@ impl RawIdentityPatch {
             F::EngineModel => self.engine.model = None,
             F::EngineEffort => self.engine.effort = None,
             F::EngineCodexAccount => self.engine.codex_account = None,
+            F::EngineCodexTier => self.engine.codex_tier = None,
             F::BillingKind => self.billing.kind = None,
             F::BillingAccount => self.billing.account = None,
             F::BillingDropEnvKey => self.billing.drop_env_key = None,
@@ -879,6 +917,8 @@ pub enum IdentityField {
     EngineModel,
     EngineEffort,
     EngineCodexAccount,
+    /// ★2026-09-05 — Codex 속도 티어(`engine.codexTier`).
+    EngineCodexTier,
     BillingKind,
     BillingAccount,
     BillingDropEnvKey,
@@ -906,13 +946,14 @@ pub enum IdentityAxis {
 }
 
 impl IdentityField {
-    pub const ALL: [IdentityField; 15] = {
+    pub const ALL: [IdentityField; 16] = {
         use IdentityField::*;
         [
             EngineKind,
             EngineModel,
             EngineEffort,
             EngineCodexAccount,
+            EngineCodexTier,
             BillingKind,
             BillingAccount,
             BillingDropEnvKey,
@@ -934,6 +975,7 @@ impl IdentityField {
             F::EngineModel => "engine.model",
             F::EngineEffort => "engine.effort",
             F::EngineCodexAccount => "engine.codexAccount",
+            F::EngineCodexTier => "engine.codexTier",
             F::BillingKind => "billing.kind",
             F::BillingAccount => "billing.account",
             F::BillingDropEnvKey => "billing.dropEnvKey",
@@ -957,7 +999,9 @@ impl IdentityField {
         use IdentityAxis as A;
         use IdentityField as F;
         match self {
-            F::EngineKind | F::EngineModel | F::EngineEffort | F::EngineCodexAccount => A::Engine,
+            F::EngineKind | F::EngineModel | F::EngineEffort | F::EngineCodexAccount | F::EngineCodexTier => {
+                A::Engine
+            }
             F::BillingKind | F::BillingAccount | F::BillingDropEnvKey | F::BillingKeyFp => {
                 A::Billing
             }

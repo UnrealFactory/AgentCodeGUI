@@ -322,6 +322,18 @@ impl Switcher {
         Self::note_backoff(&self.flaky, email, FLAKY_BACKOFF_BASE, FLAKY_BACKOFF_MAX)
     }
 
+    /// ★2026-09-05 — **서버가 부른 대기**(429 Retry-After)를 그대로 쉰다. 곡선이 아니다:
+    /// 서버가 「1시간」이라 했으면 20초 뒤에 되묻는 것이 곧 차단을 늘리는 일이다. 바닥은
+    /// 짧은 곡선의 밑(그보다 짧게 부르면 곡선이 이긴다), 상한은 [`ccg_auth::usage::RETRY_AFTER_HOLD_MAX_MS`].
+    fn note_hold(&self, email: &str, wait: Duration) -> Duration {
+        let wait = wait.clamp(FLAKY_BACKOFF_BASE, Duration::from_millis(ccg_auth::usage::RETRY_AFTER_HOLD_MAX_MS));
+        let mut g = self.flaky.lock().unwrap_or_else(|e| e.into_inner());
+        let e = g.entry(email.to_string()).or_insert((0, Instant::now()));
+        e.0 = e.0.saturating_add(1);
+        e.1 = Instant::now() + wait;
+        wait
+    }
+
     /// 조회 성공 = 복구. 메모리 장부 둘과 디스크 표식을 **전부** 지운다.
     fn note_well(&self, email: &str) {
         let had = self.sick.lock().unwrap_or_else(|e| e.into_inner()).remove(email).is_some();
@@ -521,9 +533,10 @@ fn collect(sw: &Switcher) -> Snapshot {
         //   (확인 크리틱 F4 — R1 C1-④가 안 닫혀 있던 자리). 비용은 뮤텍스 한 번이다.
         let busy_now = sw.busy.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let skip = !want.contains(email) || !usable || busy_now.contains(email);
+        // ★2026-09-05 — 리셋 시각을 지난 행은 2분 안이어도 신선하지 않다(지난 창의 값).
         let fresh = cache
             .get(email)
-            .is_some_and(|c| now_ms - c.at >= 0 && (now_ms - c.at) < usage::ACCT_USAGE_TTL_MS as i64);
+            .is_some_and(|c| now_ms - c.at >= 0 && (now_ms - c.at) < usage::ACCT_USAGE_TTL_MS as i64 && !c.data.rolled(now_ms / 1000));
         if !skip && !fresh && sw.may_fetch(email) {
             // 여기를 지나는 것이 곧 **실 HTTP 1건**이다(킬 스위치가 켜져 있으면 즉시 거절되지만
             // 그것도 "물으려 했다"로 센다 — 예산 문의 감사는 의도를 재야 한다).
@@ -548,7 +561,12 @@ fn collect(sw: &Switcher) -> Snapshot {
                 Err(ccg_auth::net::NetError::RotateBackoff(_)) => {}
                 // 못 물어봤다 = **모름**이다. 실패는 격리 장부에 남아 백오프를 만든다.
                 Err(e) => {
-                    if transient(&e) {
+                    if let ccg_auth::net::NetError::RateLimited { retry_after_ms } = &e {
+                        // ★2026-09-05 — 서버가 대기를 불렀다(실측 Retry-After 3600). 짧은
+                        // 곡선(20초→…5분)으로 되두드리면 차단이 안 풀린다 — 그 길이 그대로 쉰다.
+                        let wait = sw.note_hold(email, Duration::from_millis(*retry_after_ms));
+                        eprintln!("[acct-switch] {email} usage 429 — 서버가 부른 {wait:?} 동안 이 계정은 묻지 않는다");
+                    } else if transient(&e) {
                         // ★R4(G6) — 429·5xx·전송 실패는 계정의 죄가 아니다. 짧은 곡선.
                         let (n, wait) = sw.note_flaky(email);
                         eprintln!("[acct-switch] {email} 조회가 흔들렸다 {n}회({e}) — {wait:?} 뒤 다시");
@@ -665,6 +683,8 @@ fn transient(e: &ccg_auth::net::NetError) -> bool {
     match e {
         NetError::Status(401 | 403) | NetError::NoToken | NetError::TokenLost(_) => false,
         NetError::Status(s) => *s == 408 || *s == 429 || *s >= 500,
+        // ★2026-09-05 — 429 + 긴 Retry-After. 계정의 죄가 아니라 **서버가 부른 대기**다.
+        NetError::RateLimited { .. } => true,
         NetError::Transport(_) | NetError::BadBody => true,
         // 위 두 갈래에서 이미 걸러진다(호출자가 먼저 처리한다).
         // ★R28 ACCT R2(N2) — `RotateForbidden`은 **우리가 스스로 안 나간** 착지다(워밍

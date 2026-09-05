@@ -4282,6 +4282,7 @@ mod graceful_close_tests {
                 model: "haiku".into(),
                 effort: EffortId::Minimal,
                 codex_account: None,
+                codex_tier: None,
             },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
@@ -4406,6 +4407,7 @@ mod t22_tests {
                 model: "haiku".into(),
                 effort: EffortId::Minimal,
                 codex_account: None,
+                codex_tier: None,
             },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
@@ -4908,6 +4910,7 @@ mod reload_tests {
                 model: "haiku".into(),
                 effort: EffortId::Minimal,
                 codex_account: None,
+                codex_tier: None,
             },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
@@ -5088,6 +5091,7 @@ mod r4_queue_and_resume_tests {
                 model: "haiku".into(),
                 effort: EffortId::Minimal,
                 codex_account: None,
+                codex_tier: None,
             },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
@@ -5454,6 +5458,7 @@ mod slug_r1_account_dir_tests {
                 model: "haiku".into(),
                 effort: EffortId::Minimal,
                 codex_account: None,
+                codex_tier: None,
             },
             billing: RawBilling {
                 kind: BillingKind::Subscription,
