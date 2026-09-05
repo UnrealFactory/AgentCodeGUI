@@ -629,11 +629,15 @@ pub fn ma_save(data: &Value) -> Vec<String> {
             let empty = vec![];
             let panels = s.get("panels").and_then(Value::as_array).unwrap_or(&empty);
             for (i, p) in panels.iter().take(SLOT_COUNT).enumerate() {
-                if !panel_has_content(p) {
-                    slots[i] = Value::Null;
+                let seated = slots[i].as_str().filter(|id| !id.is_empty());
+                // Clear empties the transcript, not the seat. Detaching an existing chat
+                // here prunes it below, and the IPC caller disposes its runtime. A delayed
+                // Clear save can therefore kill the next Run without any terminal event.
+                // Keep its address (including moved chats) and persist the blank snapshot.
+                if !panel_has_content(p) && seated.is_none() {
                     continue;
                 }
-                let chat_id = format!("ma-{sid}-{i}");
+                let chat_id = seated.map(str::to_string).unwrap_or_else(|| format!("ma-{sid}-{i}"));
                 let mut rec = absorb_legacy(p, &chat_id, Source::Panel, &g);
                 if let Some(o) = rec.as_object_mut() {
                     o.insert("id".into(), json!(chat_id));

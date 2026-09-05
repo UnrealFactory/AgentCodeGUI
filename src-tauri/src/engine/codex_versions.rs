@@ -157,6 +157,15 @@ pub fn spawn_bin() -> PathBuf {
 /// 계정 → 격리 `CODEX_HOME`(2.6.2 `codexAccountRunDir`/`codexApiKeyRunDir` 파리티).
 /// 물질화(auth.json 쓰기 + `sessions`·`skills`·`plugins`·`cache` 정션)는 `ccg-auth`가 한다.
 pub fn home_for(plan: &CodexPlan) -> Option<PathBuf> {
+    // Explicit test/import override; an isolated CCG_HOME never reads the real
+    // user's Codex config. Authentication always remains account-isolated.
+    let native = std::env::var_os("CCG_CODEX_IMPORT_HOME").map(PathBuf::from).or_else(|| {
+        if std::env::var_os("CCG_HOME").is_some() { return None; }
+        std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(|| {
+            std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".codex"))
+        })
+    });
+    if let Some(native) = native { ccg_auth::codex::seed_tooling_from(&native); }
     if plan.api_mode {
         // API 키 모드 — 계정 로그인 대신 저장된 OPENAI_API_KEY로 과금하는 격리 홈.
         if let Some(k) = ccg_store::api_config::openai_api_key() {
@@ -180,6 +189,7 @@ pub fn home_for(plan: &CodexPlan) -> Option<PathBuf> {
 fn unregistered_home() -> PathBuf {
     let d = ccg_auth::codex::codex_root().join("unregistered");
     let _ = std::fs::create_dir_all(&d);
+    ccg_auth::codex::link_shared_state(&d);
     d
 }
 

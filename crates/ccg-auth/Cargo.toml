@@ -31,6 +31,7 @@ required-features = ["cli"]
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml_edit = "0.25"
 # OSCrypt(safeStorage) 복호/암호와 앱 홈 경로·원자 저장은 ccg-store 것을 **그대로 쓴다**.
 # 같은 스킴을 두 벌 두면 한쪽만 고쳐지는 순간 사용자가 재로그인을 하게 된다(R8에서 v10
 # 쓰기까지 실측 검증된 코드 = crates/ccg-store/src/safe_storage.rs가 단일 소스다).

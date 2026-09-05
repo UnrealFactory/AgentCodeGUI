@@ -168,6 +168,46 @@ fn records_without_an_origin_are_invisible_and_undeletable() {
 
 // ── C4 보드 칸막이 ─────────────────────────────────────────────────────────
 #[test]
+fn clearing_a_panel_keeps_its_chat_address_and_does_not_dispose_a_new_run() {
+    let h = migrated("bridge-clear-run");
+    let mut cleared = ma_get(false);
+    let board = cleared["sessions"].as_array_mut().unwrap().iter_mut().find(|s| s["id"] == "sess-A").unwrap();
+    let chat = crate::boards::read_board(&json!("sess-A"))["slots"][0].as_str().unwrap().to_string();
+    board["panels"][0]["title"] = json!("");
+    board["panels"][0]["snapshot"] = json!({ "messages": [], "session": null });
+
+    // Clear's debounced save can arrive after the next Run has already started.
+    // The IPC caller disposes every id returned by ma_save, without a terminal event.
+    let removed = ma_save(&cleared);
+    assert!(!removed.contains(&chat), "Clear's delayed save would kill the next run: {removed:?}");
+    assert_eq!(
+        crate::boards::read_board(&json!("sess-A"))["slots"][0], chat,
+        "clearing messages must not detach the event destination"
+    );
+    let disk = h.read_json(&format!("chats-v3/{chat}.json")).unwrap();
+    assert_eq!(disk["snapshot"]["messages"], json!([]));
+    assert!(disk["snapshot"]["session"].is_null());
+
+    let board = cleared["sessions"].as_array_mut().unwrap().iter_mut().find(|s| s["id"] == "sess-A").unwrap();
+    board["panels"][0]["title"] = json!("first message after Clear");
+    board["panels"][0]["snapshot"] = snap(1, "new-session");
+    assert!(ma_save(&cleared).is_empty());
+    assert_eq!(crate::boards::read_board(&json!("sess-A"))["slots"][0], chat);
+    assert_eq!(h.read_json(&format!("chats-v3/{chat}.json")).unwrap()["snapshot"], snap(1, "new-session"));
+}
+
+#[test]
+fn saving_unused_empty_panels_does_not_create_chats() {
+    let h = migrated("bridge-empty-seats");
+    let mut blob = ma_get(false);
+    let board = blob["sessions"].as_array_mut().unwrap().iter_mut().find(|s| s["id"] == "sess-A").unwrap();
+    board["panels"][5] = json!({ "title": "", "snapshot": { "messages": [] } });
+    assert!(ma_save(&blob).is_empty());
+    assert!(crate::boards::read_board(&json!("sess-A"))["slots"][5].is_null());
+    assert!(!h.path("chats-v3/ma-sess-A-5.json").exists());
+}
+
+#[test]
 fn a_partial_ma_save_keeps_boards_it_was_never_handed() {
     let h = migrated("bridge-masubset");
     let before = threads(&h);

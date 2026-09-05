@@ -28,6 +28,10 @@ enum Pending {
     Initialize,
     Thread,
     Turn,
+    ToolConfig,
+    Skills,
+    Mcp,
+    Reload(String),
     /// 백그라운드 터미널 목록. `Some(rid)`면 **능동 프로브 ⑥**가 시킨 것 —
     /// 응답이 오면 그 `request_id`의 `control_response`와 REPLACE를 함께 낸다.
     BgList(Option<String>),
@@ -111,6 +115,13 @@ pub struct Transcoder {
     initialized: bool,
     /// initialize/thread 왕복을 기다리는 사이 도착한 프롬프트(T1은 둘을 연달아 보낸다).
     queued_prompt: Option<String>,
+    tool_config: Option<Value>,
+    skills: Option<Value>,
+    mcp: Vec<Value>,
+    mcp_complete: bool,
+    tool_refresh_queued: bool,
+    tool_errors: BTreeMap<String, String>,
+    mcp_cursors: std::collections::BTreeSet<String>,
     asks: BTreeMap<String, Ask>,
     ask_seq: u64,
     items: BTreeMap<String, Item>,
@@ -227,6 +238,13 @@ impl Transcoder {
             ended_turns: Default::default(),
             initialized: false,
             queued_prompt: None,
+            tool_config: None,
+            skills: None,
+            mcp: Vec::new(),
+            mcp_complete: false,
+            tool_refresh_queued: false,
+            tool_errors: BTreeMap::new(),
+            mcp_cursors: std::collections::BTreeSet::new(),
             asks: BTreeMap::new(),
             ask_seq: 0,
             items: BTreeMap::new(),
@@ -303,6 +321,13 @@ impl Transcoder {
                     }
                     // T13/T23 — 소프트 중단. 턴이 없으면 보낼 것이 없다.
                     "interrupt" => {
+                        if self.pending.values().any(|p| matches!(p, Pending::Reload(_))) {
+                            self.pending.retain(|_, p| !matches!(p, Pending::Reload(_)));
+                            let mut result = self.fail_result("Turn interrupted", now);
+                            result["terminal_reason"] = json!("aborted_by_user");
+                            out.push(Egress::Frame(result));
+                            return out;
+                        }
                         if let (Some(t), Some(u)) = (self.thread_id.clone(), self.turn_id.clone()) {
                             out.push(self.req(
                                 "turn/interrupt",
@@ -385,7 +410,7 @@ impl Transcoder {
     /// 스레드가 있으면 턴만, 없으면 스레드부터. 프롬프트는 턴이 나갈 때까지 들고 있는다.
     fn start_or_turn(&mut self, text: String) -> Vec<Egress> {
         if self.thread_id.is_some() {
-            return vec![self.turn_start(&text)];
+            return vec![self.req("config/mcpServer/reload", json!({}), Pending::Reload(text))];
         }
         self.queued_prompt = Some(text);
         let params = self.plan.thread_params();
@@ -494,6 +519,30 @@ impl Transcoder {
         }
     }
 
+    fn refresh_tooling(&mut self) -> Vec<Egress> {
+        if self.thread_id.is_none() { return vec![]; }
+        if self.pending.values().any(|p| matches!(p, Pending::ToolConfig | Pending::Skills | Pending::Mcp)) {
+            self.tool_refresh_queued = true;
+            return vec![];
+        }
+        self.mcp.clear();
+        self.mcp_cursors.clear();
+        self.mcp_complete = false;
+        self.tool_errors.clear();
+        vec![
+            self.req("config/read", json!({"cwd":self.plan.cwd,"includeLayers":false}), Pending::ToolConfig),
+            self.req("skills/list", json!({"cwds":[self.plan.cwd],"forceReload":true}), Pending::Skills),
+            self.req("mcpServerStatus/list", json!({"threadId":self.thread_id,"limit":100,"detail":"toolsAndAuthOnly"}), Pending::Mcp),
+        ]
+    }
+
+    fn tooling_frame(&self) -> Option<Egress> {
+        if !self.mcp_complete || self.pending.values().any(|p| matches!(p, Pending::ToolConfig | Pending::Skills | Pending::Mcp)) { return None; }
+        let tooling = super::tooling::snapshot(&self.plan.cwd,self.plan.account.as_deref(),self.plan.api_mode,
+            self.tool_config.as_ref()?,self.skills.as_ref()?,&self.mcp,&self.tool_errors.values().cloned().collect::<Vec<_>>());
+        Some(Egress::Frame(json!({"type":"system","subtype":SYNTH,"kind":"tooling","tooling":tooling})))
+    }
+
     fn on_response(&mut self, msg: &Value, now: Millis) -> Vec<Egress> {
         let mut out = vec![];
         let Some(id) = msg.get("id").and_then(Value::as_i64) else { return out };
@@ -511,6 +560,7 @@ impl Transcoder {
                     return out;
                 }
                 self.initialized = true;
+                out.push(Egress::Rpc(json!({"jsonrpc":"2.0","method":"initialized","params":{}})));
                 // T2의 절반 — 상태기계는 우리가 보낸 `init-1`의 응답을 기다린다.
                 out.push(Egress::Frame(json!({
                     "type": "control_response",
@@ -545,6 +595,7 @@ impl Transcoder {
                 // T2의 나머지 — Codex의 threadId가 곧 우리 `session_id`다(resume 키).
                 out.push(Egress::Frame(json!({
                     "type": "system", "subtype": "init",
+                    "engine": "codex",
                     "session_id": tid,
                     "model": self.plan.model,
                     "cwd": self.plan.cwd,
@@ -554,6 +605,38 @@ impl Transcoder {
                 })));
                 if let Some(text) = self.queued_prompt.take() {
                     out.push(self.turn_start(&text));
+                }
+                out.extend(self.refresh_tooling());
+            }
+            Pending::Reload(text) => {
+                // An older CLI may not support reload. It must not swallow the
+                // user's next turn; surface its diagnostic in the inventory.
+                out.push(self.turn_start(&text));
+                out.extend(self.refresh_tooling());
+                if let Some(e) = err { self.tool_errors.insert("reload".into(),e); }
+            }
+            Pending::ToolConfig | Pending::Skills | Pending::Mcp => {
+                let key = match p { Pending::ToolConfig => "config", Pending::Skills => "skills", _ => "mcp" };
+                if let Some(e) = err { self.tool_errors.insert(key.into(),e); }
+                match p {
+                    Pending::ToolConfig => self.tool_config = Some(res),
+                    Pending::Skills => self.skills = Some(res),
+                    _ => {
+                        if let Some(data) = res["data"].as_array() { self.mcp.extend(data.iter().cloned()); }
+                        if let Some(cursor) = res["nextCursor"].as_str().filter(|s| !s.is_empty()) {
+                            if self.mcp_cursors.insert(cursor.to_string()) {
+                                out.push(self.req("mcpServerStatus/list",json!({"threadId":self.thread_id,"cursor":cursor,"limit":100,"detail":"toolsAndAuthOnly"}),Pending::Mcp));
+                            } else {
+                                self.tool_errors.insert("mcp".into(),"Codex returned a repeated MCP cursor".into());
+                                self.mcp_complete = true;
+                            }
+                        } else { self.mcp_complete = true; }
+                    }
+                }
+                out.extend(self.tooling_frame());
+                if self.tool_refresh_queued && !self.pending.values().any(|p| matches!(p, Pending::ToolConfig | Pending::Skills | Pending::Mcp)) {
+                    self.tool_refresh_queued = false;
+                    out.extend(self.refresh_tooling());
                 }
             }
             Pending::Turn => {
@@ -708,6 +791,7 @@ impl Transcoder {
             }
         }
         match method {
+            "skills/changed" | "mcpServer/startupStatus/updated" => self.refresh_tooling(),
             "item/agentMessage/delta" => {
                 let delta = s(&params, "delta").unwrap_or_default();
                 let item = s(&params, "itemId").unwrap_or_default();
@@ -968,12 +1052,12 @@ impl Transcoder {
             "fileChange" => {
                 let paths = item["changes"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|c| s(c, "path")).collect::<Vec<_>>().join(", "))
+                    .map(|a| a.iter().filter_map(|c| s(c, "path")).collect::<Vec<_>>())
                     .unwrap_or_default();
                 // ★ 이름이 `Edit`이면 셸의 diff 조립기가 **Claude 도구 입력**을 기대해
                 //   빈 diff를 만든다. Codex의 변경은 완료 프레임의 unified diff가 진실이라
                 //   전용 이름을 쓴다(wire.rs `tool_label`이 같은 'edit' 종류로 그린다).
-                ("codex_file_change".to_string(), json!({ "file_path": paths }))
+                ("codex_file_change".to_string(), json!({ "file_path": paths.join(", "), "file_paths": paths }))
             }
             "mcpToolCall" => {
                 let server = s(item, "server").unwrap_or_default();
@@ -1426,6 +1510,83 @@ mod tests {
     }
 
     #[test]
+    fn multi_file_edits_keep_exact_paths_instead_of_only_a_comma_joined_label() {
+        let mut t = Transcoder::new(plan());
+        let paths = json!(["src/one.rs", "src/with, comma.rs"]);
+        let out = frames(t.on_rpc(&json!({"method":"item/started","params":{"item":{
+            "id":"edit","type":"fileChange","changes":[{"path":paths[0]},{"path":paths[1]}]
+        }}}),0));
+        assert_eq!(out[0]["message"]["content"][0]["input"]["file_paths"],paths);
+    }
+
+    #[test]
+    fn native_tooling_is_paginated_and_does_not_hold_up_the_first_turn() {
+        let mut t = Transcoder::new(plan());
+        t.on_outgoing(&crate::driver::initialize_request("init-1", None), 0);
+        t.on_outgoing(&crate::driver::user_message("hello"), 0);
+        t.on_rpc(&json!({"id":1,"result":{}}),1);
+        let started = t.on_rpc(&json!({"id":2,"result":{"thread":{"id":"th"}}}),2);
+        let requests = rpcs(started.clone());
+        assert_eq!(requests[0]["method"],"turn/start","Inventory must not gate the first prompt");
+        assert!(frames(started).iter().all(|f| f["kind"] != "tooling"));
+        let id = |method: &str| requests.iter().find(|r| r["method"] == method).unwrap()["id"].clone();
+        assert!(t.on_rpc(&json!({"id":id("config/read"),"result":{"config":{"mcp_servers":{"off":{"enabled":false}}}}}),3).is_empty());
+        assert!(t.on_rpc(&json!({"id":id("skills/list"),"result":{"data":[{"skills":[{"name":"review","path":"/repo/SKILL.md","scope":"repo","enabled":true}]}]}}),4).is_empty());
+        let page = t.on_rpc(&json!({"id":id("mcpServerStatus/list"),"result":{"data":[{"name":"one","tools":{"a":{}}}],"nextCursor":"page2"}}),5);
+        assert!(frames(page.clone()).is_empty());
+        let next = rpcs(page)[0].clone();
+        assert_eq!(next["params"]["threadId"],"th");
+        let done = frames(t.on_rpc(&json!({"id":next["id"],"result":{"data":[{"name":"two","tools":{},"runtimeStatus":"connected"}],"nextCursor":null}}),6));
+        assert_eq!(done[0]["kind"],"tooling");
+        assert_eq!(done[0]["tooling"]["mcp"].as_array().unwrap().len(),3);
+        assert_eq!(done[0]["tooling"]["skills"][0]["path"],"/repo/SKILL.md");
+        let reload = rpcs(t.on_outgoing(&crate::driver::user_message("next"),7))[0].clone();
+        assert_eq!(reload["method"],"config/mcpServer/reload");
+        let next_turn = rpcs(t.on_rpc(&json!({"id":reload["id"],"result":{}}),8));
+        assert_eq!(next_turn[0]["method"],"turn/start");
+        assert_eq!(next_turn[0]["params"]["input"][0]["text"],"next");
+    }
+
+    #[test]
+    fn unsupported_inventory_methods_are_visible_without_failing_the_turn() {
+        let mut t = Transcoder::new(plan());
+        t.thread_id = Some("th".into());
+        let requests = rpcs(t.refresh_tooling());
+        let mut output = vec![];
+        for request in requests {
+            output.extend(t.on_rpc(&json!({"id":request["id"],"error":{"message":"Unsupported method"}}),0));
+        }
+        let f = frames(output);
+        assert_eq!(f.len(),1);
+        assert_eq!(f[0]["kind"],"tooling");
+        assert_eq!(f[0]["tooling"]["errors"].as_array().unwrap().len(),3);
+    }
+
+    #[test]
+    fn cancelling_during_config_reload_cannot_send_the_queued_prompt_later() {
+        let mut t = Transcoder::new(plan());
+        t.initialized = true;
+        t.thread_id = Some("th".into());
+        let req = rpcs(t.on_outgoing(&crate::driver::user_message("cancel me"),0))[0].clone();
+        let cancelled = frames(t.on_outgoing(&json!({"type":"control_request","request":{"subtype":"interrupt"}}),1));
+        assert_eq!(cancelled[0]["terminal_reason"],"aborted_by_user");
+        assert!(t.on_rpc(&json!({"id":req["id"],"result":{}}),2).is_empty());
+    }
+
+    #[test]
+    fn a_startup_change_during_inventory_loading_is_refreshed_after_the_current_batch() {
+        let mut t = Transcoder::new(plan());
+        t.thread_id = Some("th".into());
+        let requests = rpcs(t.refresh_tooling());
+        assert!(t.on_rpc(&json!({"method":"mcpServer/startupStatus/updated","params":{"threadId":"th"}}),0).is_empty());
+        let mut output = vec![];
+        for request in requests {
+            output.extend(t.on_rpc(&json!({"id":request["id"],"result":{"data":[]}}),1));
+        }
+        assert_eq!(rpcs(output).len(),3,"The startup notification must not be lost while a list is in flight");
+    }
+
+    #[test]
     fn a_prompt_before_initialize_waits_for_the_handshake() {
         let mut t = Transcoder::new(plan());
         // T1은 initialize와 user 프레임을 **연달아** 보낸다 — 프롬프트가 먼저 나가면 안 된다.
@@ -1436,7 +1597,8 @@ mod tests {
         let c = t.on_rpc(&json!({ "id": 1, "result": {} }), 10);
         let (f, r) = (frames(c.clone()), rpcs(c));
         assert_eq!(f[0]["response"]["request_id"], "init-1");
-        assert_eq!(r[0]["method"], "thread/start");
+        assert_eq!(r[0]["method"], "initialized");
+        assert_eq!(r[1]["method"], "thread/start");
         let d = t.on_rpc(&json!({ "id": 2, "result": { "thread": { "id": "th-1" } } }), 20);
         let (f, r) = (frames(d.clone()), rpcs(d));
         assert_eq!(f[0]["subtype"], "init");
@@ -1456,7 +1618,7 @@ mod tests {
             let _ = t.on_outgoing(&crate::driver::initialize_request("init-1", None), 0);
             let _ = t.on_outgoing(&crate::driver::user_message("안녕"), 0);
             let c = t.on_rpc(&json!({ "id": 1, "result": {} }), 10);
-            let thread = rpcs(c)[0].clone();
+            let thread = rpcs(c).into_iter().find(|r| r["method"] == "thread/start").unwrap();
             let d = t.on_rpc(&json!({ "id": 2, "result": { "thread": { "id": "th-1" } } }), 20);
             let turn = rpcs(d)[0].clone();
             assert_eq!(thread["method"], "thread/start");

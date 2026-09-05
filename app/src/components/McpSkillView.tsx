@@ -1,5 +1,7 @@
 /* ============================================================
  * McpSkillView — **이 패널(=채팅)이 실제로 들고 있는 도구 환경**을 헤더 칩 하나로.
+ * Codex uses skills/list + mcpServerStatus/list in its selected account home;
+ * the Claude disk scan and switches below are only used for Claude panels.
  *
  * 왜 패널마다 다른가: MCP 서버는 `<폴더>/.mcp.json`, 스킬은 `<폴더>/.claude/skills`에서
  * 온다. 멀티 그리드는 패널마다 작업 폴더가 다르므로 **패널마다 목록이 다르다.**
@@ -35,6 +37,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatTooling, EngineEventV3, McpLive, McpServerInfo, SkillInfo, SkillLive } from '@shared/protocol'
 import { getChatTooling, onChatEvent } from '../api/unified'
+import { setCodexToolEnabled, useCodexTooling, type CodexTooling } from '../api/codexTooling'
 import { IconAlert, IconBook, IconChevDown, IconEyeOff, IconPlug, IconServer } from './icons'
 import { t, useLang } from '../lib/i18n'
 import { getPref, setPref } from '../lib/prefs'
@@ -129,6 +132,7 @@ function Toggle({ on, name, onFlip }: { on: boolean; name: string; onFlip: () =>
 /** 표시용 MCP 행 — 와이어(McpLive) 또는 디스크 스캔에서 온다. `detail`은 디스크 전용
  *  (전송 방식 + 커맨드/URL — 실행 전에는 도구 목록이 없어 이 줄이 그 자리를 채운다). */
 interface McpRowData extends McpLive {
+  configKey?: string
   detail?: string
   /** 로컬/전역 알약의 판정 재료 — 디스크 스캔의 scope(이름으로 조인). 못 찾으면 전역. */
   scope?: 'local' | 'global'
@@ -183,10 +187,12 @@ function McpRow({
 
 function SkillRow({
   s,
+  prefix = '/',
   note,
   toggle
 }: {
   s: SkillLive
+  prefix?: string
   note?: string
   toggle?: { on: boolean; onFlip: () => void }
 }) {
@@ -198,7 +204,7 @@ function SkillRow({
         className={'grow' + (s.description ? ' has-tip tip-wrap' : '')}
         data-tip={s.description ? tipText(s.description) : undefined}
       >
-        /{s.name}
+        {prefix}{s.name}
         {/* 설명은 한 줄로 자른다 — 내장 스킬 설명은 수백 자짜리가 있다(dataviz 실측 941자).
             ★R4 — 꺼진 행에도 「꺼짐」 대신 설명을 그대로 둔다: 흐림+스위치가 이미 상태를
             말하고, 되켤지 판단하려면 무엇을 하는 스킬인지가 더 필요하다.
@@ -209,7 +215,7 @@ function SkillRow({
         </span>
       </span>
       {badge && <span className="end">{badge}</span>}
-      {toggle && <Toggle on={toggle.on} name={'/' + s.name} onFlip={toggle.onFlip} />}
+      {toggle && <Toggle on={toggle.on} name={prefix + s.name} onFlip={toggle.onFlip} />}
     </div>
   )
 }
@@ -228,11 +234,17 @@ export function McpSkillView({
   panelId,
   chatId,
   cwd,
+  engine = 'claude',
+  account,
+  apiMode = false,
   onOpen
 }: {
   panelId?: string
   chatId?: string
   cwd: string
+  engine?: 'claude' | 'codex'
+  account?: string | null
+  apiMode?: boolean
   onOpen?: () => void
 }) {
   useLang()
@@ -243,6 +255,15 @@ export function McpSkillView({
   // 살아 있는 'connected' 행을 꺼도 이번 턴은 그대로라, 행 상태를 덮어쓰면 거짓말이 된다.
   const [ov, setOv] = useState<Record<string, boolean>>({})
   const [open, setOpen] = useState(false)
+  const codex = engine === 'codex'
+  const context = { cwd, account, apiMode }
+  const native = useCodexTooling(context, codex && open)
+  const [saveError, setSaveError] = useState('')
+  const [saved, setSaved] = useState(false)
+  const saving = useRef(false)
+  const contextKey = JSON.stringify([engine, cwd, account, apiMode])
+  const currentContext = useRef(contextKey)
+  currentContext.current = contextKey
   // ★R4 — 섹션 접기(사용자 요청: 내장 스킬 16개가 목록을 길게 만든다). 팝오버가 닫히면
   // 리셋되는 가벼운 상태 — 접힘을 절이면 "왜 안 보이지"가 다음 세션의 미스터리가 된다.
   const [fold, setFold] = useState<{ mcp: boolean; skills: boolean }>({ mcp: false, skills: false })
@@ -295,7 +316,7 @@ export function McpSkillView({
       alive = false
       off()
     }
-  }, [panelId, chatId])
+  }, [panelId, chatId, engine, account, apiMode])
 
   // ★R3 — 디스크 스캔(설정 ▸ MCP/Skill 탭이 쓰던 `mcp:list`·`skill:list` 그대로).
   // 폴더가 바뀌면 다시 훑고, 지난 폴더에서 만진 낙관값도 접는다 — 파생값의 출처가
@@ -304,6 +325,9 @@ export function McpSkillView({
     let alive = true
     setDisk(null)
     setOv({})
+    setSaveError('')
+    setSaved(false)
+    if (codex) return
     const dir = cwd || ''
     Promise.all([
       window.api.mcp?.list?.(dir) ?? Promise.resolve([]),
@@ -318,7 +342,7 @@ export function McpSkillView({
     return () => {
       alive = false
     }
-  }, [cwd])
+  }, [cwd, codex, account, apiMode])
 
   // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지).
   //
@@ -348,25 +372,36 @@ export function McpSkillView({
   // 폴더를 바꾼 직후의 스냅샷은 **남의 폴더 것**이다. 와이어가 cwd를 싣고 오므로
   // 어긋나면 없는 것으로 친다 — 낡은 목록을 그리느니 안 그리는 게 낫다.
   const stale = !!snap && !!cwd && norm(snap.cwd) !== norm(cwd)
-  const live = stale ? null : snap
+  const codexSnap = snap as CodexTooling | null
+  const live = stale ? null : codex
+    ? codexSnap?.engine === 'codex' && codexSnap.apiMode === apiMode && (!account || codexSnap.account === account) ? codexSnap : null
+    : codexSnap?.engine === 'codex' ? null : snap
+  const nativeData = codex ? native.data : undefined
   // 디스크 폴백도 같은 게이트 — 스캔이 도는 사이 폴더가 바뀌면 남의 폴더 것이다.
   const diskOk = !!disk && norm(disk.cwd) === norm(cwd || '')
 
-  const mOn = (name: string, derived: boolean): boolean => ov['m:' + name] ?? derived
-  const sOn = (name: string, derived: boolean): boolean => ov['s:' + name] ?? derived
+  const mOn = (name: string, derived: boolean): boolean => ov['m:' + name] ?? (codex && nativeData?.mcp.find(m => m.name === name)
+    ? nativeData.mcp.find(m => m.name === name)!.status !== 'off' : derived)
+  const sOn = (name: string, derived: boolean): boolean => ov['s:' + name] ?? (codex && nativeData?.skills.find(s => s.path === name)
+    ? !nativeData.skills.find(s => s.path === name)!.off : derived)
   const flip = (kind: 'm' | 's', name: string, cur: boolean): void => {
+    if (saving.current) return
     const next = !cur
     setOv((o) => ({ ...o, [`${kind}:${name}`]: next }))
-    const req =
-      kind === 'm' ? window.api.mcp?.setEnabled?.(name, next) : window.api.skill?.setEnabled?.(name, next)
+    saving.current = true
+    setSaveError('')
+    const req = codex ? setCodexToolEnabled(context, kind === 'm' ? 'mcp' : 'skill', name, next)
+      : kind === 'm' ? window.api.mcp?.setEnabled?.(name, next) : window.api.skill?.setEnabled?.(name, next)
     // 실패하면 낙관값만 걷는다 — 파생값이 도로 보이는 게 곧 되돌림이다.
-    void req?.catch?.(() =>
+    void req?.then(() => { if (codex && currentContext.current === contextKey) { setSaved(true); native.refresh() } }).catch((error) => {
+      if (currentContext.current !== contextKey) return
+      setSaveError(String(error))
       setOv((o) => {
         const c = { ...o }
         delete c[`${kind}:${name}`]
         return c
       })
-    )
+    }).finally(() => { saving.current = false })
   }
 
   // 행 재료 — 와이어가 있으면 그것(연결 상태·도구·내장 스킬까지), 없으면 디스크 스캔
@@ -374,7 +409,9 @@ export function McpSkillView({
   // 낙관값을 상태에 바로 입힌다 — 표시가 곧 설정이다.
   // 와이어 행에는 scope가 없다 — 같은 폴더의 디스크 스캔에서 이름으로 빌린다(로컬/전역 알약).
   const diskMcpScope = new Map((diskOk ? disk!.mcp : []).map((d) => [d.name, d.scope] as const))
-  const mcpRows: McpRowData[] = live
+  const mcpRows: McpRowData[] = codex
+    ? (live?.mcp ?? nativeData?.mcp ?? []).map(m => ({ ...m }))
+    : live
     ? live.mcp.map((m) => ({ ...m, scope: diskMcpScope.get(m.name) ?? 'global' }))
     : (diskOk ? disk!.mcp : []).map((d) => ({
         name: d.name,
@@ -383,7 +420,9 @@ export function McpSkillView({
         detail: (d.transport !== 'unknown' ? d.transport + ' · ' : '') + d.detail,
         scope: d.scope
       }))
-  const skillRows: SkillLive[] = live
+  const skillRows: (SkillLive & { path?: string })[] = codex
+    ? ((live?.skills ?? nativeData?.skills ?? []) as (SkillLive & { path?: string })[])
+    : live
     ? live.skills
     : (diskOk ? disk!.skills : []).map((d) => ({
         name: d.name,
@@ -392,7 +431,7 @@ export function McpSkillView({
         scope: d.scope === 'global' ? 'user' : d.scope === 'plugin' ? 'plugin' : 'project',
         off: !sOn(d.name, d.enabled)
       }))
-  const plugins = live?.plugins ?? []
+  const plugins = live?.plugins ?? nativeData?.plugins ?? []
   // 로컬/전역 알약 — 칩 툴팁은 전체를 세고(붙어 있는 것의 사실), 섹션 머리·목록은 켜진 범위만.
   const inScope = (local: boolean): boolean => (local ? scopeF.local : scopeF.global)
   const mcpShown = mcpRows.filter((m) => inScope(m.scope === 'local'))
@@ -498,6 +537,13 @@ export function McpSkillView({
                 ★R2의 "패널 meta의 cwd에서 딴다" 규칙은 툴팁·판정(norm(cwd))에 그대로 남아 있다. */}
           </div>
 
+          {codex && <button className="hsec hsec-btn" onClick={() => native.refresh()} disabled={native.loading}>
+            {native.loading ? t('불러오는 중…', 'Loading…') : t('Codex 목록 새로고침', 'Refresh Codex tools')}
+          </button>}
+          {(saveError || (codex && native.error)) && <div className="ag-none" role="alert">{saveError || native.error}</div>}
+          {codex && [...new Set([...(nativeData?.errors ?? []), ...((live as CodexTooling | null)?.errors ?? [])])].map((error, i) => <div className="ag-none" role="alert" key={i}>{error}</div>)}
+          {codex && saved && <div className="ag-none">{t('저장했어요. 다음 실행부터 적용됩니다.', 'Saved. Applies from the next run.')}</div>}
+
           {/* ★R2 — 섹션 머리는 **칩과 같은 수**를 센다. 끈 것은 따로 적는다.
               ★R4 — 「MCP 서버」→「MCP」(사용자 지적: 뻔한 낱말은 뺀다) · 머리 클릭=접기. */}
           <button
@@ -514,19 +560,19 @@ export function McpSkillView({
             <div className="wb-pop-list">
               {mcpShown.map((m) => {
                 const derived = m.status !== 'off'
-                const on = live ? mOn(m.name, derived) : derived
+                const on = live || codex ? mOn(m.name, derived) : derived
                 // 살아 있는 행의 토글은 이번 턴을 못 바꾼다 — 상태와 스위치가 어긋난
                 // 동안만 그 사실을 한 줄로 잇는다(디스크 행은 표시가 곧 설정이라 불필요).
                 const note =
                   live && on !== derived ? t('다음 실행부터 적용', 'Applies from the next run') : undefined
                 return (
-                  <McpRow key={m.name} m={m} note={note} toggle={{ on, onFlip: () => flip('m', m.name, on) }} />
+                  <McpRow key={m.name} m={m} note={note} toggle={!codex || m.configKey ? { on, onFlip: () => flip('m', m.name, on) } : undefined} />
                 )
               })}
             </div>
           ) : (
             <div className="ag-none">
-              {mcpRows.length
+              {codex && native.loading && !live ? t('Codex 도구를 불러오는 중…', 'Loading Codex tools…') : mcpRows.length
                 ? t('이 범위에 해당하는 MCP 서버가 없어요', 'No MCP servers in this scope')
                 : t('이 폴더에 붙은 MCP 서버가 없어요', 'No MCP servers attached to this folder')}
             </div>
@@ -551,11 +597,12 @@ export function McpSkillView({
                 // 로컬)과 이미 꺼 둔 행. 내장(스코프 없음)·플러그인 스킬은 스위치가 없다
                 // (★3.0.6 — 디스크 스캔도 플러그인 스킬을 내므로 그쪽도 같은 규칙: CLI가
                 // `skillOverrides`를 플러그인 스킬에 적용하지 않는다).
-                const canToggle = live
+                const canToggle = codex ? !!s.path : live
                   ? s.off === true || s.scope === 'user' || s.scope === 'project' || s.scope === 'local'
                   : s.scope !== 'plugin'
                 const derived = !s.off
-                const on = canToggle && live ? sOn(s.name, derived) : derived
+                const selector = codex ? s.path ?? s.name : s.name
+                const on = canToggle && (live || codex) ? sOn(selector, derived) : derived
                 const note =
                   live && canToggle && on !== derived
                     ? t('다음 실행부터 적용', 'Applies from the next run')
@@ -564,15 +611,16 @@ export function McpSkillView({
                   <SkillRow
                     key={`${s.name}#${i}`}
                     s={s}
+                    prefix={codex ? '$' : '/'}
                     note={note}
-                    toggle={canToggle ? { on, onFlip: () => flip('s', s.name, on) } : undefined}
+                    toggle={canToggle ? { on, onFlip: () => flip('s', selector, on) } : undefined}
                   />
                 )
               })}
             </div>
           ) : (
             <div className="ag-none">
-              {skillRows.length
+              {codex && native.loading && !live ? t('Codex 스킬을 불러오는 중…', 'Loading Codex skills…') : skillRows.length
                 ? t('이 범위에 해당하는 스킬이 없어요', 'No skills in this scope')
                 : live
                   ? t('쓸 수 있는 스킬이 없어요', 'No skills available')

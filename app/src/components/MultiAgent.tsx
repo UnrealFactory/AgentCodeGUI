@@ -682,7 +682,7 @@ export const PanelView = memo(function PanelView({
             ★R2 `onOpen` — 팝오버 배타. 도구 칩이 열릴 때 폴더 팝오버를 접는다(반대
             방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
             끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
-        <McpSkillView panelId={panelId} cwd={cwd} onOpen={() => setFolderPop(false)} />
+        <McpSkillView panelId={panelId} cwd={cwd} engine={meta.picker.engine} account={meta.picker.codexAccount} apiMode={meta.api} onOpen={() => setFolderPop(false)} />
         <span className={'ma-status ' + status.cls}>
           {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
           {busy && !waiting && <span className="ma-status-spin" />}

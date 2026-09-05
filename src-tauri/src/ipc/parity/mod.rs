@@ -31,11 +31,12 @@
 //! 빼므로 굶기지 않는다 — `ipc_call`의 파일·Git 팔과 **같은 이유, 같은 처방**이다.
 
 use serde_json::Value;
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Emitter, WebviewWindow};
 
 mod aimsg;
 mod btw;
 mod codex;
+mod codex_tooling;
 mod dialog;
 pub mod misc;
 mod tooling;
@@ -95,6 +96,8 @@ pub fn owns(channel: &str) -> bool {
             | ch::SKILL_LIST
             | ch::SKILL_SET_ENABLED
             | ch::CODEX_MODELS
+            | "codex:tooling"
+            | "codex:tooling-set-enabled"
             | ch::CODEX_ACCOUNTS_USAGE
             | ch::GIT_AI_MESSAGE
     ) || misc::owns(channel)
@@ -133,6 +136,12 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         }
 
         ch::CODEX_MODELS => codex::models(),
+        "codex:tooling" => codex_tooling::dispatch(super::arg(p, 0), false),
+        "codex:tooling-set-enabled" => {
+            let result = codex_tooling::dispatch(super::arg(p, 0), true);
+            if result["ok"] == true { let _ = app.emit("codex:tooling-changed", ()); }
+            result
+        }
         // ★R28b RVERD — 조회기는 **엔진 쪽에 이미 있다**(`engine::codex_limit`). 여기서
         // 다시 만들지 않는 이유는 캐시가 한 벌이어야 하기 때문이다: 재검증 훅과 이 채널이
         // 각자 조회하면 대기 중인 codex 채팅 하나가 app-server를 분당 몇 번씩 태운다.

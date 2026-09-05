@@ -7,7 +7,21 @@
 // Chat.tsx와 AgentPanel.tsx가 같이 쓴다 — AgentPanel은 Chat이 import하는 쪽이라 Chat에 두면
 // 순환이다. 컴포넌트를 import하지 않는 lib에 둔다.
 import type { ReactNode } from 'react'
+import type { ToolFile, ToolLogItem } from '@shared/protocol'
 import { t } from './i18n'
+
+/** New logs carry exact paths. Older Codex logs only had a joined target;
+ * recover those only when the saved file count confirms the split. */
+export function toolFiles(tl: ToolLogItem): ToolFile[] {
+  if (Array.isArray(tl.files) && tl.files.length) return tl.files.filter(f => typeof f?.path === 'string' && f.path.length > 0)
+  const count = (tl.result ?? '').match(/^(?:(\d+) files\b|파일\s*(\d+)개(?:\s|$))/)
+  if (tl.kind === 'edit' && count) {
+    const n = Number(count[1] ?? count[2])
+    const paths = tl.target.split(', ')
+    if (n > 1 && paths.length === n && paths.every(p => p.length > 0)) return paths.map(path => ({ path }))
+  }
+  return tl.target ? [{ path: tl.target }] : []
+}
 
 /** 행 오른쪽 요약 토큰 → 표시 노드. `+N −N`은 색을 입힌다(ASCII `-`·U+2212 `−` 모두).
  *  말 뒤에 숫자가 붙는 꼴(새 파일 +N · 파일 N개 +a −d)은 ` · `로 가른다 — Bash 행의

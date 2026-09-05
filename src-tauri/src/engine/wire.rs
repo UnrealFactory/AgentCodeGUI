@@ -30,6 +30,7 @@ struct ToolRow {
     /// ★M4 — `Vec`인 이유: Codex의 `fileChange` 아이템 하나가 **파일 여러 개**를
     /// 바꾼다(`changes[]`). Claude 경로는 언제나 0..1개라 동작이 같다.
     pending: Vec<PendingChange>,
+    files: Vec<String>,
 }
 
 /// 할 일 한 줄(`TaskCreate`/`TaskUpdate` 누적본). 삽입 순서가 표시 순서라 `Vec`다.
@@ -117,6 +118,7 @@ pub struct Wire {
     /// 마지막 `system/init`이 보고한 도구 환경 원재료. `None` = 아직 init을 못 봤다
     /// (그 상태에서는 `tooling` 이벤트를 **안 낸다** — 빈 목록과 미지는 다르다).
     env: Option<ToolEnv>,
+    codex_tooling: Option<Value>,
     /// 이 채팅이 CLI에 **실제로 실은** 정책(m-logic P1e `tools` 축) — 끈 MCP 서버 이름.
     ///
     /// ★실측(`poc-mcpskill.mjs` C 픽스처 — B와 **같은 폴더**를 끄기 정책으로 한 번 더
@@ -486,12 +488,21 @@ fn mcp_target(name: &str) -> String {
 /// 렌더러는 이 값을 그대로 뷰어에 넘기고, 뷰어는 cwd 기준으로 푼다(`read_file(cwd, rel)`).
 /// 변경 파일 diff도 상대 키라 절대 경로를 넘기면 틴트 조회가 빗나간다.
 fn file_target(input: &Value, cwd: &str) -> String {
+    let paths = file_paths(input, cwd);
+    if paths.is_empty() { tool_target(input) } else { paths.join(", ") }
+}
+
+fn file_paths(input: &Value, cwd: &str) -> Vec<String> {
+    if let Some(paths) = input.get("file_paths").and_then(Value::as_array) {
+        return paths.iter().filter_map(Value::as_str).filter(|p| !p.is_empty())
+            .map(|p| diff::to_rel(cwd, p)).collect();
+    }
     for k in ["file_path", "path", "notebook_path"] {
         if let Some(v) = input.get(k).and_then(Value::as_str) {
-            return diff::to_rel(cwd, v);
+            return if v.is_empty() { vec![] } else { vec![diff::to_rel(cwd, v)] };
         }
     }
-    tool_target(input)
+    vec![]
 }
 
 /// 클릭 카드의 「요청」 섹션에 실을 도구 입력(JSON 한 줄). 파일 도구·Bash는 안 싣는다 —
@@ -755,6 +766,9 @@ impl Wire {
     /// **아무것도 내지 않는다** — 빈 목록("MCP 없음")과 미지("아직 모른다")는 다른 말이고,
     /// 화면은 그 둘을 다르게 그려야 한다.
     fn tooling_event(&self) -> Option<Value> {
+        if let Some(tooling) = &self.codex_tooling {
+            return Some(json!({"type":"tooling","runId":self.run_id,"tooling":tooling}));
+        }
         let env = self.env.as_ref()?;
         let mut skills: Vec<Value> = env
             .skills
@@ -993,7 +1007,7 @@ impl Wire {
                 .to_string();
             self.tools.insert(
                 id.clone(),
-                ToolRow { verb: "Task".into(), name: name.clone(), started_ms: now_ms(), pending: vec![] },
+                ToolRow { verb: "Task".into(), name: name.clone(), started_ms: now_ms(), pending: vec![], files: vec![] },
             );
             self.subagents.insert(id.clone());
             let role = one_line(&desc, 40);
@@ -1083,13 +1097,17 @@ impl Wire {
             "search" => search_target(&input),
             _ => tool_target(&input),
         };
-        let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: vec![] };
+        let files = if matches!(kind, "read" | "write" | "edit") { file_paths(&input, &self.cwd) } else { vec![] };
+        let mut row = ToolRow { verb: verb.clone(), name: name.clone(), started_ms: now_ms(), pending: vec![], files };
         let mut tool = Map::new();
         tool.insert("id".into(), json!(id));
         tool.insert("verb".into(), json!(verb));
         tool.insert("kind".into(), json!(kind));
         tool.insert("target".into(), json!(target));
         tool.insert("status".into(), json!("running"));
+        if !row.files.is_empty() {
+            tool.insert("files".into(), json!(row.files.iter().map(|path| json!({"path":path})).collect::<Vec<_>>()));
+        }
         // 클릭 카드 재료 — 원 이름(MCP 카드 제목 `서버 · 도구`)과 입력(「요청」 섹션).
         // 파일 도구·Bash는 카드가 아니라 파일/터미널 모달이 열리므로 안 싣는다.
         if !matches!(kind, "read" | "write" | "edit" | "bash") {
@@ -1218,6 +1236,14 @@ impl Wire {
         // 토큰은 언어 중립 — 렌더러 `fmtToolResult`가 표시 언어로 푼다.
         let changed: Vec<&PendingChange> =
             if is_err { vec![] } else { row.iter().flat_map(|r| r.pending.iter()).collect() };
+        if let Some(row) = row.as_ref().filter(|r| !r.files.is_empty()) {
+            let files: Vec<Value> = row.files.iter().map(|path| {
+                changed.iter().find(|p| p.file["path"] == *path)
+                    .map(|p| p.file.clone()).unwrap_or_else(|| json!({"path":path}))
+            }).collect();
+            e.insert("files".into(), json!(files));
+            e.insert("target".into(), json!(row.files.join(", ")));
+        }
         if !changed.is_empty() {
             // 편집 행의 요약은 +N −N이다(누적이 아니라 이 도구 한 번의 값 — `file.add/del`).
             // 파일이 여럿이면(Codex `fileChange`) 합계 + 파일 수.
@@ -1304,8 +1330,11 @@ impl Wire {
                 // `tools`만 `session`에 실려 갔고 나머지 셋은 **버려졌다**. 화면이 도구
                 // 환경을 물으려면 디스크를 다시 스캔하는 수밖에 없었고(2.6.2 방식), 그건
                 // "설정에 뭐가 적혀 있나"이지 "지금 이 대화에 뭐가 붙어 있나"가 아니다.
-                self.read_init_env(f);
-                out.extend(self.tooling_event());
+                if f["engine"] != "codex" {
+                    self.codex_tooling = None;
+                    self.read_init_env(f);
+                    out.extend(self.tooling_event());
+                }
             }
             // ★M9 — 커맨드 목록 REPLACE 푸시. 스킬은 세션 중간에도 늘어난다(에이전트가
             // 하위 폴더로 내려가면 그 폴더의 `.claude/skills`가 발견된다 — `sdk.d.ts`
@@ -1352,6 +1381,10 @@ impl Wire {
             // 건드리므로, 표시 전용 값은 전용 통로로 온다(상태기계에는 미지 subtype =
             // F21로 조용히 버려진다). 이름공간은 `ccg-engine/src/codex/mod.rs::SYNTH`.
             "system" if sub == "ccg_codex" => {
+                if f["kind"] == "tooling" {
+                    self.codex_tooling = f.get("tooling").cloned();
+                    out.extend(self.tooling_event());
+                }
                 match f.get("kind").and_then(Value::as_str).unwrap_or("") {
                     // `turn/plan/updated` — Claude의 TodoWrite 자리.
                     "todos" => out.push(json!({ "type": "todos", "runId": run,
@@ -1384,7 +1417,12 @@ impl Wire {
                             }
                         }
                         match self.tools.get_mut(&item) {
-                            Some(row) => row.pending = made,
+                            Some(row) => {
+                                row.pending = made;
+                                let paths: Vec<String> = changes.iter().filter_map(|c| c["path"].as_str())
+                                    .filter(|p| !p.is_empty()).map(|p| diff::to_rel(&cwd, p)).collect();
+                                if !paths.is_empty() { row.files = paths; }
+                            }
                             // 행이 없으면(started를 못 본 판) 그 자리에서 바로 낸다 —
                             // 변경 파일 칩이 비는 것보다 낫다.
                             None => {
@@ -1902,6 +1940,21 @@ impl Wire {
 mod tests {
     use super::*;
 
+    #[test]
+    fn codex_inventory_survives_a_tooling_get_without_a_fake_empty_init() {
+        let mut w = wire();
+        let init = w.translate(&json!({"type":"system","subtype":"init","engine":"codex","cwd":"/repo","session_id":"th"}));
+        assert!(init.iter().all(|e| e["type"] != "tooling"));
+        assert!(w.tooling().is_none());
+        let snapshot = json!({"engine":"codex","cwd":"/repo","account":"a@b","apiMode":false,
+            "skills":[{"name":"review","path":"/repo/SKILL.md","off":false}],"mcp":[],"plugins":[],"errors":[]});
+        let event = w.translate(&json!({"type":"system","subtype":"ccg_codex","kind":"tooling","tooling":snapshot}));
+        assert_eq!(event[0]["type"],"tooling");
+        assert_eq!(w.tooling().unwrap()["tooling"],snapshot);
+        w.translate(&json!({"type":"system","subtype":"init","cwd":"/repo","skills":["claude-skill"]}));
+        assert_ne!(w.tooling().unwrap()["tooling"]["engine"],"codex");
+    }
+
     fn wire() -> Wire {
         let mut w = Wire::default();
         w.begin_run("r1");
@@ -2416,6 +2469,24 @@ mod tests {
         assert_eq!(fc["file"]["add"], 2, "두 번째 편집도 런 원본 대비(+2 −2)");
         assert_eq!(fc["file"]["del"], 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn multi_file_edit_targets_and_counts_are_kept_separate_for_the_viewer() {
+        let mut w = wire();
+        w.cwd = "C:/work".into();
+        let start = w.translate(&json!({"type":"assistant","message":{"content":[{
+            "type":"tool_use","id":"many","name":"codex_file_change",
+            "input":{"file_paths":["C:/work/src/a.rs","C:/work/src/with, comma.rs"]}
+        }]}}));
+        let paths = json!([{"path":"src/a.rs"},{"path":"src/with, comma.rs"}]);
+        let tool = &start.iter().find(|e| e["type"] == "tool-start").unwrap()["tool"];
+        assert_eq!(tool["files"],paths);
+        assert_eq!(tool["target"],"src/a.rs, src/with, comma.rs");
+        let end = w.translate(&json!({"type":"user","message":{"content":[{
+            "type":"tool_result","tool_use_id":"many","is_error":false,"content":""
+        }]}}));
+        assert_eq!(end.iter().find(|e| e["type"] == "tool-end").unwrap()["files"],paths);
     }
 
     #[test]

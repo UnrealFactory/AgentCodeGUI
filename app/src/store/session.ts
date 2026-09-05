@@ -968,6 +968,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
         ...(e.output ? { output: e.output } : {}),
         ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
         ...(e.links ? { links: e.links } : {}),
+        ...(e.files ? { files: e.files } : {}),
         // 완료 때 확정된 대상(Codex webSearch 검색어)이 실려 오면 자리 문구를 덮는다
         ...(e.target ? { target: e.target } : {})
       })

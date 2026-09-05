@@ -152,183 +152,120 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
-  '3.0.9': {
+  '3.0.10': {
     ko: {
-      eyebrow: 'FIX',
-      lead: '한도가 초기화됐는데 설정 · 계정 picker가 「0% 남음 · 곧」을 붙들던 것과 한 계정의 한도가 19시간째 옛 값이던 것, /clear 뒤 첫 전송이 「작업 중」에 굳던 것을 실측으로 고쳤습니다. 설정에 Updates 페이지(확인 · 설치 · 패치노트)가 생겼고, OpenAI 모델 목록에 GPT-6-Astra를 올리고 GPT-5.3 같은 구세대를 빼고 속도(Fast · Ultrafast)를 고를 수 있게 했습니다.',
+      eyebrow: 'UPDATE',
+      lead: 'Clear 후 멈춤을 수정하고, Codex 도구 연동과 여러 파일의 변경 내용 확인을 개선했습니다.',
       notes: [
         {
-          tag: '계정',
-          name: '한도가 초기화됐는데 설정·계정 picker는 「0% 남음 · 곧」을 붙들고 있던 것 — 리셋 시각을 지난 값을 아무도 지난 값으로 안 봤다',
-          desc: (
-            <>
-              한도 게이지는 마지막 조회값을 그리고, 캐시(셸 디스크 2분 · 메모리 5분 · 렌더러 1분)는 값의 <b>나이</b>만
-              봤습니다. 창의 초기화 시각이 지났다는 사실은 「곧」이라는 글자로만 남고, 그 퍼센트가 <b>지난 창의 값</b>이라는
-              판정은 어디에도 없었습니다. 그래서 Anthropic이 한도를 초기화해 준 뒤에도(결제 직후 · 지원 처리 등) 캐시가
-              살아 있는 동안은 옛 「Fable 0% 남음 · 곧」이 그대로였고, 설정 탭은 주기 갱신이 없어 닫고 다시 열기 전엔 바뀌지
-              않았습니다(제보 스크린샷 — 그 사이 디스크 캐시는 정상값으로 갱신돼 있었습니다). 이제 리셋 시각을 지난 창은{' '}
-              <b>지난 창의 값</b>으로 읽습니다: 앱은 그 행을 캐시 적중으로 치지 않고 다시 묻고(디스크·메모리 둘 다), 화면은
-              값이 들어올 때마다 가장 이른 리셋 시각에 시계를 걸어 <b>그 순간</b> 다시 묻습니다(이미 지난 창이 있으면 곧바로 ·
-              계정당 1분에 한 번). 그 사이 게이지(설정 · 계정 picker · 작업 바 팝오버)는 「초기화됨 · 새 값 확인 중」으로 그리고, 소진 숨김 필터 · 「주간 소진」
-              줄 · 정렬(임박순 · 적게 남은순)도 지난 창을 소진으로 세지 않습니다 — 엔진의 자동 전환이 이미 쓰던 판정과 같은
-              규칙입니다.
-            </>
-          )
-        },
-        {
-          tag: '계정',
-          name: '한 계정의 한도가 19시간째 옛 값이던 것 — usage API의 「1시간 뒤 다시」를 30초로 잘라 되두드렸다',
-          desc: (
-            <>
-              한도 조회 API는 계정 단위로 세게 제한돼 429에 <code>Retry-After: 3600</code>(1시간)을 돌려주기도 합니다(실측).
-              앱은 그 값을 30초 상한으로 잘라 자고 곧바로 한 번 더 물었고(그동안 직렬 조회 큐가 통째로 멈춤), 실패하면 3분
-              뒤 또 2건, 자동 전환 워커도 따로 20초→5분 곡선으로 또 — 차단 중인 계정에 <b>시간당 수십 건</b>이 나가 차단이
-              풀리지 않았고, 화면엔 19시간 전 값이 실측처럼 남았습니다. 이제 서버가 부른 대기가 30초보다 길면 자지도
-              되묻지도 않고 <b>그 길이(최대 1시간)만큼</b> 그 계정의 조회를 건너뜁니다 — 설정 조회와 자동 전환 워커 둘 다.
-              「다시 시도」를 직접 누르면 그때는 묻습니다. 낡은 값은 그대로 보이되, 지난 창이면 위의 「초기화됨」으로 읽힙니다.
-            </>
-          )
+          tag: '채팅',
+          name: 'Clear 후 첫 메시지 멈춤 수정',
+          desc: 'Clear 직후 메시지를 보내면 생각 중에서 멈추던 문제를 수정했습니다. 취소한 뒤 다시 보내지 않아도 대화를 이어갈 수 있습니다.'
         },
         {
           tag: 'Codex',
-          name: 'OpenAI 모델 목록 — GPT-6-Astra 추가 · GPT-5.3 같은 구세대 제거 · 한국어 설명 · 속도(Fast) 선택',
-          desc: (
-            <>
-              Codex CLI 0.153의 모델 목록(<code>model/list</code>)을 실측해 맞췄습니다. <b>GPT-6-Astra</b>(가장 뛰어난
-              모델 · 복잡하고 까다로운 작업)가 맨 위에 오르고, 설명은 서버 영어 원문 대신 GPT-5.6-Sol처럼 한국어로
-              적힙니다(Sol은 「믿음직한 에이전트 일꾼 · 일상 작업」으로 서버 설명에 맞춰 고쳤습니다). 서버가 목록에 아직
-              남겨 둔 구세대(GPT-5.3-Codex-Spark · 5.4-Mini · 5.5)는 이름표가 아니라 <b>세대 규칙</b>(5.6 미만)으로
-              걸러 앞으로 나올 옛 모델도 같이 빠집니다 — 6.x·모르는 새 모델은 그대로 뜹니다. 그리고 서버가 모델마다
-              광고하는 <b>속도 티어</b>(Astra 「Fast · 2배」 · 5.6 「Fast · 1.5배」 · Sol은 「Ultrafast」도 · 5.4-Mini 없음)를 선택한 모델의 추론 슬라이더 아래
-              「속도」 줄에서 <b>표준 / Fast / Ultrafast</b>로 고를 수 있습니다. 고른 값은 채팅 정체성의 축(<code>engine.codexTier</code>)
-              이 되어 <code>thread/start</code>·<code>thread/resume</code>·<code>turn/start</code>의{' '}
-              <code>serviceTier</code>로 실리고, 칩에는 「GPT-6-Astra · Fast」로 붙고, 티어가 없는 모델로 바꾸면
-              내려놓습니다. 티어를 고르지 않은 채팅의 저장 파일과 정체성 해시는 한 글자도 바뀌지 않습니다. 그리고 Codex 스레드마다 채팅에 앉던 「Under-development features enabled … suppress_unstable_features_warning」 경고 카드는 스레드 설정에 그 억제 키를 실어 더 뜨지 않습니다(app-server에 직접 확인).
-            </>
-          )
+          name: 'MCP·스킬 연동',
+          desc: '선택한 계정과 작업 폴더의 Codex MCP·스킬을 불러옵니다. 로컬·전역 필터와 $ 스킬 자동완성을 지원하며, 지원되는 항목의 켬·끔 설정은 계정별로 저장해 다음 실행에 반영합니다.'
         },
         {
-          tag: '채팅',
-          name: '/clear 뒤 첫 전송이 「작업 중」에 몇 분씩 굳고, 중단 후 다시 보내면 몇 초 만에 답하던 것 — 실행 채택이 이벤트 하나에만 걸려 있었다',
-          desc: (
-            <>
-              3.0.5(유휴 중지) · 3.0.7(한도 대기) · 3.0.8(CLI의 API 재시도 대기)에서 매번 다른 원인으로 짚었던 제보입니다.
-              이번엔 세션 파일로 실측했습니다: CLI는 <b>3초 만에 답을 다 썼는데</b>(사고 · 본문 · 파일 읽기 2회) 화면은
-              아무것도 받지 못했습니다 — 앱 쪽 유실입니다. 렌더러는 새 실행의 id를 <code>status:analyzing</code> 이벤트{' '}
-              <b>하나</b>에서만 채택하고, 그 전까지 오는 이벤트는 전부 「지난 실행의 잔재」로 버립니다. 그 한 이벤트가 전송 중
-              유실되면 실행 id가 영영 「대기」에 묶여 뒤따르는 working · result · done이 모두 버려지고, 전송이 세운 「작업 중」만
-              남습니다 — 중단+재전송이 유일한 복구였던 이유입니다. 이제 대기 상태에서 실 실행의 <code>working</code>(살아
-              있는 턴의 첫 도구 신호 — 잔재는 done/error라 혼동될 수 없다)을 만나면 그 실행을 채택해 매듭을 풉니다.{' '}
-              <code>scripts/poc-pending-adopt.mjs</code>가 유실을 재현하고 채택을 단언합니다. 한계: 이벤트 스트림 자체가 전송
-              계층에서 끊기면 working도 오지 않아 이 처방이 닿지 않습니다 — 재발하면 <code>CCG_ENGINE_LOG</code>로 전송과
-              리듀서를 가릅니다.
-            </>
-          )
+          tag: '파일',
+          name: '여러 파일을 펼쳐서 확인',
+          desc: 'Edit 행을 누르면 수정한 파일 목록이 펼쳐집니다. 각 파일을 따로 열고 파일별 추가·삭제 줄 수도 확인할 수 있습니다.'
         },
         {
           tag: '앱',
-          name: '설정 › Updates — 업데이트 확인 · 설치 · 재시작과 패치노트를 한 자리에서',
-          desc: (
-            <>
-              설정 왼쪽 「앱」 그룹에 <b>Updates</b> 페이지가 생겼습니다. 설치된 버전 카드의 「업데이트 확인하기」를 누르면
-              확인 → 받기 → 「지금 설치 · 재시작」까지 이 자리에서 끝납니다(「이미 최신 버전이에요」 · 실패 안내 포함). 자동
-              안내를 기다리거나 앱을 껐다 켤 필요가 없습니다. 「패치노트 보기」는 이미 본 버전이라도 이번 · 지난 버전들의 변경
-              사항 창을 다시 엽니다. 받아 둔 새 버전은 다음 실행에 쓰이고, 설치는 이 버튼으로만 일어납니다 — 종료할 때 몰래
-              설치하지 않습니다.
-            </>
-          )
+          name: '패치노트 정리',
+          desc: '3.0.7부터의 긴 설명을 핵심 변경 사항 위주로 줄였습니다. 한국어와 영어 모두 같은 내용으로 정리했습니다.'
         }
       ]
     },
     en: {
-      eyebrow: 'FIX',
-      lead: 'Fixes Settings and the account picker holding on to "0% left · soon" after your limits were reset, one account showing a 19-hour-old limit value, and the first send after /clear freezing on "working" — all measured, not guessed. Adds a Settings › Updates page (check · install · patch notes), puts GPT-6-Astra on the OpenAI model list, drops GPT-5.3-era models, and lets you pick the speed tier (Fast · Ultrafast).',
+      eyebrow: 'UPDATE',
+      lead: 'Fixes the first message after Clear and improves Codex tools and multi-file edit review.',
       notes: [
         {
-          tag: 'Accounts',
-          name: 'Limits were reset, but Settings and the account picker kept showing "0% left · soon" — nobody treated a value past its reset time as old',
-          desc: (
-            <>
-              The limit gauges draw the last fetched value, and the caches (shell disk 2 min · memory 5 min · renderer 1 min)
-              only looked at the value&apos;s <b>age</b>. That a window&apos;s reset time had passed showed up only as the word
-              &quot;soon&quot;; nothing decided that the percentage was <b>from the previous window</b>. So after Anthropic reset
-              your limits (right after a payment, a support reset), the old &quot;Fable 0% left · soon&quot; stayed as long as
-              the cache lived, and the Settings tab has no periodic refresh, so it did not change until you closed and reopened
-              it (reported screenshot — the disk cache had already been refreshed with the correct value by then). A window past
-              its reset time is now read as <b>the previous window&apos;s value</b>: the app no longer counts that row as a cache
-              hit and asks again (disk and memory), and the UI arms a timer at the earliest reset time whenever a value arrives, so
-              it asks again <b>at that moment</b> (immediately if a window has already passed · once a minute per account). Until
-              the new value lands the gauge reads &quot;Reset · Checking…&quot;, and the exhausted-hide filters, the &quot;Weekly
-              exhausted&quot; line and the sort orders (resets soonest · least left) no longer count a passed window as exhausted —
-              the same rule the engine&apos;s auto-switch already used.
-            </>
-          )
-        },
-        {
-          tag: 'Accounts',
-          name: 'One account showed a 19-hour-old value — the usage API\'s "retry in an hour" was cut to 30 seconds and hammered',
-          desc: (
-            <>
-              The usage API is tightly limited per account and sometimes answers 429 with <code>Retry-After: 3600</code> (one
-              hour; measured). The app capped that at 30 seconds, slept, and asked once more right away (stalling the serial
-              query queue for the whole wait), then failed, then asked twice more three minutes later, while the auto-switch
-              worker retried on its own 20s→5min curve — <b>dozens of requests an hour</b> into a blocked account, so the block
-              never lifted and a 19-hour-old value sat on screen as if current. When the server asks for more than 30 seconds
-              the app now neither sleeps nor retries; it skips that account <b>for that long (up to an hour)</b> — in the Settings
-              query and in the auto-switch worker alike. Pressing &quot;Retry&quot; yourself still asks. The old value stays
-              visible, and if its window has passed it reads as &quot;Reset&quot; per the note above.
-            </>
-          )
+          tag: 'Chat',
+          name: 'First message after Clear',
+          desc: 'Fixed messages getting stuck on thinking immediately after Clear. Conversations now continue without cancelling and resending.'
         },
         {
           tag: 'Codex',
-          name: 'OpenAI model list — GPT-6-Astra added · GPT-5.3-era models removed · Korean descriptions · speed (Fast) selection',
-          desc: (
-            <>
-              The list now matches what Codex CLI 0.153 actually advertises (<code>model/list</code>). <b>GPT-6-Astra</b>
-              (most capable · complex, demanding work) sits on top, and descriptions are written in the app&apos;s language
-              instead of the server&apos;s English (Sol now reads &quot;reliable agentic workhorse · everyday tasks&quot;, matching
-              the server). Previous-generation models the server still lists (GPT-5.3-Codex-Spark · 5.4-Mini · 5.5) are hidden
-              by a <b>generation rule</b> (below 5.6) rather than by name, so future old models drop out too — 6.x and unknown new
-              models still show. And the <b>speed tier</b> each model advertises (Astra &quot;Fast · 2x&quot; · 5.6 &quot;Fast · 1.5x&quot; · Sol also &quot;Ultrafast&quot; · 5.4-Mini none) can be chosen on a &quot;Speed&quot; row under the selected model, below the reasoning slider:{' '}
-              <b>Standard / Fast / Ultrafast</b>. The choice becomes an identity axis of the chat (<code>engine.codexTier</code>), rides on{' '}
-              <code>thread/start</code> · <code>thread/resume</code> · <code>turn/start</code> as <code>serviceTier</code>, shows on
-              the chip as &quot;GPT-6-Astra · Fast&quot;, and is dropped when you switch to a model without that tier. Saved files and
-              identity hashes of chats that never picked a tier do not change by a single byte. The &quot;Under-development features enabled … suppress_unstable_features_warning&quot; warning card that landed in the chat on every Codex thread no longer appears — the thread config now carries that suppression key (verified directly against the app-server).
-            </>
-          )
+          name: 'MCP and skills integration',
+          desc: 'Loads Codex MCP servers and skills for the selected account and folder, with Local/Global filters and $ skill completion. Supported toggles are saved per account and applied on the next run.'
         },
         {
-          tag: 'Chat',
-          name: 'The first send after /clear froze on "working" for minutes, then answered in seconds after stop + resend — run adoption hung on a single event',
-          desc: (
-            <>
-              The same report was pinned on a different cause in 3.0.5 (idle stop), 3.0.7 (limit wait) and 3.0.8 (the CLI&apos;s
-              API retry wait). This time the session file settled it: the CLI had <b>finished the whole answer in about 3
-              seconds</b> (thinking · text · two file reads) while the panel showed nothing — the drop was on the app side. The
-              renderer adopts a new run&apos;s id only from the single <code>status:analyzing</code> event and treats everything
-              before that as leftovers of the previous run. If that one event is lost in transit, the run id stays pending
-              forever, every following working · result · done is discarded, and only the &quot;working&quot; set by the send
-              remains — which is exactly why stop + resend was the only way out. Now, while pending, a real run&apos;s{' '}
-              <code>working</code> (the first tool signal of a live turn — leftovers are done/error, so it cannot be confused)
-              adopts that run and unties the knot. <code>scripts/poc-pending-adopt.mjs</code> reproduces the loss and asserts the
-              adoption. Limit: if the whole event stream is cut at the transport layer, no working arrives either — if it
-              recurs, capture <code>CCG_ENGINE_LOG</code> to tell transport from reducer.
-            </>
-          )
+          tag: 'Files',
+          name: 'Expand multi-file edits',
+          desc: 'Click an Edit row to expand its file list. Open each file separately and see its added and removed line counts.'
         },
         {
           tag: 'App',
-          name: 'Settings › Updates — check · install · restart and the patch notes in one place',
-          desc: (
-            <>
-              A new <b>Updates</b> page lives under the &quot;App&quot; group in Settings. &quot;Check for updates&quot; on the
-              installed-version card runs check → download → &quot;Install now · restart&quot; right there (including &quot;already
-              up to date&quot; and failure notes), so there is no waiting for the automatic prompt or restarting the app. &quot;View
-              patch notes&quot; reopens the changes of this and previous versions even if you have already seen them. A downloaded
-              version is used on the next launch, and installing happens only through this button — never silently on exit.
-            </>
-          )
+          name: 'Shorter patch notes',
+          desc: 'Rewrote the notes from 3.0.7 onward around the changes that matter to users, in both Korean and English.'
+        }
+      ]
+    }
+  },
+  '3.0.9': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '사용 한도 표시를 개선하고, Codex 모델·속도 선택과 Updates 페이지를 추가했습니다.',
+      notes: [
+        {
+          tag: '계정',
+          name: '한도 초기화 후 표시 갱신',
+          desc: '한도가 초기화된 뒤에도 0%로 남아 있던 표시를 수정했습니다. 초기화 시각에 다시 조회하고, 새 값을 기다리는 동안 확인 중으로 표시합니다.'
+        },
+        {
+          tag: '계정',
+          name: '한도 조회 재시도 개선',
+          desc: '한도 조회가 제한되면 서버가 안내한 시간만큼 기다립니다. 반복 요청으로 갱신이 늦어지던 문제를 줄였습니다.'
+        },
+        {
+          tag: 'Codex',
+          name: '모델과 속도 선택',
+          desc: 'GPT-6-Astra를 추가하고 이전 세대 모델 목록을 정리했습니다. 지원 모델에서 표준·Fast·Ultrafast 속도를 선택할 수 있습니다.'
+        },
+        {
+          tag: '채팅',
+          name: '응답 표시 안정성 개선',
+          desc: '실행 시작 신호를 놓쳤을 때 답변이 화면에 표시되지 않던 문제를 보완했습니다.'
+        },
+        {
+          tag: '앱',
+          name: '설정에 Updates 추가',
+          desc: '설정에서 업데이트 확인·설치·재시작을 진행할 수 있습니다. 이미 확인한 패치노트도 다시 열 수 있습니다.'
+        }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Improves usage-limit displays and adds Codex model and speed choices plus an Updates page.',
+      notes: [
+        {
+          tag: 'Accounts',
+          name: 'Refresh limits after reset',
+          desc: 'Fixed limits remaining at 0% after a reset. The app checks again at the reset time and shows a checking state until the new value arrives.'
+        },
+        {
+          tag: 'Accounts',
+          name: 'Better usage-query retries',
+          desc: 'When usage queries are rate-limited, the app waits for the time requested by the server. This reduces repeated requests that delay fresh values.'
+        },
+        {
+          tag: 'Codex',
+          name: 'Model and speed choices',
+          desc: 'Added GPT-6-Astra and cleaned up older model entries. Supported models offer Standard, Fast, or Ultrafast speed options.'
+        },
+        {
+          tag: 'Chat',
+          name: 'More reliable reply display',
+          desc: 'Improved reply handling when the initial run-start signal is missed.'
+        },
+        {
+          tag: 'App',
+          name: 'Updates in Settings',
+          desc: 'Check for updates, install, and restart from Settings. You can also reopen patch notes you have already read.'
         }
       ]
     }
@@ -418,296 +355,118 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   답이 없다가 /clear 뒤 됨 — 렌더러 대기표가 옛 계정 채로 큐 드레인을 붙들었다 → 계정 변경 시 표 무효.
   '3.0.8': {
     ko: {
-      eyebrow: 'FIX',
-      lead: '몇 분째 「작업 중」만 돌다가 중단하고 다시 보내면 바로 답하던 것(CLI의 API 재시도 대기가 화면에 없었다), 고른 적 없는 「C:\\Users\\…\\Desktop을 찾을 수 없어요」가 보낼 때마다 뜨던 것, 보드 자리 수를 오가면 패널 순서가 뒤틀리던 것, 좁은 패널 헤더의 칩이 서로 겹치던 것을 고쳤습니다.',
+      eyebrow: 'UPDATE',
+      lead: '재시도 대기를 더 명확하게 표시하고, 작업 폴더와 멀티 패널 문제를 수정했습니다.',
       notes: [
         {
           tag: '채팅',
-          name: '간단한 질문이 몇 분째 「작업 중」만 돌다가, 중단하고 다시 보내면 바로 답하던 것 — API 재시도 대기가 화면에 없었다',
-          desc: (
-            <>
-              클로드 코드(CLI)는 API가 과부하(529)·서버 오류·연결 실패로 답하지 않으면 <b>스스로 기다렸다가 다시 요청</b>
-              합니다 — 한 번에 최대 60초, 과부하가 이어지면 최대 5분씩, 여러 번. 그동안 CLI는 「몇 번째 재시도 · 몇 초 뒤」를
-              앱에 프레임(<code>system/api_retry</code>)으로 알려 주는데, 앱은 이 프레임을 모르는 프레임으로 조용히
-              버렸습니다. 그래서 화면은 랜덤 문구와 초 수만 도는 「작업 중」이었고 사용자가 볼 수 있는 것은 아무것도
-              없었습니다(제보: 간단한 질문이 6분 38초 침묵 → 중단 → 그대로 다시 보내니 즉시 답). 이제 작업 인디케이터가 그
-              구간에 <b>「API 오류 — 다시 시도를 기다리는 중 · 3/10 · 서버 과부하 · 42초 뒤 다시」</b>처럼 사실을 적고 남은
-              초를 셉니다. 기다릴지, 중단하고 다시 보낼지는 그 줄을 보고 정할 수 있습니다. Codex 엔진은 같은 사정을 안내
-              줄로 이미 보이고 있었습니다. /clear 직후 첫 전송 경로는 코드로 다시 대조했고 3.0.5에서 고친 것 외의 결함은
-              없었습니다.
-            </>
-          )
+          name: 'API 재시도 대기 표시',
+          desc: 'Claude가 서버 오류로 재시도를 기다릴 때 사유·시도 횟수·남은 시간을 표시합니다.'
         },
         {
           tag: '채팅',
-          name: '고른 적 없는 「작업 폴더를 찾을 수 없어요 — C:\\Users\\…\\Desktop」가 보낼 때마다 뜨다가 몇 번째에야 되던 것',
-          desc: (
-            <>
-              패널의 폴더 칩은 <code>ClaudeOffice</code>인데 보낼 때마다 「C:\Users\…\Desktop을 찾을 수 없어요」가 뜨고,
-              몇 번 더 보내면 그제야 됐습니다(제보). 원인은 둘이 겹친 것입니다. 첫째, 앱은 전송 요청에 실린 폴더를 읽기{' '}
-              <b>전에</b> 디스크에 저장된 정체성(폴더를 안 고른 채 저장돼 비어 있던)으로 엔진을 먼저 만들었고, 빈 폴더의
-              대체값인 <code>%USERPROFILE%\Desktop</code>이 OneDrive로 바탕화면이 옮겨진 계정에는 <b>없는 경로</b>라 거기서
-              죽었습니다 — 요청이 실어 온 멀쩡한 폴더는 읽히지도 않았고, 렌더러의 지연 저장이 정체성을 되쓴 뒤에야 성공했습니다.
-              이제 전송·설정 변경이 실어 온 폴더·모델을 <b>엔진을 만들기 전에</b> 얹어 첫 전송에 바로 뜨고, 빈 폴더의 대체는
-              Windows가 아는 실제 바탕화면(리디렉션 반영) → <code>%USERPROFILE%\Desktop</code> → <code>%USERPROFILE%</code>{' '}
-              순으로 <b>실제로 있는 폴더</b>를 고릅니다. 둘째, 같은 오류 말풍선이 /clear·부팅 재장전·설정 조회에도 앉았는데
-              이제 <b>전송에만</b> 앉고, 설정 변경은 카드 한 줄, 조회는 침묵합니다.
-            </>
-          )
+          name: '작업 폴더 오류 수정',
+          desc: '선택한 폴더 대신 바탕화면을 찾다가 전송에 실패하던 문제를 수정했습니다. OneDrive로 이동한 바탕화면도 올바르게 인식합니다.'
         },
         {
-          tag: '멀티 패널',
-          name: '자리 수(2·3·4·5)를 오가다 보면 패널 순서가 뒤틀리던 것 — 1번이던 패널이 5번에 가 있다',
-          desc: (
-            <>
-              자리 수를 <b>줄일</b> 때 포커스된 패널이 접히게 되면 그 패널을 보이는 마지막 자리로 끌어올립니다(현재
-              대화는 안 접힌다는 규칙). 그런데 그 이동이 순서를 <b>영구히</b> 바꿨고, 늘릴 때는 되돌리지 않았습니다.
-              그래서 5→1→5를 반복할 때마다 원래 1‥4번이 한 칸씩 밀렸습니다 — 패널 아무 데나 클릭해도 포커스가 잡히니
-              언제 그러는지 알 수 없어 「저절로 뒤틀린다」로 보였습니다(제보). 이제 그 끌어올림은 <b>임시</b>입니다: 줄일
-              때 끌어올리되 그 전 순서를 기억하고, 늘리면 그 순서로 돌아갑니다(끌어올린 패널이 그래도 안 보이는 수라면
-              그 순서 위에 다시 얹습니다). 헤더를 길게 눌러 끌거나 접힌 자리를 ↥로 올려 <b>손으로</b> 정한 순서는 그
-              순간부터 진짜 순서가 되어 되돌리지 않습니다.
-            </>
-          )
+          tag: '멀티',
+          name: '패널 순서 유지',
+          desc: '패널 수를 줄였다 늘려도 원래 순서로 돌아옵니다. 직접 드래그해서 정한 순서는 유지합니다.'
         },
         {
-          tag: '멀티 패널',
-          name: '5·6분할처럼 좁은 패널에서 헤더의 폴더·MCP & Skill·작업 중 칩이 서로 겹치던 것',
-          desc: (
-            <>
-              패널이 좁아지면 제목이 줄어드는 대신 폴더 칩과 「MCP &amp; SKILL」 칩이 자기 상자 밖으로 삐져나와 「작업 중
-              00:36」 칩 위에 포개졌습니다(제보 화면). 칩 버튼이 상자보다 작아질 수 없는 CSS 기본값 탓입니다. 이제 칩은 이름만
-              말줄임으로 줄고(아이콘·+N·화살표는 그대로), 제목이 먼저 양보하며, 아이콘 버튼과 「작업 중」 칩은 맨 마지막에야 줄어듭니다. 어느 너비에서도 서로 포개지지 않습니다.
-            </>
-          )
+          tag: '화면',
+          name: '좁은 패널의 헤더 정리',
+          desc: '5·6분할 화면에서 폴더·MCP & Skill·작업 상태 표시가 겹치던 문제를 수정했습니다.'
         }
       ]
     },
     en: {
-      eyebrow: 'FIX',
-      lead: 'Fixes a turn that sat on "working" for minutes then answered instantly after stop and resend (the CLI\'s API retry wait was invisible), a "cannot find C:\\Users\\…\\Desktop" error on every send for a folder you never chose, panel order drifting when stepping the board\'s panel count, and header chips overlapping in narrow panels.',
+      eyebrow: 'UPDATE',
+      lead: 'Makes retry waits clearer and fixes working-folder and multi-panel issues.',
       notes: [
         {
           tag: 'Chat',
-          name: 'A simple question sat on "working" for minutes, then answered instantly after stop + resend — the API retry wait was invisible',
-          desc: (
-            <>
-              When the API does not answer (overloaded 529, server error, connection failure), Claude Code{' '}
-              <b>waits and retries on its own</b> — up to 60 seconds per attempt, up to 5 minutes each while the overload
-              persists, several times over. During that wait the CLI tells the app which attempt it is on and how long
-              until the next one (<code>system/api_retry</code>), but the app dropped that frame as unknown. So the
-              screen showed nothing but the rotating phrase and a second counter (reported: a simple question sat silent
-              for 6m 38s; stop, resend, instant answer). The working indicator now states the facts for that stretch —{' '}
-              <b>&quot;API error — waiting to retry · 3/10 · server overloaded · retry in 42s&quot;</b> — and counts down,
-              so you can decide whether to wait or stop and resend. The Codex engine already showed the same situation as
-              a notice line. The first-send-after-/clear path was re-checked in code; nothing beyond the 3.0.5 fix was
-              wrong there.
-            </>
-          )
+          name: 'Visible API retry waits',
+          desc: 'When Claude waits to retry a server error, the app shows the reason, attempt count, and time remaining.'
         },
         {
           tag: 'Chat',
-          name: '"Cannot find the working folder — C:\\Users\\…\\Desktop" on every send, for a folder you never chose, until it randomly worked',
-          desc: (
-            <>
-              The panel\'s folder chip said <code>ClaudeOffice</code>, yet every send answered &quot;cannot find
-              C:\Users\…\Desktop&quot;, and after a few more tries it went through (reported). Two things overlapped.
-              First, the app built the engine from the identity stored on disk (saved with an empty folder before one was
-              picked) <b>before</b> reading the folder carried by the send request, and the stand-in for an empty folder,{' '}
-              <code>%USERPROFILE%\Desktop</code>, <b>does not exist</b> on accounts whose Desktop lives in OneDrive — so it died
-              there, never reading the perfectly good folder in the request, until the renderer\'s delayed save rewrote the
-              identity. The folder and model carried by a send or a settings change are now applied <b>before</b> the engine is
-              built, so the first send goes through, and the empty-folder stand-in is picked from folders that <b>actually
-              exist</b>: the Desktop Windows knows about (redirection included) → <code>%USERPROFILE%\Desktop</code> →{' '}
-              <code>%USERPROFILE%</code>. Second, the same error bubble also landed on /clear, boot reload and settings reads;
-              it now lands <b>only on a send</b>, a settings change gets a one-line card, and reads stay silent.
-            </>
-          )
+          name: 'Working-folder fix',
+          desc: 'Fixed sends failing because the app looked for the Desktop instead of the selected folder. Desktops redirected to OneDrive are also recognized.'
         },
         {
-          tag: 'Multi-panel',
-          name: 'Panel order drifted while stepping the panel count through 2·3·4·5 — panel #1 ended up at #5',
-          desc: (
-            <>
-              When you <b>reduce</b> the panel count and the focused panel would fold away, it is pulled up into the last
-              visible seat (the current conversation never folds). That move changed the order <b>permanently</b>, and
-              raising the count never undid it, so every 5→1→5 round trip shifted the original #1‥#4 one seat to the
-              right — and since any click focuses a panel, it looked like the order scrambled on its own (reported).
-              The pull-up is now <b>temporary</b>: reducing remembers the order it started from and raising restores it
-              (if the pulled-up panel still would not be visible at that count, it is laid over the restored order
-              again). An order you set <b>by hand</b> — long-press-dragging a header or raising a folded seat with ↥ —
-              becomes the real order from then on and is never reverted.
-            </>
-          )
+          tag: 'Multi',
+          name: 'Keep panel order',
+          desc: 'Reducing and restoring the panel count now restores the original order. Orders set by dragging are preserved.'
         },
         {
-          tag: 'Multi-panel',
-          name: 'Header chips (folder · MCP & Skill · Working) overlapping each other in narrow 5- and 6-panel layouts',
-          desc: (
-            <>
-              When a panel got narrow, the folder chip and the &quot;MCP &amp; SKILL&quot; chip spilled out of their boxes and
-              sat on top of the &quot;Working 00:36&quot; chip instead of the title giving way (reported screenshot) — a CSS
-              default that keeps a button from getting smaller than its content. Chips now shrink by truncating their
-              name only (icon, +N and chevron stay), the title yields first, and the icon buttons and the &quot;Working&quot; chip shrink last. Nothing overlaps at any width.
-            </>
-          )
+          tag: 'Display',
+          name: 'Cleaner narrow headers',
+          desc: 'Fixed folder, MCP & Skill, and activity indicators overlapping in five- and six-panel layouts.'
         }
       ]
     }
   },
   '3.0.7': {
     ko: {
-      eyebrow: 'FIXES',
-      lead: '채팅이 끝나는 순간 앱이 「응답 없음」으로 굳던 알림 창의 교착, 마켓플레이스 플러그인 스킬이 목록에 안 보이던 것, 사이드바 빈 곳을 눌러도 추가 채팅 줄이 잡히던 것, 한도에 걸렸을 때 「언제 풀리는지 알 수 없어」라고 하던 것을 고쳤습니다. MCP & Skill 목록에는 「로컬」·「전역」 알약이 생겼습니다.',
+      eyebrow: 'UPDATE',
+      lead: '알림과 사이드바의 안정성을 높이고, 플러그인 스킬과 도구 필터를 개선했습니다.',
       notes: [
         {
           tag: '안정성',
-          name: '채팅이 끝나는 순간 앱이 「응답 없음」으로 굳던 것 — 알림 창의 스레드 교착',
-          desc: (
-            <>
-              다른 창을 보고 있거나 앱이 뒤로 가 있을 때 채팅이 끝나면 화면 우하단에 알림 카드가 뜨는데, 그 카드 창을
-              만드는 코드가 <b>백그라운드 스레드에서 창 스타일을 바꾸는 호출</b>을 잠금을 쥔 채 불렀습니다. Windows는 그
-              호출을 창을 가진 UI 스레드에 넘겨 답을 기다리는데, 바로 그 순간 사용자가 창을 다시 클릭해 UI 스레드가 같은
-              잠금을 기다리면 둘이 서로를 영원히 기다립니다 — 키보드가 먼저 안 먹고, 이어서 창이 하얗게 되며 「응답
-              없음」이 됩니다. 사용자가 보내 준 정지 덤프에서 두 스레드의 자리를 확인했습니다. 이제 알림 창의 생성·파기·
-              스타일 변경은 전부 UI 스레드에서만 하고 그 잠금은 없앴습니다. 트레이 메뉴 창의 같은 구조도 함께 고쳤습니다.
-            </>
-          )
+          name: '채팅 완료 시 멈춤 수정',
+          desc: '완료 알림이 뜨는 순간 앱이 응답 없음으로 멈추던 문제를 수정했습니다. 트레이 메뉴도 함께 안정화했습니다.'
         },
         {
-          tag: 'MCP & Skill',
-          name: '마켓플레이스 플러그인으로 설치한 스킬이 목록과 「/」 팔레트에 안 보이던 것',
-          desc: (
-            <>
-              PowerShell 등 CLI에서 <code>claude plugin install</code>로 넣은 플러그인의 스킬은 클로드 코드가 쓰는데, 앱은{' '}
-              <code>~/.claude/skills</code>와 프로젝트의 <code>.claude/skills</code> 두 곳만 훑어서 헤더의 「MCP &amp; Skill」
-              목록에도 입력창의 「/」 팔레트에도 나오지 않았습니다(제보). 이제 클로드 코드의 설치 목록과 켬/끔 설정(프로젝트
-              설정 포함)을 읽어 <b>켜진 플러그인의 스킬을 「플러그인」 배지로 함께 보여 주고</b>, 클로드 코드가 부르는 이름
-              그대로 <code>/플러그인:스킬</code>로 넣어 줍니다. 플러그인 스킬은 클로드 코드가 앱의 끄기 설정을 받지 않으므로
-              스위치를 두지 않습니다.
-            </>
-          )
+          tag: '스킬',
+          name: '플러그인 스킬 표시',
+          desc: 'Claude 플러그인으로 설치한 스킬이 MCP & Skill 목록과 / 자동완성에 표시됩니다. 플러그인 스킬은 목록에서 확인할 수 있으며 개별 스위치는 제공하지 않습니다.'
         },
         {
-          tag: 'MCP & Skill',
-          name: 'MCP & Skill 목록에 「로컬」·「전역」 알약 — 이 폴더 것만, 전역 것만, 또는 둘 다',
-          desc: (
-            <>
-              헤더의 「MCP & SKILL」 칩을 열면 「도구 환경」 제목 옆에 알약 두 개가 붙었습니다(계정 목록의 숨김 알약과
-              같은 모양). <b>「로컬」</b>만 켜면 이 폴더의 것 — 프로젝트의 <code>.claude/skills</code> 스킬과{' '}
-              <code>.mcp.json</code> 서버 — 만, <b>「전역」</b>만 켜면 개인·플러그인·내장 스킬과 <code>~/.claude.json</code>{' '}
-              서버만, 둘 다 켜면 전부 보입니다. MCP와 SKILL 두 섹션에 함께 걸리고, 섹션 머리의 수도 켜진 범위만 셉니다.
-              마지막 하나는 끌 수 없고, 선택은 기억됩니다. 제목 줄 오른쪽 끝에 있던 폴더 이름은 뺐습니다(옆 폴더 칩이 이미
-              말합니다).
-            </>
-          )
+          tag: '도구',
+          name: '로컬·전역 필터',
+          desc: 'MCP & Skill 목록에서 프로젝트 항목과 전역 항목을 나눠 볼 수 있습니다. 선택한 필터는 다음에도 유지됩니다.'
         },
         {
-          tag: '안정성',
-          name: '사이드바 빈 곳에 마우스를 두면 추가 채팅 첫 줄이 켜지고, 아무 데나 눌러도 그 줄이 눌리던 것',
-          desc: (
-            <>
-              추가 채팅 창이 떠 있으면 사이드바의 그 줄에 작은 <b>「창」 칩</b>이 붙는데, 그 칩의 CSS 클래스 이름이 앱 창
-              전체를 뜻하는 이름과 같아서 칩이 보이지 않게 <b>사이드바 전체를 덮고</b> 있었습니다. 그래서 목록 아래 빈 곳에
-              마우스를 두면 그 줄이 호버로 켜지고, 빈 곳이나 다른 줄을 눌러도 그 창이 앞으로 왔습니다(자동 숨김 사이드바에서
-              특히 잘 보였습니다). 칩의 클래스 이름을 바꿔 칩은 칩 크기만 차지합니다.
-            </>
-          )
+          tag: '화면',
+          name: '사이드바 클릭 오류 수정',
+          desc: '사이드바의 빈 곳이나 다른 항목을 눌렀는데 별도 채팅 창이 열리던 문제를 수정했습니다.'
         },
         {
           tag: '한도',
-          name: '한도에 걸리면 「언제 풀리는지 알 수 없어」라고 하던 것 — CLI가 적어 준 시각을 이제 읽습니다',
-          desc: (
-            <>
-              한도 오류 카드에는 <code>You&apos;ve hit your session limit · resets 3:30pm (Asia/Seoul)</code>처럼{' '}
-              <b>풀리는 시각이 버젓이 적혀 있는데</b>, 앱은 옛 CLI가 붙이던 숫자 꼬리(<code>|1755150000</code>)만 알아서
-              요즘 문구에서는 시각을 못 읽고 「언제 풀리는지 알 수 없어 잠시 뒤 다시 확인할게요」로 빠졌습니다. 이제{' '}
-              <code>resets 3:30pm</code>·<code>3pm</code>·<code>Sep 8 at 3pm</code>·<code>in 1h 5m</code> 꼴을 이 기기
-              시각으로 읽어 「풀리는 시각에 맞춰 이어서 보낼게요」로 가고, 그 시각에 맞춰 자동 재개합니다. 시각이 정말 없는
-              문구만 종전처럼 되묻습니다.
-            </>
-          )
+          name: '한도 초기화 시각 인식',
+          desc: 'Claude가 안내한 초기화 시각을 인식해 대기 시간을 표시합니다. 자동 재개를 사용하면 해당 시각에 맞춰 이어갑니다.'
         }
       ]
     },
     en: {
-      eyebrow: 'FIXES',
-      lead: 'Fixes a deadlock in the toast window that froze the app the moment a chat finished, skills from marketplace plugins missing from the skill list, sidebar hovers and clicks on empty space landing on the chat-window row, and a usage-limit hold that said the reset time was unknown. The MCP & Skill list gains "Local" / "Global" pills.',
+      eyebrow: 'UPDATE',
+      lead: 'Improves notification and sidebar stability, plugin skills, and tool filters.',
       notes: [
         {
           tag: 'Stability',
-          name: 'The app froze ("Not responding") the moment a chat finished — a deadlock in the toast window',
-          desc: (
-            <>
-              When a chat finishes while its window is not focused, a small toast card appears at the bottom right. The
-              code that creates that card <b>changed the window style from a background thread</b> while holding a
-              lock. Windows hands that call to the UI thread that owns the window and waits for the answer — and if at
-              that very moment you click back into the app, the UI thread goes to wait for the same lock, and the two
-              wait for each other forever: the keyboard stops first, then the window goes white and reads &quot;Not
-              responding&quot;. Both threads were found in a hang dump a user sent in. Creating, destroying and
-              restyling the toast window now happens on the UI thread only, and the lock is gone. The tray menu window
-              had the same shape and was fixed the same way.
-            </>
-          )
+          name: 'Fix for freezes on completion',
+          desc: 'Fixed the app becoming unresponsive when a completion notification appeared. Tray menu handling was also improved.'
         },
         {
-          tag: 'MCP & Skill',
-          name: 'Skills installed through marketplace plugins were missing from the list and the "/" palette',
-          desc: (
-            <>
-              Skills that come with a plugin installed from the CLI (<code>claude plugin install</code>) are used by Claude
-              Code, but the app only scanned <code>~/.claude/skills</code> and the project&apos;s <code>.claude/skills</code>,
-              so they never appeared in the header&apos;s &quot;MCP &amp; Skill&quot; list or the composer&apos;s &quot;/&quot;
-              palette (reported). The app now reads Claude Code&apos;s install registry and enabled-plugins settings
-              (project settings included), <b>lists the skills of enabled plugins with a &quot;Plugin&quot; badge</b>, and
-              inserts them under the name Claude Code uses, <code>/plugin:skill</code>. Plugin skills have no switch: Claude
-              Code does not apply the app&apos;s off setting to them.
-            </>
-          )
+          tag: 'Skills',
+          name: 'Show plugin skills',
+          desc: 'Skills installed through Claude plugins now appear in MCP & Skill and / completion. Plugin skills are listed without individual toggles.'
         },
         {
-          tag: 'MCP & Skill',
-          name: '"Local" / "Global" pills on the MCP & Skill list — this folder only, global only, or both',
-          desc: (
-            <>
-              Open the &quot;MCP &amp; SKILL&quot; chip in the header and two pills now sit next to the &quot;Tool
-              environment&quot; title (same shape as the hide pills in the account list). With only <b>Local</b> on you
-              see this folder&apos;s items — the project&apos;s <code>.claude/skills</code> skills and{' '}
-              <code>.mcp.json</code> servers; with only <b>Global</b> on, personal, plugin and built-in skills and{' '}
-              <code>~/.claude.json</code> servers; with both on, everything. The filter applies to both the MCP and SKILL
-              sections, and the section counts follow it. The last pill cannot be turned off, and the choice is
-              remembered. The folder name that sat at the right end of the title row is gone (the folder chip next
-              door already says it).
-            </>
-          )
+          tag: 'Tools',
+          name: 'Local and Global filters',
+          desc: 'View project and global items separately in MCP & Skill. Your filter selection is remembered.'
         },
         {
-          tag: 'Stability',
-          name: 'Hovering empty sidebar space lit up the first chat-window row, and clicking anywhere hit it',
-          desc: (
-            <>
-              When a chat window is open, its sidebar row carries a small <b>&quot;win&quot; chip</b>. The chip&apos;s CSS
-              class name was the same as the one that means the whole app window, so the chip invisibly{' '}
-              <b>covered the entire sidebar</b>: hovering the empty area below the lists highlighted that row, and clicking
-              empty space or other rows brought that window to the front (most visible with the auto-hiding sidebar). The
-              chip now has its own class name and takes up only its own size.
-            </>
-          )
+          tag: 'Display',
+          name: 'Sidebar click fix',
+          desc: 'Fixed clicks on empty sidebar space or other items bringing an extra chat window to the front.'
         },
         {
           tag: 'Limits',
-          name: 'A usage-limit hold said the reset time was unknown — it now reads the time the CLI prints',
-          desc: (
-            <>
-              The limit error card plainly shows the reset time, e.g.{' '}
-              <code>You&apos;ve hit your session limit · resets 3:30pm (Asia/Seoul)</code>, but the app only knew the
-              numeric tail older CLIs appended (<code>|1755150000</code>), so on current wording it fell back to
-              &quot;can&apos;t tell when it resets — will check again shortly&quot;. It now reads{' '}
-              <code>resets 3:30pm</code>, <code>3pm</code>, <code>Sep 8 at 3pm</code> and <code>in 1h 5m</code> in this
-              machine&apos;s local time, says &quot;will resume when it resets&quot;, and resumes on that schedule. Only
-              wording with no time at all still falls back to re-checking.
-            </>
-          )
+          name: 'Recognize limit reset times',
+          desc: 'The app reads the reset time reported by Claude and displays the wait. Automatic resume continues at that time when enabled.'
         }
       ]
     }

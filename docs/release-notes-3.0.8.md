@@ -1,28 +1,19 @@
 ## AgentCodeGUI 3.0.8
 
-몇 분째 「작업 중」만 돌다가 중단하고 다시 보내면 바로 답하던 것(CLI의 API 재시도 대기가 화면에 없었다), 고른 적 없는 「C:\Users\…\Desktop을 찾을 수 없어요」가 보낼 때마다 뜨던 것, 보드 자리 수를 오가면 패널 순서가 뒤틀리던 것, 좁은 패널 헤더의 칩이 서로 겹치던 것을 고쳤습니다.
-3.0.x를 쓰고 있다면 앱 안에서 자동으로 이 업데이트를 받습니다.
+재시도 대기를 더 명확하게 표시하고, 작업 폴더와 멀티 패널 문제를 수정했습니다.
 
-**바뀐 것**
-
-- **간단한 질문이 몇 분째 「작업 중」만 돌다가, 중단하고 다시 보내면 바로 답하던 것 — API 재시도 대기가 화면에 없었다.** 클로드 코드(CLI)는 API가 과부하(529)·서버 오류·연결 실패로 답하지 않으면 스스로 기다렸다가 다시 요청합니다 — 한 번에 최대 60초, 과부하가 이어지면 최대 5분씩, 여러 번. 그동안 CLI는 「몇 번째 재시도 · 몇 초 뒤」를 앱에 프레임(`system/api_retry`)으로 알려 주는데, 앱은 이 프레임을 모르는 프레임으로 조용히 버렸습니다. 그래서 화면은 랜덤 문구와 초 수만 도는 「작업 중」이었고 사용자가 볼 수 있는 것은 아무것도 없었습니다(제보: 간단한 질문이 6분 38초 침묵 → 중단 → 그대로 다시 보내니 즉시 답). 이제 작업 인디케이터가 그 구간에 「API 오류 — 다시 시도를 기다리는 중 · 3/10 · 서버 과부하 · 42초 뒤 다시」처럼 사실을 적고 남은 초를 셉니다. 기다릴지, 중단하고 다시 보낼지는 그 줄을 보고 정할 수 있습니다. Codex 엔진은 같은 사정을 안내 줄로 이미 보이고 있었습니다. /clear 직후 첫 전송 경로는 코드로 다시 대조했고 3.0.5에서 고친 것 외의 결함은 없었습니다.
-- **고른 적 없는 「작업 폴더를 찾을 수 없어요 — C:\Users\…\Desktop」가 보낼 때마다 뜨다가 몇 번째에야 되던 것.** 패널의 폴더 칩은 `ClaudeOffice`인데 보낼 때마다 「C:\Users\…\Desktop을 찾을 수 없어요」가 뜨고, 몇 번 더 보내면 그제야 됐습니다(제보). 원인은 둘이 겹친 것입니다. 첫째, 앱은 전송 요청에 실린 폴더를 읽기 전에 디스크에 저장된 정체성(폴더를 안 고른 채 저장돼 비어 있던)으로 엔진을 먼저 만들었고, 빈 폴더의 대체값인 `%USERPROFILE%\Desktop`이 OneDrive로 바탕화면이 옮겨진 계정에는 없는 경로라 거기서 죽었습니다 — 요청이 실어 온 멀쩡한 폴더는 읽히지도 않았고, 렌더러의 지연 저장이 정체성을 되쓴 뒤에야 성공했습니다. 이제 전송·설정 변경이 실어 온 폴더·모델을 엔진을 만들기 전에 얹어 첫 전송에 바로 뜨고, 빈 폴더의 대체는 Windows가 아는 실제 바탕화면(리디렉션 반영) → `%USERPROFILE%\Desktop` → `%USERPROFILE%` 순으로 실제로 있는 폴더를 고릅니다. 둘째, 같은 오류 말풍선이 /clear·부팅 재장전·설정 조회에도 앉았는데 이제 전송에만 앉고, 설정 변경은 카드 한 줄, 조회는 침묵합니다.
-- **자리 수(2·3·4·5)를 오가다 보면 패널 순서가 뒤틀리던 것 — 1번이던 패널이 5번에 가 있다.** 자리 수를 줄일 때 포커스된 패널이 접히게 되면 그 패널을 보이는 마지막 자리로 끌어올립니다(현재 대화는 안 접힌다는 규칙). 그런데 그 이동이 순서를 영구히 바꿨고, 늘릴 때는 되돌리지 않았습니다. 그래서 5→1→5를 반복할 때마다 원래 1‥4번이 한 칸씩 밀렸습니다 — 패널 아무 데나 클릭해도 포커스가 잡히니 언제 그러는지 알 수 없어 「저절로 뒤틀린다」로 보였습니다(제보). 이제 그 끌어올림은 임시입니다: 줄일 때 끌어올리되 그 전 순서를 기억하고, 늘리면 그 순서로 돌아갑니다(끌어올린 패널이 그래도 안 보이는 수라면 그 순서 위에 다시 얹습니다). 헤더를 길게 눌러 끌거나 접힌 자리를 ↥로 올려 손으로 정한 순서는 그 순간부터 진짜 순서가 되어 되돌리지 않습니다.
-- **5·6분할처럼 좁은 패널에서 헤더의 폴더·MCP & Skill·작업 중 칩이 서로 겹치던 것.** 패널이 좁아지면 제목이 줄어드는 대신 폴더 칩과 「MCP & SKILL」 칩이 자기 상자 밖으로 삐져나와 「작업 중 00:36」 칩 위에 포개졌습니다(제보 화면). 칩 버튼이 상자보다 작아질 수 없는 CSS 기본값 탓입니다. 이제 칩은 이름만 말줄임으로 줄고(아이콘·+N·화살표는 그대로), 제목이 먼저 양보하며, 아이콘 버튼과 「작업 중」 칩은 맨 마지막에야 줄어듭니다. 어느 너비에서도 서로 포개지지 않습니다.
-
-> **처음 설치할 때 파란 경고 창이 뜨면 — 정상입니다.** AgentCodeGUI3은 코드 서명 인증서를 쓰지 않습니다.
-> 「**추가 정보**」 → 「**실행**」을 누르면 설치가 시작됩니다. 설치 위치는 `%LOCALAPPDATA%\AgentCodeGUI3`, 기존 2.6.2는 그대로 남습니다.
+- **API 재시도 대기 표시** — Claude가 서버 오류로 재시도를 기다릴 때 사유·시도 횟수·남은 시간을 표시합니다.
+- **작업 폴더 오류 수정** — 선택한 폴더 대신 바탕화면을 찾다가 전송에 실패하던 문제를 수정했습니다. OneDrive로 이동한 바탕화면도 올바르게 인식합니다.
+- **패널 순서 유지** — 패널 수를 줄였다 늘려도 원래 순서로 돌아옵니다. 직접 드래그해서 정한 순서는 유지합니다.
+- **좁은 패널의 헤더 정리** — 5·6분할 화면에서 폴더·MCP & Skill·작업 상태 표시가 겹치던 문제를 수정했습니다.
 
 ---
 
 ## AgentCodeGUI 3.0.8 (English)
 
-Fixes a turn that sat on "working" for minutes then answered instantly after stop and resend (the CLI's API retry wait was invisible), a "cannot find C:\Users\…\Desktop" error on every send for a folder you never chose, panel order drifting when stepping the board's panel count, and header chips overlapping in narrow panels.
-If you are on 3.0.x, the app picks this update up on its own.
+Makes retry waits clearer and fixes working-folder and multi-panel issues.
 
-**Changed**
-
-- **A simple question sat on "working" for minutes, then answered instantly after stop + resend — the API retry wait was invisible.** When the API does not answer (overloaded 529, server error, connection failure), Claude Code waits and retries on its own — up to 60 seconds per attempt, up to 5 minutes each while the overload persists, several times over. During that wait the CLI tells the app which attempt it is on and how long until the next one (`system/api_retry`), but the app dropped that frame as unknown. So the screen showed nothing but the rotating phrase and a second counter (reported: a simple question sat silent for 6m 38s; stop, resend, instant answer). The working indicator now states the facts for that stretch — "API error — waiting to retry · 3/10 · server overloaded · retry in 42s" — and counts down, so you can decide whether to wait or stop and resend. The Codex engine already showed the same situation as a notice line. The first-send-after-/clear path was re-checked in code; nothing beyond the 3.0.5 fix was wrong there.
-- **"Cannot find the working folder — C:\Users\…\Desktop" on every send, for a folder you never chose, until it randomly worked.** The panel's folder chip said `ClaudeOffice`, yet every send answered "cannot find C:\Users\…\Desktop", and after a few more tries it went through (reported). Two things overlapped. First, the app built the engine from the identity stored on disk (saved with an empty folder before one was picked) before reading the folder carried by the send request, and the stand-in for an empty folder, `%USERPROFILE%\Desktop`, does not exist on accounts whose Desktop lives in OneDrive — so it died there, never reading the perfectly good folder in the request, until the renderer's delayed save rewrote the identity. The folder and model carried by a send or a settings change are now applied before the engine is built, so the first send goes through, and the empty-folder stand-in is picked from folders that actually exist: the Desktop Windows knows about (redirection included) → `%USERPROFILE%\Desktop` → `%USERPROFILE%`. Second, the same error bubble also landed on /clear, boot reload and settings reads; it now lands only on a send, a settings change gets a one-line card, and reads stay silent.
-- **Panel order drifted while stepping the panel count through 2·3·4·5 — panel #1 ended up at #5.** When you reduce the panel count and the focused panel would fold away, it is pulled up into the last visible seat (the current conversation never folds). That move changed the order permanently, and raising the count never undid it, so every 5→1→5 round trip shifted the original #1‥#4 one seat to the right — and since any click focuses a panel, it looked like the order scrambled on its own (reported). The pull-up is now temporary: reducing remembers the order it started from and raising restores it (if the pulled-up panel still would not be visible at that count, it is laid over the restored order again). An order you set by hand — long-press-dragging a header or raising a folded seat with ↥ — becomes the real order from then on and is never reverted.
-- **Header chips (folder · MCP & Skill · Working) overlapping each other in narrow 5- and 6-panel layouts.** When a panel got narrow, the folder chip and the "MCP & SKILL" chip spilled out of their boxes and sat on top of the "Working 00:36" chip instead of the title giving way (reported screenshot) — a CSS default that keeps a button from getting smaller than its content. Chips now shrink by truncating their name only (icon, +N and chevron stay), the title yields first, and the icon buttons and the "Working" chip shrink last. Nothing overlaps at any width.
+- **Visible API retry waits** — When Claude waits to retry a server error, the app shows the reason, attempt count, and time remaining.
+- **Working-folder fix** — Fixed sends failing because the app looked for the Desktop instead of the selected folder. Desktops redirected to OneDrive are also recognized.
+- **Keep panel order** — Reducing and restoring the panel count now restores the original order. Orders set by dragging are preserved.
+- **Cleaner narrow headers** — Fixed folder, MCP & Skill, and activity indicators overlapping in five- and six-panel layouts.

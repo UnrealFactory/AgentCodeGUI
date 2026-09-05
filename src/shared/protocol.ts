@@ -22,6 +22,13 @@ export interface WebLink {
   url: string
 }
 
+/** A file addressed by one tool call. Counts arrive when an edit completes. */
+export interface ToolFile {
+  path: string
+  add?: number
+  del?: number
+}
+
 export interface ToolLogItem {
   id: string // tool_use id
   verb: string // display label: Search / Read / Write / Edit / Bash / Task …
@@ -32,6 +39,7 @@ export interface ToolLogItem {
   output?: string // captured output tail (Bash) — 클릭 시 전체 로그 모달로 표시
   durationMs?: number // 실행 시간 (tool-start→end) — bash 행의 우측 요약·모달에 표시
   links?: WebLink[] // web rows — pages a WebSearch found; the chat row expands to clickable links
+  files?: ToolFile[] // File paths stay separate, including names containing commas.
   parentToolId?: string // set when this tool runs inside a subagent (Task)
   // ★3.0 TOOLROW — 클릭 카드 재료(검색·MCP·기타 행). 파일 도구·Bash는 안 싣는다.
   name?: string // 원 도구 이름(`mcp__agentmon__status`) — MCP 카드 제목 「서버 · 도구」
@@ -406,7 +414,7 @@ export type EngineEvent =
   | { type: 'tool-start'; runId: string; tool: ToolLogItem }
   // target: 시작 시점엔 몰랐던 대상이 완료 때 확정되면 행의 target을 덮는다
   // (Codex webSearch — 검색어가 item/completed에만 실린다, 실측 0.144.4)
-  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[]; target?: string }
+  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[]; files?: ToolFile[]; target?: string }
   | { type: 'todos'; runId: string; todos: Todo[] }
   // `whole` = a full-file Write (the diff supersedes any accumulated diff for this
   // path); false for incremental Edit/MultiEdit (merges onto the existing diff)

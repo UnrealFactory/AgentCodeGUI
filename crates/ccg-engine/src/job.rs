@@ -25,6 +25,12 @@ mod imp {
     unsafe impl Send for Job {}
     unsafe impl Sync for Job {}
 
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0); }
+        }
+    }
+
     impl Job {
         pub fn create() -> std::io::Result<Job> {
             unsafe {
@@ -41,7 +47,9 @@ mod imp {
                     std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
                 ) == 0
                 {
-                    return Err(std::io::Error::last_os_error());
+                    let error = std::io::Error::last_os_error();
+                    windows_sys::Win32::Foundation::CloseHandle(h);
+                    return Err(error);
                 }
                 Ok(Job(h))
             }

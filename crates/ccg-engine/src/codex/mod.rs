@@ -29,6 +29,7 @@
 
 pub mod driver;
 pub mod transcode;
+pub mod tooling;
 pub mod versions;
 
 pub use driver::CodexDriver;

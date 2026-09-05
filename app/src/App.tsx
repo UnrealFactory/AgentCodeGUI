@@ -2485,6 +2485,9 @@ function MainApp({ user }: { user: AppUser }) {
             title={taskTitle}
             cwd={cwd}
             chatId={activeChatId}
+            engine={picker.engine}
+            codexAccount={picker.codexAccount}
+            apiMode={apiMode}
             onSelectFolder={requestFolder}
             onBrowseFolder={pickFolder}
             refDirs={refDirs}

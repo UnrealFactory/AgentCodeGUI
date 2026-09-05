@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ModelId,
@@ -35,7 +35,7 @@ import { nowSec, windowRolled } from '../lib/usageWindow'
 import { noteLanding, putAnchor, takeAnchor } from '../lib/threadAnchor'
 import type { EngineHold } from '../lib/resumeOwner'
 import { settleText, useSettledReason } from '../lib/settled'
-import { fmtToolResult, mcpParts, parseSearchOutput, parseToolArgs } from '../lib/toolResult'
+import { fmtToolResult, mcpParts, parseSearchOutput, parseToolArgs, toolFiles } from '../lib/toolResult'
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { Markdown } from './Markdown'
@@ -43,6 +43,7 @@ import { FileBadge } from './fileType'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { Todos, FileRow, SubAgent } from './AgentPanel'
 import { McpSkillView } from './McpSkillView'
+import { useCodexTooling } from '../api/codexTooling'
 import { WinControls } from './TitleBar'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
 import { imageSrc, imageName, filesToAttachmentPaths, isImagePath, isAttachablePath } from '../lib/images'
@@ -692,16 +693,25 @@ const BashRow = memo(function BashRow({ t: tl }: { t: ToolLogItem }) {
 // prop 이름 t는 i18n의 t()를 가리므로 안에서는 tl(tool log)로 받는다
 const ToolRow = memo(function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; onOpenFile?: (path: string) => void }) {
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const listId = useId()
   const fileRow = tl.kind === 'read' || tl.kind === 'write' || tl.kind === 'edit'
+  const files = fileRow ? toolFiles(tl) : []
   const errCard = tl.status === 'error' && !!tl.output
-  const toFile = fileRow && !errCard && !!onOpenFile && !!tl.target
+  const multiple = files.length > 1 && !errCard
+  const toFile = fileRow && !errCard && !!onOpenFile && files.length === 1
   const toCard = fileRow ? errCard : tl.status !== 'running' && (!!tl.output || !!tl.args)
-  const clickable = toFile || toCard
+  const clickable = multiple || toFile || toCard
   return (
     <>
-      <div
-        className={'t-row ' + tl.kind + ' ' + tl.status + (clickable ? ' openable' : '')}
-        onClick={toFile ? () => onOpenFile!(tl.target) : toCard ? () => setOpen(true) : undefined}
+      <button
+        type="button"
+        disabled={!clickable}
+        className={'t-row ' + tl.kind + ' ' + tl.status + (clickable ? ' openable' : '') + (multiple && expanded ? ' expanded' : '')}
+        data-tool-id={tl.id}
+        aria-expanded={multiple ? expanded : undefined}
+        aria-controls={multiple ? listId : undefined}
+        onClick={multiple ? () => setExpanded(v => !v) : toFile ? () => onOpenFile!(files[0].path) : toCard ? () => setOpen(true) : undefined}
       >
         <span className="t-ic">{toolIcon(tl.kind, 14)}</span>
         <span className="t-verb">{tl.verb}</span>
@@ -713,7 +723,19 @@ const ToolRow = memo(function ToolRow({ t: tl, onOpenFile }: { t: ToolLogItem; o
           </span>
         )}
         <ToolResult t={tl} />
-      </div>
+        {multiple && <span className="t-fold"><IconChevDown size={12} /></span>}
+      </button>
+      {multiple && expanded && (
+        <div id={listId} className="t-file-list">
+          {files.map((file, i) => (
+            <button key={`${file.path}:${i}`} type="button" className="t-file" disabled={!onOpenFile} onClick={() => onOpenFile?.(file.path)}>
+              <span className="t-ic"><IconFile size={13} /></span>
+              <span className="t-file-path">{file.path}</span>
+              {file.add != null && file.del != null && <span className="t-res">{fmtToolResult(`+${file.add} −${file.del}`)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       {open && <ToolLogModal t={tl} onClose={() => setOpen(false)} onOpenFile={onOpenFile} />}
     </>
   )
@@ -1943,6 +1965,9 @@ export function ChatHeader({
   title,
   cwd,
   chatId,
+  engine,
+  codexAccount,
+  apiMode,
   placeholder = t('폴더 선택', 'Select folder'),
   onSelectFolder,
   onBrowseFolder,
@@ -1959,6 +1984,9 @@ export function ChatHeader({
   // ★R3 — 넘기면 폴더 칩 오른쪽에 「MCP & Skill」 칩(McpSkillView)이 선다. 설정 ▸
   // MCP/Skill 탭 제거(2026-09-01)로 본채팅에도 이 칩이 유일한 창구다.
   chatId?: string
+  engine?: 'claude' | 'codex'
+  codexAccount?: string | null
+  apiMode?: boolean
   placeholder?: string // 폴더 미지정일 때 칩 라벨 — 추가 채팅은 기본 폴더가 '바탕화면'
   onSelectFolder?: (path: string) => void // 목록에서 선택 — App의 requestFolder(확인 카드 흐름)
   onBrowseFolder?: () => void // 찾아보기 — OS 폴더 선택
@@ -2022,7 +2050,7 @@ export function ChatHeader({
       {/* ★R3 — 도구 환경 칩(폴더 칩 오른쪽 — 읽는 순서 「어느 폴더 → 무엇이 붙어 있나」).
           onOpen이 폴더 팝오버를 접는다(멀티 헤더와 같은 배타 규약 — .hfold끼리는
           stopPropagation 때문에 바깥닫힘이 서로 안 울린다). */}
-      {onBrowseFolder && chatId && <McpSkillView chatId={chatId} cwd={cwd || ''} onOpen={() => setFpop(false)} />}
+      {onBrowseFolder && chatId && <McpSkillView chatId={chatId} cwd={cwd || ''} engine={engine} account={codexAccount} apiMode={apiMode} onOpen={() => setFpop(false)} />}
       <span className="spacer" />
       {dial}
       <button
@@ -5708,17 +5736,23 @@ export function Composer({
 
   // the leading "/token" being typed (no space/newline yet), else null. 실행 중에도 연다 —
   // 명령/스킬은 예약돼 런이 끝나면 나간다.
-  const slashQuery = value.startsWith('/') && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
+  const codexSkills = picker.engine === 'codex'
+  const skillPrefix = codexSkills ? '$' : '/'
+  const slashQuery = (value.startsWith('/') || (codexSkills && value.startsWith('$'))) && !/\s/.test(value) ? value.slice(1).toLowerCase() : null
+  const nativeSkills = useCodexTooling({ cwd, account: picker.codexAccount, apiMode }, codexSkills && slashQuery !== null)
 
   // lazily load this project's skills the first time the palette is summoned
   useEffect(() => {
+    if (codexSkills) { skillsCwd.current = null; setSkills([]); return }
     if (slashQuery === null || skillsCwd.current === cwd) return
     skillsCwd.current = cwd
+    let alive = true
     window.api.skill
       .list(cwd)
-      .then(setSkills)
-      .catch(() => setSkills([]))
-  }, [slashQuery, cwd])
+      .then(rows => { if (alive) setSkills(rows) })
+      .catch(() => { if (alive) { skillsCwd.current = null; setSkills([]) } })
+    return () => { alive = false; skillsCwd.current = null }
+  }, [slashQuery === null, cwd, codexSkills])
 
   // every change to the query restarts the highlight; clearing the "/" un-dismisses
   useEffect(() => {
@@ -5728,11 +5762,15 @@ export function Composer({
 
   // match the command/skill NAME only — not the description, so typing "cl" doesn't
   // surprise-match /init via its "…CLAUDE.md…" blurb
-  const cmdHits = slashQuery === null ? [] : commands.filter((c) => c.name.includes(slashQuery))
+  const cmdHits = slashQuery === null || !value.startsWith('/') ? [] : commands.filter((c) => c.name.includes(slashQuery))
+  const availableSkills: SkillInfo[] = codexSkills ? (nativeSkills.data?.skills ?? []).map(s => ({
+    name: s.name, description: s.description, path: s.path, enabled: !s.off,
+    scope: s.scope === 'project' || s.scope === 'local' ? 'local' : s.scope === 'plugin' ? 'plugin' : 'global'
+  })) : skills
   const skillHits =
-    slashQuery === null ? [] : skills.filter((s) => s.enabled && s.name.toLowerCase().includes(slashQuery))
+    slashQuery === null ? [] : availableSkills.filter((s) => s.enabled && s.name.toLowerCase().includes(slashQuery))
   // command names first, then skill names — the flat order keyboard nav walks
-  const slashNames = [...cmdHits.map((c) => c.name), ...skillHits.map((s) => s.name)]
+  const slashNames = [...cmdHits.map((c) => '/' + c.name), ...skillHits.map((s) => skillPrefix + s.name)]
   const slashOpen = slashQuery !== null && !slashDismissed && slashNames.length > 0
   const activeIdx = Math.min(slashIdx, slashNames.length - 1)
 
@@ -5743,7 +5781,7 @@ export function Composer({
   }, [activeIdx, slashOpen])
 
   const pickSlash = (name: string): void => {
-    onChange('/' + name + ' ') // fill the command + a space (closes the menu); user adds args / hits Enter
+    onChange(name + ' ') // name includes the engine's invocation prefix
     requestAnimationFrame(() => {
       const el = inputRef?.current
       if (!el) return
@@ -6117,7 +6155,7 @@ export function Composer({
                     onMouseEnter={() => setSlashIdx(i)}
                     onMouseDown={(e) => {
                       e.preventDefault() // keep focus in the textarea
-                      pickSlash(c.name)
+                      pickSlash('/' + c.name)
                     }}
                   >
                     <span className="slash-ic">
@@ -6133,7 +6171,7 @@ export function Composer({
                 const gi = cmdHits.length + i
                 return (
                   <button
-                    key={'skill:' + s.scope + ':' + s.name}
+                    key={'skill:' + s.path}
                     data-i={gi}
                     role="option"
                     aria-selected={gi === activeIdx}
@@ -6141,7 +6179,7 @@ export function Composer({
                     onMouseEnter={() => setSlashIdx(gi)}
                     onMouseDown={(e) => {
                       e.preventDefault()
-                      pickSlash(s.name)
+                      pickSlash(skillPrefix + s.name)
                     }}
                   >
                     <span className="slash-ic skill">

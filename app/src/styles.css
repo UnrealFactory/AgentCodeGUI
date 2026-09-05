@@ -1029,6 +1029,15 @@ button.hsec:hover{ color:var(--text-3); }
 .t-more:hover{ background:var(--hover); color:rgba(255,255,255,.7); }
 .t-row{ display:flex; align-items:center; gap:10px; min-width:0; padding:4.5px 7px; margin:0 -7px; border-radius:7px; font-size:14px; transition:background .12s; }
 .t-row:hover{ background:var(--hover); }
+button.t-row{ width:calc(100% + 14px); text-align:left; }
+button.t-row:disabled{ cursor:default; }
+.t-fold{ display:flex; flex:0 0 auto; color:var(--text-4); transform:rotate(-90deg); transition:transform .12s; }
+.t-row.expanded .t-fold{ transform:rotate(0); }
+.t-file-list{ margin:2px 0 5px 8px; padding-left:18px; border-left:1px solid var(--line); }
+.t-file{ display:flex; align-items:center; gap:9px; width:100%; min-width:0; padding:5px 7px; border-radius:7px; text-align:left; }
+.t-file:hover{ background:var(--hover); }
+.t-file-path{ flex:1; min-width:0; overflow-wrap:anywhere; font:12.5px/1.5 var(--font-mono); color:var(--text-3); }
+.t-file:hover .t-file-path{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; }
 .t-ic{ width:17px; flex:0 0 17px; color:rgba(255,255,255,.45); display:grid; place-items:center; }
 .t-verb{ font-size:14px; font-weight:600; color:rgba(255,255,255,.82); flex:0 0 auto; }
 /* 말줄임은 안쪽 .t-txt가 담당 */

@@ -352,10 +352,60 @@ pub fn link_shared_state(dir: &Path) {
     }
     for name in COPIED_FILES {
         let src = shared.join(name);
-        if src.is_file() {
+        // Shared config seeds a new account. Native config writes (including
+        // skill/MCP switches) belong to that account and must survive a run.
+        if src.is_file() && !dir.join(name).exists() {
             let _ = std::fs::copy(&src, dir.join(name));
+        } else if *name == "config.toml" {
+            merge_missing_tooling(&src, &dir.join(name));
         }
     }
+}
+
+/// Import existing Codex configuration and user skills without sharing auth or
+/// replacing app-owned files. The caller supplies the native home explicitly.
+pub fn seed_tooling_from(native: &Path) {
+    ensure_shared_root();
+    let shared = shared_root();
+    let config = shared.join("config.toml");
+    merge_missing_tooling(&native.join("config.toml"), &config);
+    if let Ok(entries) = std::fs::read_dir(native.join("skills")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            // Built-in skills are supplied by the installed engine.
+            if name.to_string_lossy().starts_with('.') || !entry.path().is_dir() { continue; }
+            let dst = shared.join("skills").join(name);
+            if std::fs::symlink_metadata(&dst).is_err() {
+                let _ = junction::create(&dst, &entry.path());
+            }
+        }
+    }
+}
+
+/// Fill missing tool definitions, preserving account overrides and unrelated
+/// settings (provider, trust, auth, model). toml_edit retains comments/formatting.
+fn merge_missing_tooling(source: &Path, destination: &Path) {
+    use toml_edit::{DocumentMut, Item, Table};
+    let Some(src) = std::fs::read_to_string(source).ok().and_then(|s| s.parse::<DocumentMut>().ok()) else { return };
+    let raw = match std::fs::read_to_string(destination) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => return,
+    };
+    let Ok(mut dst) = raw.parse::<DocumentMut>() else { return };
+    let mut changed = false;
+    if let Some(entries) = src.get("mcp_servers").and_then(Item::as_table_like) {
+        if !dst.contains_key("mcp_servers") { dst["mcp_servers"] = Item::Table(Table::new()); }
+        if let Some(target) = dst["mcp_servers"].as_table_like_mut() {
+            for (name, value) in entries.iter() {
+                if !target.contains_key(name) { target.insert(name, value.clone()); changed = true; }
+            }
+        }
+    }
+    if !dst.contains_key("skills") {
+        if let Some(skills) = src.get("skills") { dst["skills"] = skills.clone(); changed = true; }
+    }
+    if changed { let _ = crate::write_file_atomic(destination, &dst.to_string()); }
 }
 
 /// 실행용 `CODEX_HOME` — 등록 계정의 격리 폴더. 폴더 쪽 auth가 더 신선하면 남기고,
@@ -563,6 +613,30 @@ mod tests {
         assert_eq!(std::fs::read_to_string(dir.join("auth.json")).unwrap(), r#"{"OPENAI_API_KEY":"sk-test"}"#);
         std::fs::write(dir.join("sessions").join("s.jsonl"), "{}").unwrap();
         assert!(h.path("codex/shared/sessions/s.jsonl").is_file(), "API 모드와 구독 모드가 같은 스레드를 이어야 한다");
+    }
+
+    #[test]
+    fn importing_tools_preserves_account_switches_and_does_not_import_auth_or_provider() {
+        let h = temp_home("cx-tools");
+        let native = h.path("native");
+        std::fs::create_dir_all(native.join("skills/review")).unwrap();
+        std::fs::write(native.join("skills/review/SKILL.md"),"---\nname: review\ndescription: Review\n---\nReview.").unwrap();
+        std::fs::write(native.join("config.toml"),"model_provider = 'private'\n[mcp_servers.docs]\ncommand = 'docs-server'\nenabled = true\n").unwrap();
+        std::fs::write(native.join("auth.json"),"NATIVE-SECRET").unwrap();
+        seed_tooling_from(&native);
+        let dir = api_key_run_dir("sk-fixture").unwrap();
+        let imported = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+        assert!(imported.contains("docs-server"));
+        assert!(!imported.contains("model_provider"));
+        assert!(dir.join("skills/review/SKILL.md").is_file());
+        assert!(!shared_root().join("auth.json").exists());
+        // A native config/write by this account must survive materialization,
+        // including another import of the same server's enabled=true default.
+        std::fs::write(dir.join("config.toml"),imported.replace("enabled = true","enabled = false")).unwrap();
+        seed_tooling_from(&native);
+        api_key_run_dir("sk-fixture").unwrap();
+        assert!(std::fs::read_to_string(dir.join("config.toml")).unwrap().contains("enabled = false"));
+        assert!(!std::fs::read_to_string(dir.join("auth.json")).unwrap().contains("NATIVE-SECRET"));
     }
 
     #[test]

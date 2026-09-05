@@ -860,6 +860,10 @@ export function SessionWindow(): React.ReactElement {
         <ChatHeader
           title={btwTitle || winTitle || (btwWin ? t('btw 질문', 'btw question') : t('추가 채팅', 'Chat window'))}
           cwd={cwd || state.session?.cwd || ''}
+          chatId={selfChatId || undefined}
+          engine={picker.engine}
+          codexAccount={picker.codexAccount}
+          apiMode={apiMode}
           placeholder={t('바탕화면', 'Desktop')}
           onSelectFolder={requestFolder}
           onBrowseFolder={pickFolder}
