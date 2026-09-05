@@ -5,6 +5,7 @@ import { PanelWindow } from './components/PanelWindow'
 import { ViewerWindow } from './components/ViewerWindow'
 import { loadPrefs } from './lib/prefs'
 import { initViewerWindow } from './lib/viewerWindow'
+import { warmFileViewer } from './lib/fileViewer'
 import { initGlass } from './lib/glass'
 import { initLang } from './lib/i18n'
 import './styles.css'
@@ -58,4 +59,5 @@ Promise.all([loadPrefs(), initViewerWindow()]).finally(() => {
   createRoot(document.getElementById('root')!).render(
     isSessionWindow ? <SessionWindow /> : isPanelWindow ? <PanelWindow /> : isViewerWindow ? <ViewerWindow /> : <App />
   )
+  if (!isViewerWindow) warmFileViewer()
 })

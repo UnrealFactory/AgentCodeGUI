@@ -1,8 +1,8 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import type { ViewerOpenPayload } from '@shared/protocol'
 import { t, useLang } from '../lib/i18n'
 import { diffsOf } from '../lib/viewerWindow'
-const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드
+import { FileModal } from '../lib/fileViewer'
 
 // ── 파일 뷰어 독립 창 (#viewer) — 코드 뷰어 카드 하나가 창 전체를 쓴다 ────────────
 // 카드 뷰어(FileModal)를 `windowed`로 그린다: 오버레이 배경·카드 크기 조절·카드 최대화는

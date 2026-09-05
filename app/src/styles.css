@@ -2006,7 +2006,7 @@ button.wb-prow{ width:100%; text-align:left; }
 
 /* reusable hover tooltip that floats ABOVE the element (composer controls) */
 .has-tip{ position:relative; }
-.has-tip::after{
+.has-tip::after, .hover-tip{
   content: attr(data-tip);
   position:absolute; bottom:100%; left:50%; margin-bottom:8px;
   transform: translate(-50%, 3px);
@@ -2018,6 +2018,11 @@ button.wb-prow{ width:100%; text-align:left; }
   transition: opacity .13s ease, transform .13s ease;
 }
 .has-tip:hover::after{ opacity:1; transform: translate(-50%, 0); transition-delay:.3s; }
+/* Portaled variant for tooltips inside clipped drawers; same app appearance. */
+.hover-tip{
+  position:fixed; bottom:auto; margin:0; transform:none; opacity:1; z-index:300;
+  width:max-content; max-width:calc(100vw - 16px); white-space:normal; line-height:1.4;
+}
 /* multi-line variant — same tooltip look, but wraps for long text (skill descriptions) */
 .has-tip.tip-wrap::after{ white-space:normal; width:max-content; max-width:300px; padding:8px 11px; line-height:1.5; text-align:left; }
 /* 경로 변형 — 첨부 칩의 전체 경로: 공백 없는 긴 문자열이라 아무 데서나 끊어 줄바꿈 */
@@ -2397,7 +2402,9 @@ button.wb-prow{ width:100%; text-align:left; }
   display:flex; flex-direction:column;
   background:var(--bg); border:1px solid var(--line-2); border-radius:14px;
   box-shadow: 0 30px 80px -16px rgba(0,0,0,0.34);
-  overflow:hidden; animation:rise .22s cubic-bezier(.2,.8,.2,1) both;
+  /* Keep the editor's geometry stable from its first frame. The overlay fades;
+     the document no longer waits for a moving card to finish its entrance. */
+  overflow:hidden;
 }
 .fv-trunc{ flex:0 0 auto; font-size:11px; font-weight:600; color:var(--yellow);
   background:color-mix(in oklab, var(--yellow) 16%, transparent); padding:3px 10px; border-radius:99px; }

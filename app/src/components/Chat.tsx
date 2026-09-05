@@ -1,5 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { HoverTip } from './HoverTip'
 import type {
   ModelId,
   EffortId,
@@ -3157,18 +3158,22 @@ function SpeedRow({ tiers, value, onChange }: { tiers: CodexModelTier[]; value?:
     <div className="eslide espeed">
       <span className="elabel">{t('속도', 'Speed')}</span>
       <div className="eseg">
-        <button className={'eseg-b' + (!cur ? ' on' : '')} title={t('서버 기본 속도', 'Standard server speed')} onClick={() => onChange(undefined)}>
-          {t('표준', 'Standard')}
-        </button>
-        {tiers.map((x) => (
-          <button key={x.id} className={'eseg-b' + (cur?.id === x.id ? ' on' : '')} title={x.desc} onClick={() => onChange(x.id)}>
-            {x.name}
+        <HoverTip text={t('서버 기본 속도', 'Standard server speed')}>
+          <button className={'eseg-b' + (!cur ? ' on' : '')} onClick={() => onChange(undefined)}>
+            {t('표준', 'Standard')}
           </button>
+        </HoverTip>
+        {tiers.map((x) => (
+          <HoverTip key={x.id} text={x.desc}>
+            <button className={'eseg-b' + (cur?.id === x.id ? ' on' : '')} onClick={() => onChange(x.id)}>
+              {x.name}
+            </button>
+          </HoverTip>
         ))}
       </div>
-      <span className="ecur" title={cur?.desc ?? t('서버 기본 속도', 'Standard server speed')}>
-        {short}
-      </span>
+      <HoverTip text={cur?.desc ?? t('서버 기본 속도', 'Standard server speed')}>
+        <span className="ecur">{short}</span>
+      </HoverTip>
     </div>
   )
 }

@@ -6,7 +6,7 @@ resolver = "2"
 members = ["src-tauri", "crates/ccg-store", "crates/ccg-engine", "crates/ccg-auth", "crates/ccg-fs", "crates/ccg-lsp"]
 
 [workspace.package]
-version = "3.0.10"
+version = "3.0.11"
 edition = "2021"
 rust-version = "1.82"
 

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, ChatStatusLite, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
@@ -52,7 +52,7 @@ import { pickerAfterLanding } from '../lib/identityLanding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ImageViewer } from './ImageViewer'
 import { SubAgentModal } from './AgentPanel'
-const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
+import { FileModal } from '../lib/fileViewer'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { useZoom, ZoomBadge, mergeRefs } from './zoom'
 import { MouseGestureLayer, clearGesture, sessionWindowGesture, type GestureAction } from './mouseGesture'

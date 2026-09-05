@@ -152,6 +152,28 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.0.11': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '사이드바와 파일 뷰어의 반응을 개선하고, Codex 작업 표시와 툴팁을 수정했습니다.',
+      notes: [
+        { tag: '사이드바', name: '자동 펼침 반응 개선', desc: '자동 모드에서 마우스를 가까이 가져갈 때 불필요한 화면 갱신을 줄여, 사이드바가 더 가볍게 펼쳐지고 접힙니다.' },
+        { tag: '파일', name: '파일 뷰어를 더 빠르게', desc: '파일을 열 때 본문 표시를 늦추던 대기를 제거했습니다. 뷰어를 미리 준비하고 읽기 모드의 색상 정보를 재사용해 처음 열 때와 다시 열 때의 지연을 줄였습니다.' },
+        { tag: 'Codex', name: '작업 중 문구가 바로 표시', desc: '중간 답변이 끝난 뒤에도 작업이 이어지면 작업 중 문구가 바로 다시 나타납니다. 다음 도구 실행까지 30초~1분 동안 표시가 사라지던 문제를 수정했습니다.' },
+        { tag: '툴팁', name: '속도 설명도 앱 툴팁으로', desc: '표준·Fast 등의 속도 설명에 앱 툴팁을 적용했습니다. 메뉴 가장자리에서도 설명이 잘리지 않으며 키보드로 선택할 때도 확인할 수 있습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Improves sidebar and file viewer responsiveness, and fixes Codex activity indicators and tooltips.',
+      notes: [
+        { tag: 'Sidebar', name: 'Smoother automatic reveal', desc: 'Reduced unnecessary screen updates when moving the pointer near the edge, making the sidebar lighter to open and close in automatic mode.' },
+        { tag: 'Files', name: 'Faster file previews', desc: 'Removed the wait before showing file content. The viewer is prepared ahead of time and reuses syntax colors in read mode to reduce delays on first open and reopen.' },
+        { tag: 'Codex', name: 'Activity returns immediately', desc: 'The working indicator now returns as soon as an intermediate reply finishes while work continues. Fixed the 30–60 second gap before the next tool event.' },
+        { tag: 'Tooltips', name: 'App tooltips for speed options', desc: 'Standard, Fast and other speed descriptions now use the app tooltip style. Descriptions stay visible at menu edges and also appear on keyboard focus.' }
+      ]
+    }
+  },
   '3.0.10': {
     ko: {
       eyebrow: 'UPDATE',

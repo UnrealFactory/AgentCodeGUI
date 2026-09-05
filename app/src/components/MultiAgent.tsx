@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Suspense, memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { AgentStatus, BgTaskRequest, ChangedFile, EngineId, UsageInfo, MultiRunRequest, EngineEvent, SubAgentInfo, PanelPopState, PanelPopClosed, SessionWindowInfo } from '@shared/protocol'
 import {
   useAgentSession,
@@ -50,7 +50,7 @@ import type { ChatSummary } from './Sidebar'
 import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { McpSkillView } from './McpSkillView'
-const FileModal = lazy(() => import('./FileModal').then((m) => ({ default: m.FileModal }))) // CodeMirror 청크 지연 로드 (App.tsx와 동일)
+import { FileModal } from '../lib/fileViewer'
 import { pushRecentDir } from '../lib/recentDirs'
 import { SubAgentModal } from './AgentPanel'
 import { ImageViewer } from './ImageViewer'

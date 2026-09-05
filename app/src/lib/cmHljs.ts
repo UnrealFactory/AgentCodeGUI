@@ -87,8 +87,9 @@ export function buildDeco(
   // hljs base marks are made inclusive (startSide < 0) so they sort as the OUTER span;
   // sem marks are exclusive (default) → inner span. For a coinciding range the sem
   // span is therefore the innermost element, so its `.sem-*` color wins over hljs.
-  // store=false — 편집 중간 버전을 하이라이트 LRU에 넣지 않는다(캐시 오염 방지).
-  const lines = highlightToLines(text, lang, false)
+  // Read-only previews can reuse the same file on reopen. Intermediate edits
+  // still stay out of the highlight cache.
+  const lines = highlightToLines(text, lang, view.state.readOnly)
   const n = Math.min(lines.length, doc.lines)
   for (let i = 0; i < n; i++) {
     const base = doc.line(i + 1).from

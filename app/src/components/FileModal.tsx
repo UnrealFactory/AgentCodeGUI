@@ -2902,17 +2902,6 @@ export function FileModal({
   onReady?: () => void
 }) {
   const [res, setRes] = useState<FileReadResult | null>(null)
-  // 등장 애니메이션(.fv-modal rise .22s)이 **끝난 뒤**에 본문을 붙인다(3.0.3). 내용은 보통
-  // 수십 ms 안에 도착하는데, 그 순간 하이라이트(highlight.js, 최대 200KB 동기)와 수천 행의
-  // 첫 커밋이 애니메이션 한가운데에 떨어져 프레임을 먹었다 — 같은 파일을 다시 열면 캐시
-  // 적중이라 부드럽고 처음 여는 큰 파일만 버벅이던 이유. 창 모드는 애니가 없으니 즉시.
-  // animationend는 reduced-motion·중단 등으로 안 올 수 있어 타이머로도 연다.
-  const [entered, setEntered] = useState(!!windowed)
-  useEffect(() => {
-    if (entered) return
-    const tm = window.setTimeout(() => setEntered(true), 320)
-    return () => window.clearTimeout(tm)
-  }, [entered])
   // lspStatus는 색칠·hover·정의이동 게이트 + 파일별 "심볼 분석 중" 칩 판정에 쓴다.
   // (설치는 설정에서 — 코드창엔 분석 중 칩만 두고 ready/error/설치 칩은 안 둔다)
   const [lspStatus, setLspStatus] = useState<LspStatus>('unsupported')
@@ -3659,9 +3648,6 @@ export function FileModal({
         className="fv-modal rzm"
         ref={modalRef}
         style={windowed ? undefined : rz.modalStyle}
-        onAnimationEnd={(e) => {
-          if (e.target === e.currentTarget) setEntered(true)
-        }}
       >
         {headCtx &&
           createPortal(
@@ -3960,7 +3946,7 @@ export function FileModal({
                 else requestClose()
               }}
             />
-          ) : res == null || !entered ? (
+          ) : res == null ? (
             <div className="fv-loading">
               <span className="spin" />
             </div>

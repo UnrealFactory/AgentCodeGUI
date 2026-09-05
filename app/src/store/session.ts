@@ -141,10 +141,9 @@ export interface SessionState {
   tokenTotals: Record<string, TokenTally>
   thinkingText: string | null
   // 지금 '답변 본문'이 실제로 스트리밍 중인가 — 작업 인디케이터(마스코트+문구+경과 초)를
-  // 숨길지 판단하는 유일한 신호다. 답변 델타가 오면 true, 답변이 끝난 자리(assistant-done)에선
-  // 그대로 두되(끝-깜빡임 방지), 다음 단계 활동(도구 시작·재사고·새 턴)이 시작되면 false로
-  // 풀어 인디케이터가 되돌아온다. "마지막 메시지가 어시스턴트인가"로 판정하던 예전 방식은
-  // 답변이 끝난 뒤에도 계속 true라 침묵 구간에서 인디케이터를 죽이던 문제가 있었다.
+  // 숨길지 판단하는 신호다. 답변 델타가 오면 true, 메시지가 끝나면 즉시 false로 푼다.
+  // 다음 사고·도구 신호까지 기다리면 Codex의 중간 답변 뒤 30~60초 침묵 구간에 표시가
+  // 사라진다. 턴 전체가 끝났을 때는 각 채팅 화면의 busy 조건이 인디케이터를 숨긴다.
   streaming: boolean
   openGroupId: string | null
   // 중단 직후 — 코얼레서가 늦게 흘려보내는 이번 턴의 델타/생각 조각을 삼키는 중
@@ -908,18 +907,21 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'assistant-done': {
       // finalize: if the message was streamed, replace its text with the
       // authoritative final text; otherwise add it fresh.
+      // 메시지 완료 뒤에도 턴은 계속될 수 있다 — 다음 이벤트 없이도 작업 표시를 되살린다.
       if (state.interrupted) return state // 중단 직후의 늦은 마무리 프레임도 동일하게 버린다 — 부분 답변을 그대로 둔다
       const without = stripSilentTail(state.messages.filter((m) => m.id !== THINKING_ID))
       const exists = without.some((m) => m.id === e.messageId)
       if (exists) {
         return {
           ...state,
+          streaming: false,
           openGroupId: null,
           messages: without.map((m) => (m.id === e.messageId && m.kind === 'msg' ? { ...m, text: e.text, animate: false } : m))
         }
       }
       return {
         ...state,
+        streaming: false,
         openGroupId: null,
         messages: capThread([
           ...without,

@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { SidebarColumn } from './components/SidebarColumn'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChatStatusLite, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 import { pickerAfterLanding, queueAfterLanding } from './lib/identityLanding'
 
@@ -59,9 +60,8 @@ import { FolderSwitchDialog } from './components/FolderSwitchDialog'
 import { NoticeModal } from './components/NoticeModal'
 // ★R28i N3 — 「AgentCodeGUI3으로 열기」가 폴더를 못 열었을 때의 사유(3.0 전용 셸 채널).
 import { onOpenDirectoryFailed, type OpenDirFailure } from './api/shim'
-// 지연 로드 — FileModal이 CodeMirror 전체(+cm 유틸·semTokens)를 끌고 와 번들의 ~1/3이다.
-// 뷰어를 처음 열 때 로컬 청크 한 번만 로드하면 되고, 그 전엔 파스·메모리 비용이 0이 된다.
-const FileModal = lazy(() => import('./components/FileModal').then((m) => ({ default: m.FileModal })))
+// 파일 뷰어는 별도 청크로 두고, 첫 화면이 뜬 뒤 유휴 시간에 미리 준비한다.
+import { FileModal } from './lib/fileViewer'
 import { ChangedFilesModal } from './components/ChangedFilesModal'
 import { GitModal, type GitViewerOverride } from './components/GitModal'
 import { ImageViewer } from './components/ImageViewer'
@@ -473,7 +473,6 @@ function MainApp({ user }: { user: AppUser }) {
   const [autohideTrigger, setAutohideTrigger] = useState<number>(() =>
     getPref<number>(SIDEBAR_AUTOHIDE_TRIGGER, AUTOHIDE_TRIGGER_DEFAULT)
   )
-  const [lcolRevealed, setLcolRevealed] = useState(false)
   const lcolRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const onChanged = (): void => {
@@ -483,57 +482,6 @@ function MainApp({ user }: { user: AppUser }) {
     window.addEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
     return () => window.removeEventListener(SIDEBAR_AUTOHIDE_EVENT, onChanged)
   }, [])
-  // 펼침/접힘 판정 — 커서 X 위치(창 안 mousemove) + 문서 이탈/창 blur.
-  // 펼침: 가장자리 감지 폭 안. 접힘: 실제 패널 폭 + 여유(8px) 바깥. 폭 드래그 중엔 접지 않는다.
-  // 커서가 창 밖(옆 모니터)으로 나가면 mousemove가 끊겨 마지막 상태가 얼어붙으므로,
-  // 문서 mouseleave(300ms 유예 — 왼쪽 경계 살짝 넘었다 돌아올 때 안 깜빡)와 창 blur(즉시)로 접는다.
-  // 포털 메뉴(ctx-menu·sconfirm)는 body 소속이라도 문서 안이라 문서 mouseleave에 안 걸린다.
-  // 단, app-region:drag 띠(탐색기 .fxh·사이드바 .sb-top 등)는 OS가 타이틀바(비클라이언트)로
-  // 취급해 커서가 올라가는 순간에도 문서 mouseleave가 발생한다 — 창 밖으로 나간 게 아니므로
-  // leave 좌표가 드래그 띠 위면 무시한다. 안 그러면 헤더의 새로고침·숨김보기 버튼으로 가는
-  // 길에 사이드바가 접혀버린다. 진짜 창 이탈은 좌표가 드래그 띠 밖(트리·본문)이라 그대로 접힌다.
-  useEffect(() => {
-    if (!autohide) {
-      setLcolRevealed(false)
-      return
-    }
-    // 접힘 판정은 '목표 폭' 기준 — 펼침 애니 도중 커서를 빨리 움직여도(현재 폭이 아직 작아도)
-    // 중간에 접히지 않게. 안쪽 사이드바(.sidebar/.explorer)는 고정 폭이라 offsetWidth가 곧 목표 폭.
-    let leaveTimer: ReturnType<typeof setTimeout> | undefined
-    const onMove = (e: MouseEvent): void => {
-      clearTimeout(leaveTimer)
-      if (e.clientX <= autohideTrigger) setLcolRevealed(true)
-      else if (!lcolDrag) {
-        const inner = lcolRef.current?.firstElementChild as HTMLElement | null
-        const w = inner?.offsetWidth || (lcolW ?? 242)
-        if (e.clientX > w + 8) setLcolRevealed(false)
-      }
-    }
-    // 창 드래그 띠 셀렉터 — styles.css의 -webkit-app-region:drag 선언과 짝 (버튼은 no-drag라
-    // 커서가 버튼 위에 있는 동안엔 애초에 mouseleave가 안 난다)
-    const DRAG_STRIPS = '.titlebar, .sb-top, .fxh, .chat-head, .ma-head'
-    const onDocLeave = (e: MouseEvent): void => {
-      if (lcolDrag) return
-      const el = document.elementFromPoint(e.clientX, e.clientY)
-      if (el?.closest(DRAG_STRIPS)) return // 드래그 띠 진입으로 인한 가짜 leave — 접지 않는다
-      clearTimeout(leaveTimer)
-      leaveTimer = setTimeout(() => setLcolRevealed(false), 300)
-    }
-    const onBlur = (): void => {
-      if (lcolDrag) return
-      clearTimeout(leaveTimer)
-      setLcolRevealed(false)
-    }
-    window.addEventListener('mousemove', onMove)
-    document.documentElement.addEventListener('mouseleave', onDocLeave)
-    window.addEventListener('blur', onBlur)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      document.documentElement.removeEventListener('mouseleave', onDocLeave)
-      window.removeEventListener('blur', onBlur)
-      clearTimeout(leaveTimer)
-    }
-  }, [autohide, autohideTrigger, lcolDrag, lcolW])
   // 감지 폭 미리보기 — 설정에서 슬라이더를 만지는 동안 왼쪽 가장자리에 그 폭만큼 띠를 띄운다.
   // active=false는 200ms 뒤 사라지게(다시 true가 오면 취소) — 드래그 중 잠깐의 leave에 안 깜빡.
   const [triggerPrev, setTriggerPrev] = useState<{ show: boolean; w: number }>({
@@ -2409,12 +2357,7 @@ function MainApp({ user }: { user: AppUser }) {
             멀티 뷰의 탐색기는 마지막으로 클릭한 패널의 폴더를 따라간다(패널 전환 = 트리 전환).
             두 패널 모두 --lcol-w 한 폭이라 폭 트랜지션 없이 key 교체 슬라이드-인만 남는다.
             오른쪽 경계 핸들 드래그로 폭 조절 — 사용자 폭일 때만 인라인 변수를 얹는다 */}
-        {autohide && <div className={'lcol-edge' + (lcolRevealed ? ' gone' : '')} />}
-        <div
-          ref={lcolRef}
-          className={'lcol' + (autohide ? ' autohide' : '') + (autohide && lcolRevealed ? ' revealed' : '')}
-          style={lcolW != null ? ({ '--lcol-w': `${lcolW}px` } as React.CSSProperties) : undefined}
-        >
+        <SidebarColumn columnRef={lcolRef} autohide={autohide} trigger={autohideTrigger} dragging={lcolDrag} width={lcolW}>
           {mode === 'single' && explorerOpen ? (
             <Explorer
               key="fx"
@@ -2450,7 +2393,7 @@ function MainApp({ user }: { user: AppUser }) {
             onPointerDown={onLcolResize}
             onDoubleClick={onLcolReset}
           />
-        </div>
+        </SidebarColumn>
         {mode === 'multi' ? (
           <ErrorBoundary label={t('멀티 에이전트', 'Multi-agent')}>
             <MultiWorkspace
@@ -2660,9 +2603,7 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
-      {/* 조건 마운트 — 닫힌 FileModal은 어차피 null을 그렸고(path 가드), 상시 마운트면
-          lazy 청크가 부팅에 로드돼 지연 로드가 무력화된다. fallback 없음 = 첫 오픈 시
-          로컬 청크 로드 한 프레임(체감 0)만 비었다가 뜬다 */}
+      {/* 열린 파일이 있을 때만 편집기를 마운트한다. 청크는 첫 화면 뒤 유휴 시간에 준비한다. */}
       {(openFilePath !== null || gitViewer !== null || docked !== null) && (
         <Suspense fallback={null}>
           <FileModal
