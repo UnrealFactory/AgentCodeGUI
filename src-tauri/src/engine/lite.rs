@@ -149,18 +149,23 @@ pub fn build<D: CliDriver>(rt: &ChatRuntime<D>, terminal: Terminal, now_ms: u64,
     //
     // ★R2(F1) `holding` — 이 슬롯이 **아직 시체가 아닌가**([`holds_account`] 참고).
     let holding = holds_account(state, rt.driver_ref().process_alive());
-    let account = match rt.identity().billing() {
-        ccg_engine::identity::BillingAxis::Subscription { account, .. } if holding => {
-            // 빈 문자열은 「계정 미상」이지 계정이 아니다 — 그걸 실으면 목록에 없는
-            // 계정 하나가 모든 자리를 물고 있는 것처럼 보인다.
-            Some(account.to_string()).filter(|s| !s.is_empty())
+    // Codex 정체성의 billing.account는 Claude 기본 계정을 품을 수 있다.
+    // 실제 실행 엔진의 계정만 싣는다 — 같은 이메일도 두 제공자에서 별개다.
+    let (account, codex_account) = if holding
+        && matches!(rt.identity().billing(), ccg_engine::identity::BillingAxis::Subscription { .. })
+    {
+        match rt.identity().engine_kind() {
+            ccg_engine::identity::EngineKind::Claude => (rt.identity().account(), None),
+            ccg_engine::identity::EngineKind::Codex => (None, rt.identity().codex_account()),
         }
-        _ => None,
+    } else {
+        (None, None)
     };
     json!({
         "chatId": rt.chat_id,
         "status": status,
-        "account": account,
+        "account": account.filter(|s| !s.is_empty()),
+        "codexAccount": codex_account.filter(|s| !s.is_empty()),
         // ★R28 ACCT §3 — 이 채팅이 앉은 **보드 자리**(`${boardId}::${slot}`). 「사용 중 ·
         // 2번 자리」의 그 번호가 여기서 나온다. 렌더러가 panelId ↔ chatId를 못 잇기
         // 때문이다(그 대응의 진실은 보드 스토어이고 셸만 안다 — `panel_seat_for_chat`).
@@ -236,11 +241,26 @@ mod tests {
     }
 
     fn runtime(alive: bool) -> ccg_engine::runtime::ChatRuntime<Fake> {
+        runtime_for(alive, ccg_engine::identity::EngineKind::Claude, ccg_engine::identity::BillingKind::Subscription, None)
+    }
+
+    fn runtime_for(
+        alive: bool,
+        engine: ccg_engine::identity::EngineKind,
+        billing: ccg_engine::identity::BillingKind,
+        codex_account: Option<&str>,
+    ) -> ccg_engine::runtime::ChatRuntime<Fake> {
         use ccg_engine::identity::*;
         let raw = RawIdentity {
-            engine: RawEngine { kind: EngineKind::Claude, model: "opus".into(), effort: EffortId::Xhigh, codex_account: None , codex_tier: None },
+            engine: RawEngine {
+                kind: engine,
+                model: if engine == EngineKind::Codex { "gpt-6-astra" } else { "opus" }.into(),
+                effort: EffortId::Xhigh,
+                codex_account: codex_account.map(str::to_string),
+                codex_tier: None,
+            },
             billing: RawBilling {
-                kind: BillingKind::Subscription,
+                kind: billing,
                 account: Some("one@ccg.test".into()),
                 drop_env_key: Some(false),
             },
@@ -254,7 +274,7 @@ mod tests {
         ChatRuntime::new(
             "c-a",
             raw,
-            IdentityDefaults::default(),
+            IdentityDefaults { api_key: Some("test-key".into()), ..IdentityDefaults::default() },
             ccg_engine::clock::VirtualClock::new(),
             Fake { alive },
         )
@@ -291,5 +311,31 @@ mod tests {
         assert_eq!(v["status"], json!("done"), "종결 상태는 그대로다(사이드바 점 색)");
         // 보드가 없는 픽스처라 자리는 없음 — 본채팅 이름표는 렌더러가 붙인다(F4).
         assert!(v["panelId"].is_null());
+    }
+
+    #[test]
+    fn codex_never_counts_as_using_the_claude_billing_account() {
+        use ccg_engine::identity::{BillingKind, EngineKind};
+        let claude = build(&runtime(true), Terminal::Done, 1_000, None);
+        assert_eq!(claude["account"], "one@ccg.test");
+        assert!(claude["codexAccount"].is_null());
+        for email in [Some("openai@ccg.test"), Some("one@ccg.test"), None] {
+            let rt = runtime_for(true, EngineKind::Codex, BillingKind::Subscription, email);
+            let row = build(&rt, Terminal::Done, 1_000, None);
+            assert!(row["account"].is_null(), "Codex must not occupy a Claude account: {row}");
+            assert_eq!(row["codexAccount"], json!(email));
+        }
+    }
+
+    #[test]
+    fn api_and_system_environments_do_not_occupy_registered_accounts() {
+        use ccg_engine::identity::{BillingKind, EngineKind};
+        for engine in [EngineKind::Claude, EngineKind::Codex] {
+            for billing in [BillingKind::ApiKey, BillingKind::System] {
+                let rt = runtime_for(true, engine, billing, Some("openai@ccg.test"));
+                let row = build(&rt, Terminal::Done, 1_000, None);
+                assert!(row["account"].is_null() && row["codexAccount"].is_null(), "{row}");
+            }
+        }
     }
 }

@@ -115,7 +115,7 @@ const CWD_KEY = 'session.cwd'
 
 export function SessionWindow(): React.ReactElement {
   useLang() // 언어 전환 시 창 전체 재렌더 — 본채팅 창 설정에서 바꿔도 브로드캐스트로 따라온다
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession((cb) =>
+  const { state, elapsed, busy, begin, answerPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession((cb) =>
     window.api.session?.onEvent?.(cb) ?? (() => {})
   )
   const [max, setMax] = useState(false)
@@ -818,7 +818,7 @@ export function SessionWindow(): React.ReactElement {
   const onPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
     if (!state.pendingPermission) return
     window.api.session?.respondPermission({ requestId: state.pendingPermission.requestId, behavior }).catch(() => {})
-    clearPermission()
+    answerPermission(behavior)
   }
   const onAnswer = (answers: string[][]): void => {
     if (!state.pendingQuestion) return

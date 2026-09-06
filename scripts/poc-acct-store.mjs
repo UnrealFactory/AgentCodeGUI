@@ -184,8 +184,8 @@ S.putSlotNames('chats', { 'chat-main': '본채팅' })
 S.putSlotNames('wins', { 'chat-win': '추가 창' })
 S.putChatStatuses([
   { chatId: 'chat-main', account: 'a0@x', panelId: null },
-  { chatId: 'chat-p2', account: 'a1@x', panelId: 'board-1::1' },
-  { chatId: 'chat-p3', account: 'a1@x', panelId: 'board-1::2' },
+  { chatId: 'chat-p2', account: 'a1@x', panelId: 'board-1::1', seat: 2 },
+  { chatId: 'chat-p3', account: 'a1@x', panelId: 'board-1::2', seat: 3 },
   { chatId: 'chat-win', account: 'a2@x', panelId: null }
 ])
 ok(S.inUseLabel('a0@x') === '사용 중 · 본채팅', '본채팅 이름표', String(S.inUseLabel('a0@x')))
@@ -202,6 +202,21 @@ S.putChatStatuses([
 ])
 ok(S.inUseLabel('a0@x') === null, '★ 죽은 채팅(키 없음)이 계정을 물고 있다고 말하면 안 된다', String(S.inUseLabel('a0@x')))
 ok(S.slotsUsing('a1@x').length === 0, '빈 계정 문자열도 자리로 안 센다')
+
+console.log('\n── G. Claude / Codex 계정은 같은 이메일도 따로 센다 ─────────')
+S.putChatStatuses([
+  { chatId: 'claude', account: 'shared@x', panelId: 'b::0', seat: 1 },
+  { chatId: 'codex1', codexAccount: 'shared@x', panelId: 'b::1', seat: 2 },
+  { chatId: 'codex2', codexAccount: 'shared@x', panelId: 'b::2', seat: 3 }
+])
+ok(S.inUseLabel('shared@x', 'b::0') === null, 'Claude 자기 자리만 쓰면 Codex 두 자리를 세지 않는다')
+ok(S.slotsUsing('shared@x').length === 1, 'Claude 계정 사용처는 한 곳')
+ok(S.inUseLabel('shared@x', 'b::1', 'codex') === '사용 중 · 3번 자리', 'Codex도 자기 자리를 빼고 다른 Codex 자리만 표시')
+ok(S.liveAccountOf('b::1', 'codex') === 'shared@x', 'Codex 실제 실행 계정을 읽는다')
+ok(S.liveAccountOf('b::1') === undefined, 'Codex 실행 계정을 Claude 현재 계정으로 읽지 않는다')
+ok(S.panelIdOfChat('codex1') === 'b::1', 'Codex 분리 창도 자리 식별 가능')
+S.putChatStatuses([{ chatId: 'claude', account: 'shared@x', panelId: 'b::0', seat: 1 }])
+ok(S.inUseLabel('shared@x', undefined, 'codex') === null, '런타임 회수 후 Codex 사용 중 표시는 사라진다')
 
 fs.rmSync(out, { force: true })
 console.log(`\n${fails.length === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails.length}건`}`)

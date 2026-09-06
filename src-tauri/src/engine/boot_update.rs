@@ -224,6 +224,7 @@ fn run_boot(app: &AppHandle) {
     let home = ccg_store::app_home();
     let mut work: Vec<(usize, Item)> = vec![];
     for (i, t) in TARGETS.iter().enumerate() {
+        if super::environment::system_id(t.id) { continue; }
         // 조회 실패(오프라인 등) 엔진은 조용히 건너뛴다 — 다음 부팅에 재시도.
         let latest = t.spec.list_available().ok().and_then(|a| a.latest);
         if let Some(item) = plan(t.id, t.label, latest.as_deref(), t.spec.active_version(&home).as_deref()) {
@@ -236,6 +237,7 @@ fn run_boot(app: &AppHandle) {
         // **끝났다고 말한다**. `done && !active`가 곧 "이번 부팅엔 할 일이 없었다"이고,
         // `EngineGate`는 그 신호를 보고서야 자기 안내 카드를 띄운다(아무도 안 도니까).
         for t in TARGETS.iter() {
+            if super::environment::system_id(t.id) { continue; }
             cleanup_if_stale(&t.spec, &home);
         }
         let snap = Snapshot { cleanup: "done", done: true, ..Snapshot::fresh() };
@@ -273,6 +275,7 @@ fn run_boot(app: &AppHandle) {
     put(&snap);
     let _ = app.emit(EVENT, snap.wire());
     for t in TARGETS.iter() {
+        if super::environment::system_id(t.id) { continue; }
         // 실패한 설치본은 목록에 안 잡히므로(마커 없는 반쪽 폴더) 안전 — 최신 하나만
         // 남기고 삭제하며, 활성 포인터는 `cleanup_old`가 스스로 보정한다.
         snap.freed += cleanup_if_stale(&t.spec, &home);
@@ -291,6 +294,7 @@ fn silent() {
     }
     let home = ccg_store::app_home();
     for t in TARGETS.iter() {
+        if super::environment::system_id(t.id) { continue; }
         let latest = t.spec.list_available().ok().and_then(|a| a.latest);
         let Some(item) = plan(t.id, t.label, latest.as_deref(), t.spec.active_version(&home).as_deref()) else {
             continue;

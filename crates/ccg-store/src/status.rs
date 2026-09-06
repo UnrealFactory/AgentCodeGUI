@@ -55,7 +55,7 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 /// 그래서 두 자리에서 **키째 지운다**: 쓸 때([`flush`])와 읽을 때([`load_boot`]).
 /// 쓰기만 막으면 R1이 이미 써 둔 파일이 남아 그 홈은 영원히 유령 칩을 문다 — 읽기 쪽
 /// 청소가 그 판의 답이고, 쓰기 쪽 청소가 재발 금지다.
-const RUNTIME_ONLY_KEYS: [&str; 3] = ["account", "panelId", "seat"];
+const RUNTIME_ONLY_KEYS: [&str; 4] = ["account", "codexAccount", "panelId", "seat"];
 
 /// 런타임 전용 키를 걷어낸 사본(디스크 직렬화·부팅 장전 공용).
 fn strip_runtime_only(v: &mut Value) {
@@ -807,14 +807,16 @@ mod tests {
         set(
             "c-a",
             json!({ "chatId": "c-a", "status": "done", "busy": false, "bgActive": false,
-                    "account": "one@ccg.test", "panelId": "b1::1", "ask": "none",
+                    "account": "one@ccg.test", "codexAccount": "openai@ccg.test", "panelId": "b1::1", "ask": "none",
                     "hold": Value::Null, "queued": 0, "updatedAt": 7 }),
         );
         assert_eq!(snapshot()["c-a"]["account"], json!("one@ccg.test"), "메모리에는 남아야 §3이 산다");
+        assert_eq!(snapshot()["c-a"]["codexAccount"], json!("openai@ccg.test"));
         flush();
         let txt = std::fs::read_to_string(path()).expect("status.json");
         println!("[F1] flush 결과 = {txt}");
         assert!(!txt.contains("account"), "★ 계정이 디스크에 남았다: {txt}");
+        assert!(!txt.contains("codexAccount"), "Codex account must not persist: {txt}");
         assert!(!txt.contains("panelId"), "★ 자리가 디스크에 남았다: {txt}");
         assert!(txt.contains("\"status\":\"done\""), "종결 상태까지 지우면 안 된다");
 
@@ -823,7 +825,7 @@ mod tests {
             "chats-v3/status.json",
             &json!({ "version": 1, "statuses": { "c-a": {
                 "chatId": "c-a", "status": "done", "busy": false,
-                "account": "one@ccg.test", "panelId": "default::0" } } })
+                "account": "one@ccg.test", "codexAccount": "openai@ccg.test", "panelId": "default::0" } } })
             .to_string(),
         );
         forget();
@@ -831,6 +833,7 @@ mod tests {
         let row = boot.get("c-a").expect("행");
         println!("[F1] load_boot = {row}");
         assert!(row.get("account").is_none(), "★ 재기동 판에 유령 계정이 살아났다: {row}");
+        assert!(row.get("codexAccount").is_none(), "Codex account must not revive after restart: {row}");
         assert!(row.get("panelId").is_none(), "★ 재기동 판에 유령 자리가 살아났다: {row}");
         assert_eq!(row["status"], json!("done"), "얼려 둔 종결 상태는 그대로다");
         let _ = h;
@@ -844,13 +847,14 @@ mod tests {
         forget();
         set(
             "c-b",
-            json!({ "chatId": "c-b", "status": "done", "busy": false, "account": "two@ccg.test",
+            json!({ "chatId": "c-b", "status": "done", "busy": false, "account": "two@ccg.test", "codexAccount": "openai@ccg.test",
                     "panelId": "b1::2", "unread": 0 }),
         );
         assert!(clear_runtime("c-b"), "뗄 것이 있었는데 false를 돌려줬다");
         let row = snapshot()["c-b"].clone();
         println!("[F1-b] clear_runtime = {row}");
         assert!(row.get("account").is_none() && row.get("panelId").is_none(), "{row}");
+        assert!(row.get("codexAccount").is_none(), "{row}");
         assert_eq!(row["status"], json!("done"), "마지막 상태까지 지우면 사이드바 점이 꺼진다");
         assert!(!clear_runtime("c-b"), "두 번째는 바뀐 게 없다");
         assert!(!clear_runtime("없는채팅"), "모르는 채팅에 참을 돌려주면 헛 브로드캐스트가 난다");

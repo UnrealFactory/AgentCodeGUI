@@ -71,6 +71,14 @@ macro_rules! on_active {
 impl CliDriver for AnyDriver {
     fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
         self.active = if spec.codex.is_some() { Which::Codex } else { Which::Claude };
+        if self.active == Which::Claude {
+            if let Some(dir) = super::environment::config_dir(ccg_engine::identity::EngineKind::Claude) {
+                let mut system = spec.clone();
+                system.env_set.retain(|(k, _)| k != "CLAUDE_CONFIG_DIR");
+                system.env_set.push(("CLAUDE_CONFIG_DIR".into(), dir.to_string_lossy().into_owned()));
+                return self.claude.spawn(&system);
+            }
+        }
         on_active!(self, spawn(spec))
     }
     fn send(&mut self, line: Value) {

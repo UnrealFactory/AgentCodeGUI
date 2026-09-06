@@ -67,6 +67,7 @@ pub(crate) mod testhome;
 /// `pub`인 이유: 계정 팔(`ipc/accounts.rs`)이 `claude auth …`를 조립할 때 **같은
 /// 실행 파일**을 써야 한다(경로가 두 곳에 적히면 한쪽만 고쳐진다).
 pub mod versions;
+pub mod environment;
 mod wire;
 
 use super::ipc::{arg, ch};

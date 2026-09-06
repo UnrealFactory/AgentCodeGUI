@@ -403,6 +403,13 @@ export interface BgTaskRequest {
 }
 
 // ── Engine → Renderer events ─────────────────────────────────
+/** Plan attached to the current ExitPlanMode approval, before any approval is sent. */
+export interface PlanPreview {
+  text?: string
+  filePath?: string
+  cwd?: string
+}
+
 export type EngineEvent =
   | { type: 'status'; runId: string; status: AgentStatus }
   | { type: 'session'; runId: string; sessionId: string; model: string; cwd: string; tools: string[] }
@@ -437,6 +444,7 @@ export type EngineEvent =
       requestId: string
       toolName: string
       summary: string
+      plan?: PlanPreview
       // 카드 헤더 표기용('Claude의 승인 요청'/'GPT의 승인 요청') — 생략하면 claude
       engine?: EngineId
     }
@@ -1439,6 +1447,7 @@ export type EngineAxis =
 /** 과금·자격 경로. `api_mode` 불리언 + `account` 문자열 두 필드로 두면
  *  "useApi면 account 무시"라는 규칙이 비교식 밖에 남는다 → 하나로 접는다. */
 export type BillingAxis =
+  | { kind: 'system' } // Existing CLI environment owns authentication and billing.
   | { kind: 'subscription'; account: string; dropEnvKey: boolean } // 실 이메일(기본 계정도 해석해 채운다)
   | { kind: 'api_key'; keyFp: string } // ★ 지문만 — 키 원문은 계약면에 절대 오르지 않는다
 
@@ -1455,7 +1464,7 @@ export interface ToolPolicyAxis {
  *  저장 스키마에 존재하지 않으므로 전역 pref가 정체성에 개입할 수 없다. */
 export interface RawIdentity {
   engine: { kind: EngineId; model: string; effort: EffortId; codexAccount?: string | null; codexTier?: string | null }
-  billing: { kind: 'subscription' | 'api_key'; account?: string | null; dropEnvKey?: boolean }
+  billing: { kind: 'subscription' | 'api_key' | 'system'; account?: string | null; dropEnvKey?: boolean }
   cwd: string
   addDirs: string[]
   mode: ModeId
@@ -1469,7 +1478,7 @@ export interface RawIdentity {
  *  ★ `billing.keyFp`는 여기 없다 — 키 원문이 계약면에 오르지 않으므로 Rust가 저장된 키에서 계산한다. */
 export interface RawIdentityPatch {
   engine?: { kind?: EngineId; model?: string; effort?: EffortId; codexAccount?: string | null; codexTier?: string | null }
-  billing?: { kind?: 'subscription' | 'api_key'; account?: string; dropEnvKey?: boolean }
+  billing?: { kind?: 'subscription' | 'api_key' | 'system'; account?: string; dropEnvKey?: boolean }
   cwd?: string
   addDirs?: string[] // 전체 교체(집합이라 서브필드가 없다)
   mode?: ModeId
@@ -1595,7 +1604,7 @@ export interface Board {
 export interface ChatStatusLite {
   chatId: string
   status: AgentStatus
-  /** ★R28 ACCT §3 — 이 채팅이 **지금 물고 있는 구독 계정**(3.0 전용 · 선택 필드).
+  /** ★R28 ACCT §3 — Claude 채팅이 **지금 물고 있는 구독 계정**(3.0 전용 · 선택 필드).
    *
    *  키가 있으면 **살아 있는 런타임**이라는 뜻이다 — 정확히는 *"busy 턴 중이거나 상주
    *  CLI가 살아 있다"*(§3의 정의 그대로). 계정 picker·설정 ▸ Account의 「사용 중 · N번
@@ -1607,6 +1616,8 @@ export interface ChatStatusLite {
    *  `hub::Op::Dispose`(회수하면 뗀다). R1은 이 값이 `status.json`에 영속돼, 턴을 한 번
    *  돌린 채팅이 **이후 모든 부팅에서** 계정을 물었다(확인 크리틱 R1 F1). */
   account?: string | null
+  /** Codex 실행의 OpenAI 구독 계정. account(Claude)와 별개이며 런타임에서만 유지한다. */
+  codexAccount?: string | null
   /** ★R28 ACCT §3 — 이 채팅이 앉은 **멀티 보드 자리**(`${boardId}::${slot}`) · 3.0 전용.
    *  「2번 자리」 문구가 이 값에서 나온다(대응의 진실은 보드 스토어라 렌더러가 못 잇는다).
    *

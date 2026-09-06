@@ -438,6 +438,7 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
 }
 
 fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
+    if let Some(v) = crate::engine::environment::dispatch(channel, p) { return v; }
     // 통합 스토어 옵트인 — 켜졌을 때만, 그리고 **맨 앞에서** 옛 채널을 가로챈다.
     if ccg_store::unified_store_enabled() {
         if let Some(v) = unified::dispatch(app, channel, p) {

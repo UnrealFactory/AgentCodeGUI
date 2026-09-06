@@ -729,6 +729,39 @@ fn o4_codex_axis_normalizes_like_the_claude_one() {
 }
 
 #[test]
+fn codex_subscription_does_not_require_an_unrelated_claude_login() {
+    let d = codex_defaults();
+    let mut raw = raw_codex("gpt-5.6-terra", Some("me@openai.com"));
+    raw.billing.account = Some("removed@claude.test".into());
+    let id = RunIdentity::normalize(raw.clone(), &d)
+        .expect("a removed Claude binding must not lock a valid Codex session");
+    assert_eq!(id.codex_account(), Some("me@openai.com"));
+    assert_eq!(RunIdentity::normalize(id.to_raw(), &d).unwrap(), id);
+
+    raw.billing.account = None;
+    let codex_only = IdentityDefaults { known_accounts: BTreeSet::new(), default_account: None, ..d.clone() };
+    let id = RunIdentity::normalize(raw.clone(), &codex_only)
+        .expect("Codex-only users do not need a Claude account");
+    assert_eq!(id.codex_account(), Some("me@openai.com"));
+    assert_eq!(RunIdentity::normalize(id.to_raw(), &codex_only).unwrap(), id);
+
+    // Validate the account actually used by the selected engine.
+    raw.engine.codex_account = Some("removed@openai.com".into());
+    assert!(matches!(RunIdentity::normalize(raw.clone(), &d),
+        Err(IdentityError::AccountUnavailable(email)) if email == "removed@openai.com"));
+    let api = RunIdentity::normalize(
+        RawIdentity { billing: RawBilling { kind: BillingKind::ApiKey, ..raw.billing.clone() }, ..raw.clone() },
+        &IdentityDefaults { api_key: Some("test-key".into()), ..d.clone() },
+    ).expect("API execution does not require a subscription login");
+    assert_eq!(api.codex_account(), None);
+    raw.engine.kind = EngineKind::Claude;
+    raw.engine.model = "opus".into();
+    raw.billing.account = Some("removed@claude.test".into());
+    assert!(matches!(RunIdentity::normalize(raw, &d),
+        Err(IdentityError::AccountUnavailable(email)) if email == "removed@claude.test"));
+}
+
+#[test]
 fn spawn_spec_for_codex_carries_a_plan_not_claude_argv() {
     let d = codex_defaults();
     let id = RunIdentity::normalize(raw_codex("gpt-5.6-terra", None), &d).unwrap();
@@ -821,6 +854,20 @@ fn switch_engine(rt: &mut ccg_engine::runtime::ChatRuntime<SpecSpy>, kind: Engin
         policy: ApplyPolicy::Now,
         op: PendingOp::Merge,
     });
+}
+
+#[test]
+fn only_claude_startup_requires_the_claude_account_directory() {
+    for engine in [EngineKind::Codex, EngineKind::Claude] {
+        let mut rt = switch_rig(engine, if engine == EngineKind::Codex { "gpt-5.6-terra" } else { "opus" })
+            .with_account_resolver(std::sync::Arc::new(|_| Err("Claude credentials are unavailable".into())));
+        rt.dispatch(ccg_engine::runtime::Cmd::Send { text: "Start this session".into() });
+        assert_eq!(rt.driver_ref().specs.len(), usize::from(engine == EngineKind::Codex),
+            "only a Claude run may be blocked by its credential resolver");
+        if engine == EngineKind::Codex {
+            assert_eq!(rt.driver_ref().specs[0].codex.as_ref().unwrap().account.as_deref(), Some("me@openai.com"));
+        }
+    }
 }
 
 /// ★치명(크리틱 §4.1) — Claude로 한 턴 돌린 채팅에서 picker를 Codex로 바꾸면

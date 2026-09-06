@@ -7,6 +7,7 @@ import type {
   EngineEventV3,
   EngineId,
   FileDiff,
+  PlanPreview,
   SubAgentInfo,
   TermLine,
   Todo,
@@ -118,7 +119,7 @@ export interface SessionState {
   // 엔진은 정리 턴이 끝날 때까지 running을 유지한다(전송 게이트 wfAlive가 그 값에 매달림).
   workflows: WorkflowState[]
   // engine — 요청한 엔진(카드 헤더 'Claude의 승인 요청'/'GPT의 승인 요청' 표기), 생략=claude
-  pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
+  pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId; plan?: PlanPreview } | null
   // engine — 질문을 던진 엔진(카드 헤더 'Claude의 질문'/'GPT의 질문' 표기), 생략=claude
   pendingQuestion: { requestId: string; questions: AgentQuestion[]; engine?: EngineId } | null
   session: { sessionId: string; model: string; cwd: string } | null
@@ -185,7 +186,7 @@ export interface SessionState {
 type Action =
   | { type: 'begin'; text: string; time: string; command: string | null; images?: string[] }
   | { type: 'engine'; event: EngineEventV3 }
-  | { type: 'clear-permission' }
+  | { type: 'answer-permission'; requestId: string; behavior: 'allow' | 'allow_always' | 'deny' }
   | { type: 'clear-question' }
   // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
   | { type: 'answer-question'; answers: string[][] }
@@ -578,8 +579,25 @@ export function reducer(state: SessionState, action: Action): SessionState {
     return action.state
   }
 
-  if (action.type === 'clear-permission') {
-    return { ...state, pendingPermission: null }
+  if (action.type === 'answer-permission') {
+    const permission = state.pendingPermission
+    if (!permission || permission.requestId !== action.requestId) return state
+    if (permission.toolName !== 'ExitPlanMode') return { ...state, pendingPermission: null }
+    const seq = state.seq + 1
+    const answer = action.behavior === 'deny'
+      ? t('계획을 거절했습니다.', 'Plan declined.')
+      : t('계획을 승인했습니다.', 'Plan approved.')
+    return {
+      ...state,
+      seq,
+      pendingPermission: null,
+      // 계획 결정도 질문 답변과 같은 문답 기록으로 저장한다.
+      messages: capThread([...state.messages, {
+        kind: 'qa', id: `qa${seq}`,
+        pairs: [{ q: t('이 계획으로 진행할까요?', 'Proceed with this plan?'), a: [answer] }],
+        time: nowTime()
+      }])
+    }
   }
 
   if (action.type === 'clear-question') {
@@ -1245,7 +1263,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
     }
 
     case 'permission-request':
-      return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine } }
+      return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine, plan: e.plan } }
 
     case 'question-request':
       return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine } }
@@ -1533,7 +1551,9 @@ export function useAgentSession(
 
   const begin = (text: string, command: string | null = null, images?: string[]): void =>
     dispatch({ type: 'begin', text, time: nowTime(), command, images })
-  const clearPermission = (): void => dispatch({ type: 'clear-permission' })
+  const answerPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
+    if (state.pendingPermission) dispatch({ type: 'answer-permission', requestId: state.pendingPermission.requestId, behavior })
+  }
   const clearQuestion = (): void => dispatch({ type: 'clear-question' })
   // 답과 함께 질문을 닫는다 — clearQuestion과 달리 문답 흔적(qa)을 스레드에 남긴다
   const answerQuestion = (answers: string[][]): void => dispatch({ type: 'answer-question', answers })
@@ -1546,5 +1566,5 @@ export function useAgentSession(
   // ★ 잔여 (M-UI 크리틱 F3) — 되돌리기 성공의 되먹임. 셸이 true를 준 뒤에만 친다.
   const noteReverted = (revertTo: number): void => dispatch({ type: 'reverted', revertTo })
 
-  return { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted }
+  return { state, elapsed, busy, begin, answerPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted }
 }

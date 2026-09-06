@@ -9,6 +9,8 @@ import type {
   UpdateStatus
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
+import { EngineEnvironmentCard } from './EngineEnvironmentCard'
+import { useEngineEnvironments } from '../api/engineEnvironment'
 // ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
 import {
   ensureAccounts,
@@ -1018,6 +1020,7 @@ function ClaudeStyleCard(): React.ReactElement {
 }
 
 function EngineView(): React.ReactElement {
+  const environments = useEngineEnvironments()
   // 두 엔진 공통 자동 업데이트 — null=아직 조회 전(토글 비활성), 낙관 갱신 후 서버 값으로 확정
   const [auto, setAuto] = useState<boolean | null>(null)
   useEffect(() => {
@@ -1034,21 +1037,23 @@ function EngineView(): React.ReactElement {
       <div className="set-h1">Engine</div>
       <div className="set-h1-sub">
         {t(
-          '엔진마다 CLI가 따로 설치돼요 — 채팅의 엔진 선택(Anthropic/OpenAI)이 여기서 관리하는 CLI로 실행돼요. 버전을 고르면 전용 폴더에 설치되고, 시스템에 전역 설치된 CLI는 건드리지 않아요.',
-          'Each engine installs its own CLI — the chat’s engine choice (Anthropic/OpenAI) runs on the CLI managed here. Picked versions install into a dedicated folder and never touch a globally installed CLI.'
+          '엔진마다 앱에서 관리하는 CLI 또는 기존 시스템 환경을 선택할 수 있어요.',
+          'Choose an app-managed CLI or your existing system environment for each engine.'
         )}
       </div>
       <div className="set-sec">Anthropic</div>
-      <EngineCard name="Claude Code" tile={<LogoClaude size={20} />} fallback={t('번들', 'bundled')} api={window.api.engine} />
+      <EngineEnvironmentCard engine="claude" />
+      {environments?.claude.mode !== 'system' && <EngineCard name="Claude Code" tile={<LogoClaude size={20} />} fallback={t('번들', 'bundled')} api={window.api.engine} />}
       {/* 출력 스타일 — Claude Code 실행의 응답 결(Concise 등). Codex엔 대응 개념이 없어 여기만 */}
-      <ClaudeStyleCard />
+      {environments?.claude.mode !== 'system' && <ClaudeStyleCard />}
       <div className="set-sec">OpenAI</div>
-      <EngineCard name="Codex CLI" tile={<LogoOpenAI size={20} />} fallback={t('전역 설치', 'global install')} api={window.api.codexEngine} />
+      <EngineEnvironmentCard engine="codex" />
+      {environments?.codex.mode !== 'system' && <EngineCard name="Codex CLI" tile={<LogoOpenAI size={20} />} fallback={t('전역 설치', 'global install')} api={window.api.codexEngine} />}
       <div className="set-sec">{t('공통', 'Common')}</div>
       <div className="sc2 tgl" style={{ marginTop: 0 }}>
         <div>
           <div className="em">{t('자동 업데이트', 'Auto-update')}</div>
-          <div className="meta">{t('새 버전이 나오면 조용히 설치해서 사용해요 — 두 엔진 모두', 'Quietly installs and uses new versions — both engines')}</div>
+          <div className="meta">{t('앱 관리 환경으로 실행하는 엔진에만 적용돼요', 'Applies only to engines using the app-managed environment')}</div>
         </div>
         <span className="sp" />
         <button className={'sw2' + (auto ? ' on' : '')} aria-label={t('자동 업데이트', 'Auto-update')} disabled={auto == null} onClick={toggleAuto} />

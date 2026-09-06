@@ -109,6 +109,7 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// `CCG_CODEX_BIN`은 **하네스 전용 우회로**다(`scripts/poc-codex.mjs`가 가짜
 /// app-server를 꽂는다). 비어 있으면 앱 홈의 활성 설치본 → 전역 `codex` 순으로 떨어진다.
 pub fn codex_bin() -> PathBuf {
+    if let Some(p) = super::environment::cli(ccg_engine::identity::EngineKind::Codex) { return p; }
     if let Ok(p) = std::env::var("CCG_CODEX_BIN") {
         if !p.is_empty() {
             return PathBuf::from(p);
@@ -157,6 +158,7 @@ pub fn spawn_bin() -> PathBuf {
 /// 계정 → 격리 `CODEX_HOME`(2.6.2 `codexAccountRunDir`/`codexApiKeyRunDir` 파리티).
 /// 물질화(auth.json 쓰기 + `sessions`·`skills`·`plugins`·`cache` 정션)는 `ccg-auth`가 한다.
 pub fn home_for(plan: &CodexPlan) -> Option<PathBuf> {
+    if let Some(p) = super::environment::config_dir(ccg_engine::identity::EngineKind::Codex) { return Some(p); }
     // Explicit test/import override; an isolated CCG_HOME never reads the real
     // user's Codex config. Authentication always remains account-isolated.
     let native = std::env::var_os("CCG_CODEX_IMPORT_HOME").map(PathBuf::from).or_else(|| {

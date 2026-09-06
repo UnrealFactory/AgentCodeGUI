@@ -6,6 +6,7 @@ import type {
   EffortId,
   ModeId,
   EngineId,
+  PlanPreview,
   UsageInfo,
   UsageWindow,
   ExtraCreditInfo,
@@ -40,6 +41,8 @@ import { fmtToolResult, mcpParts, parseSearchOutput, parseToolArgs, toolFiles } 
 import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { Markdown } from './Markdown'
+import { PlanApproval } from './PlanApproval'
+import { systemEnvironment } from '../api/engineEnvironment'
 import { FileBadge } from './fileType'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { Todos, FileRow, SubAgent } from './AgentPanel'
@@ -888,7 +891,7 @@ const REVEAL_LIMIT = 24_000
 //   대부분을 번다. 위험을 지는 자리가 이득의 5%뿐이면 그 자리는 안 건드리는 게 맞다.
 const MIN_COMMIT_MS = 10
 
-function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
+function SmoothMarkdown({ text, running, onOpenFile }: { text: string; running: boolean; onOpenFile?: (path: string) => void }) {
   const [shown, setShown] = useState(() => (running ? 0 : text.length))
   const targetRef = useRef(text)
   targetRef.current = text
@@ -960,7 +963,7 @@ function SmoothMarkdown({ text, running }: { text: string; running: boolean }) {
 
   // colorize only once the run finished AND the reveal caught up (avoids flicker)
   const plain = running || shown < text.length
-  return <Markdown text={text.slice(0, shown)} plain={plain} />
+  return <Markdown text={text.slice(0, shown)} plain={plain} onOpenFile={onOpenFile} />
 }
 
 // memoized so typing in the composer (which re-renders the app) doesn't re-parse
@@ -1087,7 +1090,7 @@ export const MessageView = memo(function MessageView({
   item: ThreadItem
   live?: boolean // this is the latest assistant message (smooth-reveal it)
   running?: boolean // a run is in progress (start the reveal from empty)
-  onOpenFile?: (path: string) => void // open a file referenced by a tool-log row
+  onOpenFile?: (path: string) => void // open a file referenced by a tool-log row or Markdown link
   onOpenImage?: (images: string[], index: number) => void // open the image viewer at an index
   onNotify?: (a: NotifyAction) => void // 알림 band의 행동 알약 (없으면 알약을 안 그린다)
   // ★ 잔여 — `revert`는 `onNotify`가 있다고 되는 게 아니다. 멀티 패널·추가 채팅 창은
@@ -1249,9 +1252,9 @@ export const MessageView = memo(function MessageView({
                 {item.time && <span className="msg-tm">{item.time}</span>}
               </p>
             ) : live ? (
-              <SmoothMarkdown text={item.text} running={!!running} />
+              <SmoothMarkdown text={item.text} running={!!running} onOpenFile={onOpenFile} />
             ) : (
-              <Markdown text={item.text} />
+              <Markdown text={item.text} onOpenFile={onOpenFile} />
             ))}
           {/* 첨부만 있는 메시지 — 흘러들 본문 줄이 없으니 오른쪽 정렬 한 줄로 */}
           {isUser && item.kind === 'msg' && !item.text && item.time && (
@@ -3112,14 +3115,14 @@ function chatgptPlanLabel(plan: string | null): string {
 function cxUsageLine(u?: CodexAccountUsage): ReactNode {
   if (!u || !u.windows.length) return null
   // 주간 창 소진이면 리셋 시각이 정보 (라벨 규약 '주간'/'Weekly' — acctUsageLine과 동일한 이유)
-  const wk = u.windows.find((w) => (w.label === '주간' || w.label === 'Weekly') && w.usedPct >= 100)
+  const wk = u.windows.find((w) => (w.label === '주간' || w.label === 'Weekly') && w.usedPct >= 100 && !windowRolled(w.resetsAt))
   if (wk)
     return (
       <>
         <span className="crit">{t('주간 소진', 'Weekly exhausted')}</span> · {resetText(wk.resetsAt ?? null, true)}
       </>
     )
-  return usageLineNode(u.windows.map((w) => ({ label: w.label, left: Math.max(0, 100 - Math.round(w.usedPct)) })))
+  return usageLineNode(u.windows.map((w) => ({ label: w.label, left: windowRolled(w.resetsAt) ? 100 : Math.max(0, 100 - Math.round(w.usedPct)) })))
 }
 
 // 지금 유효한 Codex 계정(바인딩 ?? 기본 계정)의 잔여 한도 — 컨텍스트 팝오버·스트립이
@@ -3299,6 +3302,7 @@ export function PickerChip({
   }, [open])
 
   const engine: EngineId = picker.engine === 'codex' ? 'codex' : 'claude'
+  const usesSystem = systemEnvironment(engine)
   const codexModels = useCodexModels(engine)
   const codexId = picker.codexModel ?? CODEX_DEFAULT_MODEL
   const codexOpt = codexModels.find((m) => m.id === codexId) ?? codexModels[0] ?? codexFallback()[0]
@@ -3318,6 +3322,7 @@ export function PickerChip({
   // 우선 조회 대상은 **이 채팅이 물고 있는 계정**이다 — 사용자가 제일 먼저 보는 숫자.
   const priority = picker.account
   useEffect(() => {
+    if (usesSystem) return
     if (engine === 'claude') {
       void ensureAccounts()
       if (open) {
@@ -3328,7 +3333,7 @@ export function PickerChip({
       void ensureCodexAccounts()
       if (open) void refreshCodexUsage()
     }
-  }, [open, engine, priority])
+  }, [open, engine, priority, usesSystem])
   // ★R28 ACCT §4 — 기본 계정 = **목록 맨 위**(파생값). 셸이 그 규칙으로 `isDefault`를
   // 싣는다(`ipc/system.rs`) — 여기서 다시 계산하지 않는다(진실이 두 곳이 되지 않게).
   const defaultEmail = accounts.find((a) => a.isDefault)?.email
@@ -3338,7 +3343,7 @@ export function PickerChip({
   // 실행이 갈린다(3.0.0 보고). 새 채팅·죽은 런타임은 liveRows에 없어 맨 위로 떨어진다.
   const effective = picker.account ?? liveAccountOf(chatId) ?? defaultEmail
   const cxDefaultEmail = cxAccounts.find((a) => a.isDefault)?.email
-  const cxEffective = picker.codexAccount ?? cxDefaultEmail
+  const cxEffective = picker.codexAccount ?? liveAccountOf(chatId, 'codex') ?? cxDefaultEmail
 
   // ── ★§3-b 계정 전환 확인 ─────────────────────────────────────────────────
   //
@@ -3381,7 +3386,7 @@ export function PickerChip({
   }
 
   /** ★§3 — 이 계정을 **다른 자리**가 물고 있나(주황 칩 문구). 자기 자리는 빠진다. */
-  const inUse = (email: string): string | null => inUseLabel(email, chatId)
+  const inUse = (email: string): string | null => inUseLabel(email, chatId, engine)
 
   // ★2026-09-04 사용자 요청 — 소진 계정 숨김을 **한도별 알약 둘**(「계정」 헤더 오른쪽 · 시안 V2)로
   // 가른다(옛 「소진된 계정 N개 표시」 단일 접기 행을 대체). 「Fable 소진 숨김」·「주간 소진 숨김」을
@@ -3414,7 +3419,7 @@ export function PickerChip({
     if (a.email === cxEffective) return false
     // 주간 창 판별은 라벨 규약('주간'/'Weekly') — Settings LimRow와 같은 방식
     const wk = cxUsage[a.email]?.windows.find((w) => w.label === '주간' || w.label === 'Weekly')
-    return !!wk && wk.usedPct >= 100
+    return !!wk && wk.usedPct >= 100 && !windowRolled(wk.resetsAt)
   }
   const cxUsableAccounts = hide.weekly ? cxAccounts.filter((a) => !cxWeeklyOut(a)) : cxAccounts
 
@@ -3431,7 +3436,7 @@ export function PickerChip({
   } else if (cxEffective) {
     extra = ' · ' + cxEffective.split('@')[0]
   }
-  const label = `${modelLabel} · ${effortOpt.v} · ${modeOpt.v}${extra}`
+  const label = `${modelLabel} · ${effortOpt.v} · ${modeOpt.v}${usesSystem ? ' · ' + t('시스템 환경', 'System environment') : extra}`
 
   return (
     <span className="cw" ref={ref}>
@@ -3511,7 +3516,8 @@ export function PickerChip({
             <PPRow key={m.id} sel={m.id === picker.mode} main={m.v} sub={m.d} onClick={() => setPicker({ ...picker, mode: m.id })} />
           ))}
           {/* 과금 — 두 엔진 모두: API 모드면 Anthropic은 Anthropic 키, Codex는 OpenAI 키로 과금 */}
-          {onApiModeChange && (
+          {usesSystem && <div className="pp-lock">{t('로그인과 과금은 시스템 CLI 설정을 사용해요.', 'Login and billing follow your system CLI configuration.')}</div>}
+          {!usesSystem && onApiModeChange && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('과금', 'Billing')}</div>
@@ -3538,7 +3544,7 @@ export function PickerChip({
           )}
           {/* 계정 — 구독 실행에만 (API 모드는 키로 과금되니 계정 선택이 무의미).
               전부 숨겨져도 섹션은 남아야 숨김 체크를 풀어 되살릴 수 있다 */}
-          {engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
+          {!usesSystem && engine === 'claude' && !apiMode && (accounts.length > 0 || picker.account) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4 pp-h4f">
@@ -3583,19 +3589,17 @@ export function PickerChip({
             </>
           )}
           {/* OpenAI 계정 — Anthropic과 동일한 문법 (Codex 엔진 실행이 소비할 계정) */}
-          {engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
+          {!usesSystem && engine === 'codex' && !apiMode && (cxAccounts.length > 0 || picker.codexAccount) && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4 pp-h4f">
                 <span>{t('계정', 'Account')}</span>
                 {/* Codex 계정엔 Fable 창이 없다 — 주간 알약 하나(Claude와 같은 프리프) */}
-                {cxAccounts.length > 1 && (
-                  <span className="pp-filts">
-                    <button className={'pp-filt' + (hide.weekly ? ' on' : '')} onClick={() => toggleHide('weekly')}>
-                      {t('주간 소진 숨김', 'Hide weekly 0%')}
-                    </button>
-                  </span>
-                )}
+                <span className="pp-filts">
+                  <button className={'pp-filt' + (hide.weekly ? ' on' : '')} aria-pressed={hide.weekly} onClick={() => toggleHide('weekly')}>
+                    {t('주간 소진 숨김', 'Hide weekly 0%')}
+                  </button>
+                </span>
               </div>
               {cxUsableAccounts.map((a) => (
                 <PPRow
@@ -3608,6 +3612,7 @@ export function PickerChip({
                     t(chatgptPlanLabel(a.plan) + ' 구독', chatgptPlanLabel(a.plan) + ' subscription')
                   }
                   cur={a.email === cxEffective}
+                  warn={inUse(a.email)}
                   onClick={() => switchAccount('codexAccount', a.email, cxEffective, a.email)}
                 />
               ))}
@@ -3622,7 +3627,7 @@ export function PickerChip({
               설정 ▸ API 「한도가 다 되면」 카드와 같은 프리프의 다른 얼굴이다.
               계정 섹션 **아래**에 둔다(2026-09-04 사용자: 계정 → 한도 소진 시 순) — 과금
               섹션(onApiModeChange)이 있을 때만 그리던 조건은 그대로다. */}
-          {onApiModeChange && !apiMode && onAutoResumeChange && (
+          {!usesSystem && onApiModeChange && !apiMode && onAutoResumeChange && (
             <>
               <div className="pp-sep" />
               <div className="pp-h4">{t('한도 소진 시', 'When the limit runs out')}</div>
@@ -4980,14 +4985,14 @@ export function PermissionModal({
   onRespond,
   hotkeys = true
 }: {
-  permission: { requestId: string; toolName: string; summary: string; engine?: EngineId } | null
+  permission: { requestId: string; toolName: string; summary: string; engine?: EngineId; plan?: PlanPreview } | null
   onRespond: (behavior: 'allow' | 'allow_always' | 'deny') => void
   // 멀티 패널 — 두 패널이 동시에 승인을 요청해도 1·2·3/Esc는 포커스된 패널의
   // 카드만 받는다 (안 그러면 키 한 번이 모든 요청에 동시 응답된다)
   hotkeys?: boolean
 }) {
   useEffect(() => {
-    if (!permission || !hotkeys) return
+    if (!permission || !hotkeys || permission.toolName === 'ExitPlanMode') return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -5006,6 +5011,9 @@ export function PermissionModal({
   }, [permission, onRespond, hotkeys])
 
   if (!permission) return null
+  if (permission.toolName === 'ExitPlanMode') {
+    return <PlanApproval key={permission.requestId} plan={permission.plan} onRespond={onRespond} hotkeys={hotkeys} />
+  }
   return (
     <div className="q-overlay">
       <div className="qcard scroll" role="dialog" aria-modal="true">

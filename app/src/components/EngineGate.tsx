@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EngineUpdateStatus } from '@shared/protocol'
 import { t } from '../lib/i18n'
+import { systemEnvironment } from '../api/engineEnvironment'
 import { IconAlert, IconCheck, IconClaude } from './icons'
 
 type Phase = 'hidden' | 'prompt' | 'blocked' | 'installing' | 'done' | 'error'
@@ -62,6 +63,7 @@ export function EngineGate() {
    * 침묵하는 것이 D7 위반이다. 사유는 채널이 값으로 내려 준다(`{latest, versions, error}`).
    */
   const probe = async (): Promise<void> => {
+    if (systemEnvironment('claude')) return
     const avail = await window.api.engine.listAvailable()
     const latest = avail.latest
     if (latest) {
@@ -79,6 +81,7 @@ export function EngineGate() {
     let alive = true
     void (async () => {
       try {
+        if (systemEnvironment('claude')) return
         // ① 설치본부터 본다 — 디스크 한 번이라 싸다. 활성 엔진이 있으면 할 말이 없고,
         //    그러면 **레지스트리 조회를 아예 안 한다**(부팅마다 npm 자식 하나가 준다).
         const state = await window.api.engine.state()

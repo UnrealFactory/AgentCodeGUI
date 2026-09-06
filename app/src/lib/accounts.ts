@@ -30,7 +30,7 @@
  * 이 파일은 그 배열에 **자리 이름**만 붙인다(chatId → 「2번 자리」·「추가 창」·「본채팅」).
  * ========================================================================== */
 import { useSyncExternalStore } from 'react'
-import type { AccountInfo, AccountUsage, ChatStatusLite, CodexAccountInfo, CodexAccountUsage } from '@shared/protocol'
+import type { AccountInfo, AccountUsage, ChatStatusLite, CodexAccountInfo, CodexAccountUsage, EngineId } from '@shared/protocol'
 import { t } from './i18n'
 import { anyRolled, nextReset, nowSec } from './usageWindow'
 
@@ -409,25 +409,27 @@ function slotOf(panelId?: string | null): number | null {
 const slotScopes: Record<string, Record<string, string>> = {}
 let slotNames: Record<string, string> = {}
 /** 셸이 준 살아 있는 채팅들(계정 키가 있는 행만). */
-let liveRows: { chatId: string; account: string; panelId: string; seat: number | null }[] = []
+type LiveAccountRow = { chatId: string; engine: EngineId; account: string; panelId: string; seat: number | null }
+let liveRows: LiveAccountRow[] = []
 
 /**
  * `chat:status` REPLACE를 스토어에 앉힌다. **키가 있는 행만** 산다 —
- * `account` 키는 살아 있는 런타임만 싣기 때문이다(`engine/lite.rs`).
+ * `account`(Claude)·`codexAccount`(Codex)는 살아 있는 런타임만 싣기 때문이다(`engine/lite.rs`).
  */
 export function putChatStatuses(rows: ChatStatusLite[]): void {
-  const next: { chatId: string; account: string; panelId: string; seat: number | null }[] = []
+  const next: LiveAccountRow[] = []
   for (const r of rows) {
-    const acct = r?.account
+    const engine: EngineId = r?.codexAccount ? 'codex' : 'claude'
+    const acct = engine === 'codex' ? r.codexAccount : r?.account
     if (r?.chatId && typeof acct === 'string' && acct)
-      next.push({ chatId: r.chatId, account: acct, panelId: r.panelId ?? '', seat: typeof r.seat === 'number' ? r.seat : null })
+      next.push({ chatId: r.chatId, engine, account: acct, panelId: r.panelId ?? '', seat: typeof r.seat === 'number' ? r.seat : null })
   }
   // 같은 내용이면 팬아웃하지 않는다(스레드 꼬리 윈도잉을 흔드는 헛 렌더 방지).
   const same =
     next.length === liveRows.length &&
     next.every(
       (n, i) =>
-        liveRows[i].chatId === n.chatId && liveRows[i].account === n.account && liveRows[i].panelId === n.panelId && liveRows[i].seat === n.seat
+        liveRows[i].chatId === n.chatId && liveRows[i].engine === n.engine && liveRows[i].account === n.account && liveRows[i].panelId === n.panelId && liveRows[i].seat === n.seat
     )
   if (same) return
   liveRows = next
@@ -454,10 +456,10 @@ export function putSlotNames(scope: string, names: Record<string, string>): void
  * 이름표의 출처는 둘이다: 멀티 자리는 셸이 준 `panelId`에서 번호를 뜨고(그 대응은 보드
  * 스토어만 안다), 본채팅·추가 창은 이 창이 등록한 이름표를 쓴다.
  */
-export function slotsUsing(email: string | undefined, selfKey?: string): AcctSlot[] {
+export function slotsUsing(email: string | undefined, selfKey?: string, engine: EngineId = 'claude'): AcctSlot[] {
   if (!email) return []
   return liveRows
-    .filter((r) => r.account === email)
+    .filter((r) => r.engine === engine && r.account === email)
     .map((r) => {
       // ★3.0.5 — 번호는 셸이 준 **보이는 자리**(`seat`)다. `panelId`의 슬롯 인덱스는 정체성이라
       // 드래그로 옮겨도 안 변해, 그걸 번호로 그리면 화면의 1번이 칩에는 「3번 자리」였다
@@ -481,9 +483,9 @@ export function slotsUsing(email: string | undefined, selfKey?: string): AcctSlo
  * 바뀌어도 이 채팅은 옛 계정으로 돈다. picker가 새 맨 위를 「현재」라고 적으면 실행과
  * 표시가 갈린다(3.0.0 보고: 「선택한 계정이 제대로 안 된다」).
  */
-export function liveAccountOf(selfKey?: string): string | undefined {
+export function liveAccountOf(selfKey?: string, engine: EngineId = 'claude'): string | undefined {
   if (!selfKey) return undefined
-  return liveRows.find((r) => r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey))?.account
+  return liveRows.find((r) => r.engine === engine && (r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey)))?.account
 }
 
 /** chatId → 셸이 준 보드 자리(`${boardId}::${slot}`). 살아 있는 행에 없으면 `null`
@@ -500,8 +502,8 @@ export function panelIdOfChat(chatId: string): string | null {
  *  - 여럿: 「사용 중 · 2곳」
  *  - **이 채팅뿐**이면 칩을 안 단다 — 그건 §3-b의 「현재」가 이미 말한 사실이다.
  */
-export function inUseLabel(email: string | undefined, selfKey?: string): string | null {
-  const others = slotsUsing(email, selfKey).filter((s) => !s.self)
+export function inUseLabel(email: string | undefined, selfKey?: string, engine: EngineId = 'claude'): string | null {
+  const others = slotsUsing(email, selfKey, engine).filter((s) => !s.self)
   if (!others.length) return null
   if (others.length > 1) return t(`사용 중 · ${others.length}곳`, `In use · ${others.length} places`)
   return others[0].label

@@ -1967,15 +1967,17 @@ impl<D: CliDriver> ChatRuntime<D> {
         // ★SLUG R1 — 그래서 리졸버는 **스폰마다** 부른다. 런타임 생성 시점에 한 번 굳히면
         // 그 P5 약속이 깨지고(계정을 바꾼 뒤 예약분이 옛 폴더로 나간다), 재로그인으로
         // 폴더가 갈린 경우도 못 따라간다.
-        let account_dir = match m.identity.billing() {
-            crate::identity::BillingAxis::Subscription { account, .. } => {
+        // Codex prepares its own CODEX_HOME in CodexDriver. Resolving the legacy
+        // Claude billing account here can reject an otherwise valid GPT session.
+        let account_dir = match (engine_now, m.identity.billing()) {
+            (crate::identity::EngineKind::Claude, crate::identity::BillingAxis::Subscription { account, .. }) => {
                 match self.account_dir(account) {
                     Ok(p) => Ok(Some(p)),
                     // 사유를 들고 온 실패다 — 없는 경로를 대신 내보내지 않는다(아래 정착).
                     Err(e) => Err(format!("{account} 계정 폴더를 열지 못했어요 — {e}")),
                 }
             }
-            crate::identity::BillingAxis::ApiKey { .. } => Ok(None),
+            _ => Ok(None),
         };
         let spec = build_spawn_spec(
             self.cli_path.clone(),

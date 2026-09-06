@@ -2247,7 +2247,7 @@ function ActiveSession({
     window.api.multi
       ?.respondPermission({ panelId: chan(sessionId, slot), requestId: sess.state.pendingPermission.requestId, behavior })
       .catch(() => {})
-    sess.clearPermission()
+    sess.answerPermission(behavior)
   })
   const onAnswer = useEvent((slot: number, answers: string[][]) => {
     const sess = sessions[slot]

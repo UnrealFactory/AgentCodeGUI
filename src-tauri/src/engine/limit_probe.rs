@@ -187,6 +187,7 @@ impl Probe {
     /// | 스냅샷이 차갑거나 조회가 실패 | `Unavailable` — 대기표 유지 후 재확인 |
     /// | 창 목록이 있다 | `codexBlockedResetsAt`의 규칙으로 접는다 |
     fn codex_verdict(&self, q: &ProbeQuery<'_>) -> LimitVerdict {
+        if matches!(q.billing, BillingAxis::System) { return self.tally(LimitVerdict::Unknown); }
         if matches!(q.billing, BillingAxis::ApiKey { .. }) {
             return self.tally(LimitVerdict::Clear);
         }

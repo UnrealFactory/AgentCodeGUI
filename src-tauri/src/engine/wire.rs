@@ -1831,10 +1831,24 @@ impl Wire {
                     let (verb, _) = tool_label(&tool_name);
                     let target = tool_target(&r["input"]);
                     let summary = if target.is_empty() { verb.clone() } else { format!("{verb} {target}") };
-                    out.push(json!({
+                    let mut permission = json!({
                         "type": "permission-request", "runId": run,
                         "requestId": request_id, "toolName": tool_name, "summary": summary,
-                    }));
+                    });
+                    if tool_name == "ExitPlanMode" {
+                        // SDK >= 0.2.76 supplies planFilePath; older versions may
+                        // send the plan inline. Read files in the frontend's fs IPC
+                        // worker so a slow path cannot block every chat's engine hub.
+                        let mut plan = json!({ "cwd": self.cwd });
+                        if let Some(path) = r["input"].get("planFilePath").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
+                            plan["filePath"] = json!(path);
+                        }
+                        if let Some(text) = r["input"].get("plan").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
+                            plan["text"] = json!(text);
+                        }
+                        permission["plan"] = plan;
+                    }
+                    out.push(permission);
                 } else if subtype == "request_user_dialog" {
                     // **폴백 확인**(§4.4b). 상태기계는 이미 T4로 `AwaitingUser`에 들어가
                     // 카드를 원장에 세운다 — 여기서 이벤트를 안 내면 화면에는 아무것도
@@ -1939,6 +1953,25 @@ impl Wire {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_approval_keeps_the_requested_file_and_inline_content_without_guessing() {
+        let mut w = wire();
+        w.cwd = "C:/project".into();
+        let approval = |tool: &str, input: Value| json!({
+            "type": "control_request", "request_id": "plan-1",
+            "request": { "subtype": "can_use_tool", "tool_name": tool, "input": input }
+        });
+        let inline = "# Final plan\n\n- Review **before** implementation.";
+        let file = "C:/company config/custom plans/최종 계획.md";
+        let events = w.translate(&approval("ExitPlanMode", json!({ "planFilePath": file, "plan": inline })));
+        assert_eq!(events[0]["requestId"], "plan-1");
+        assert_eq!(events[0]["plan"], json!({ "filePath": file, "text": inline, "cwd": "C:/project" }));
+        let missing = w.translate(&approval("ExitPlanMode", json!({})));
+        assert_eq!(missing[0]["plan"], json!({ "cwd": "C:/project" }), "do not reuse a previous request's plan");
+        let regular = w.translate(&approval("Write", json!({ "planFilePath": file })));
+        assert!(regular[0].get("plan").is_none(), "ordinary permissions keep their existing UI");
+    }
 
     #[test]
     fn codex_inventory_survives_a_tooling_get_without_a_fake_empty_init() {

@@ -2277,6 +2277,19 @@ button.wb-prow{ width:100%; text-align:left; }
 /* 거부는 색으로만 조용히 경고 — 호버에서 빨강 틴트 (기본 상태는 다른 선택지와 동일) */
 .qopt-deny:hover{ background:var(--red-soft); }
 .qopt-deny:hover .ql{ color:var(--red); }
+.qcard.plan-approval { width:min(820px,100%); max-height:min(88vh,100%); display:flex; flex-direction:column; overflow:hidden; }
+.plan-approval > .qhead, .plan-approval > .qbt { flex:0 0 auto; }
+.plan-approval .qmin:disabled { opacity:.4; cursor:default; }
+.plan-approval-path { flex:0 0 auto; margin-top:6px; color:var(--text-3); font-family:var(--font-mono); font-size:11px; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.plan-approval-body { flex:1 1 auto; min-height:80px; max-height:58vh; overflow:auto; overscroll-behavior:contain; margin-top:16px; padding:16px 2px; border-top:1px solid var(--line); font-size:13px; line-height:1.7; outline:none; }
+.plan-approval-body:focus-visible { border-top-color:var(--line-strong); }
+.plan-approval-note { color:var(--text-3); }
+.plan-approval-error { color:var(--red); overflow-wrap:anywhere; }
+.plan-approval-error p + p { color:var(--text-3); font-size:12px; margin-top:6px; }
+.plan-approval-warning { flex:0 0 auto; font-size:11px; line-height:1.6; color:var(--yellow); margin:8px 0; }
+.plan-approval-footer { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-top:14px; border-top:1px solid var(--line); }
+.plan-approval-footer > span { font-size:11px; line-height:1.6; color:var(--text-3); }
+.plan-approval-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-left:auto; }
 
 /* ===================== 상태칩 · 작업 목록 행 (공유) =====================
    예전 오른쪽 에이전트 패널에서 왔다. 지금은 채팅 헤더의 상태칩과 작업 바 팝오버
@@ -4699,3 +4712,36 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .pn-cmp-bar i{ display:block; height:9px; min-width:2px; border-radius:0 4px 4px 0; }
 .pn-cmp-bar span{ font-family:var(--font-mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .pn-cmp-delta{ font-family:var(--font-mono); font-size:11px; color:var(--text-3); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+.engine-environment { display:flex; flex-direction:column; gap:12px; }
+.engine-environment-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 16px; }
+.engine-environment-modes { display:inline-flex; flex:0 0 auto; padding:3px; gap:2px; border-radius:9px; background:var(--inset); }
+.engine-environment-mode { padding:6px 11px; border-radius:6px; font-size:11px; font-weight:500; color:var(--text-3); transition:background .12s, color .12s; }
+.engine-environment-mode:hover { color:var(--text); }
+.engine-environment-mode[aria-checked="true"] { color:var(--text); background:var(--surface-3); box-shadow:var(--shadow-sm); }
+.engine-environment-mode:disabled, .engine-environment-detect:disabled, .engine-environment-cancel:disabled { opacity:.5; cursor:default; }
+.engine-environment-description { font-size:11.5px; line-height:1.65; color:var(--text-3); }
+.engine-environment-paths { display:flex; flex-direction:column; gap:13px; padding-top:12px; border-top:1px solid var(--line); }
+.engine-environment-paths-head { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--text-2); font-size:11px; font-weight:500; }
+.engine-environment-detect { display:inline-flex; align-items:center; gap:6px; padding:5px 7px; margin:-5px -7px; border-radius:6px; color:var(--text-2); font-size:11px; }
+.engine-environment-detect:hover { color:var(--text); background:var(--hover); }
+.engine-environment .set-field { display:flex; flex-direction:column; gap:6px; margin:0; min-width:0; }
+.engine-environment .set-field > label { margin:0; font-size:11px; font-weight:500; color:var(--text-3); }
+.engine-environment .set-input { width:100%; min-width:0; border-radius:8px; padding:10px 12px; font-family:var(--font-mono); font-size:12px; font-weight:400; line-height:1.5; letter-spacing:0; font-variant-ligatures:none; color:var(--text-2); }
+.engine-environment .set-input::placeholder { color:var(--text-3); opacity:1; }
+.engine-environment-path-input { position:relative; }
+.engine-environment-path-input .set-input { padding-right:46px; }
+.engine-environment-browse { position:absolute; right:6px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:30px; height:28px; border-radius:6px; color:var(--text-3); transition:color .12s, background .12s; }
+.engine-environment-browse:hover { color:var(--text); background:var(--surface-3); }
+.engine-environment-browse:disabled { opacity:.5; cursor:default; }
+.engine-environment-hint { font-size:10.5px; line-height:1.6; color:var(--text-3); }
+.engine-environment-feedback { display:flex; align-items:center; gap:6px; font-size:11px; line-height:1.6; color:var(--text-2); overflow-wrap:anywhere; }
+.engine-environment-feedback svg { flex:0 0 auto; color:var(--green); }
+.engine-environment-feedback.error { color:var(--red); }
+.engine-environment-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding-top:12px; border-top:1px solid var(--line); }
+.engine-environment-buttons { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.engine-environment-cancel { color:var(--text-3); font-size:11px; padding:6px 8px; border-radius:6px; }
+.engine-environment-cancel:hover { color:var(--text); background:var(--hover); }
+.engine-environment-spin { animation:engine-environment-spin .9s linear infinite; }
+@keyframes engine-environment-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .engine-environment-spin { animation:none; } }

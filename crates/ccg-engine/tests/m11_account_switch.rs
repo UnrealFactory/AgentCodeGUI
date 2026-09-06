@@ -896,7 +896,9 @@ fn a_codex_chat_switches_its_codex_account_axis_not_billing() {
     r.engine.model = "gpt-5.1-codex".into();
     r.engine.codex_account = Some("a@cx".into());
     let defaults = IdentityDefaults {
-        known_accounts: ["claude@x".to_string()].into_iter().collect(),
+        // The saved Claude binding has been removed; only the Codex accounts
+        // should matter when recovering this Codex turn from a limit.
+        known_accounts: ["unrelated@x".to_string()].into_iter().collect(),
         known_codex_accounts: ["a@cx".to_string(), "b@cx".to_string()].into_iter().collect(),
         ..Default::default()
     };

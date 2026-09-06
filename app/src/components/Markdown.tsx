@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
+import { markdownFilePath, markdownUrlTransform } from '../lib/markdownLinks'
 import { paletteClassFor } from './fileType'
 
 // flatten a hast node to its raw text (used to pull code out of a <pre>)
@@ -68,13 +69,42 @@ const baseComponents: Components = {
 const componentsHighlighted: Components = { ...baseComponents, pre: makePre(false) }
 const componentsPlain: Components = { ...baseComponents, pre: makePre(true) }
 
+function makeLink(onOpenFile: (path: string) => void): Components['a'] {
+  return function Link({ href, title, children }) {
+    const path = markdownFilePath(href ?? '')
+    if (path === null) return <a href={href} title={title} target="_blank" rel="noreferrer">{children}</a>
+    return (
+      <a
+        href={href}
+        title={title ?? path}
+        onKeyDown={(e) => {
+          // Keep the panel's Enter-to-composer shortcut from stealing activation.
+          if (e.key === 'Enter') e.stopPropagation()
+        }}
+        onClick={(e) => {
+          e.preventDefault()
+          onOpenFile(path)
+        }}
+        onAuxClick={(e) => {
+          if (e.button !== 1) return
+          e.preventDefault()
+          onOpenFile(path)
+        }}
+      >
+        {children}
+      </a>
+    )
+  }
+}
+
 // memo — remark 파싱은 글 길이에 비례하는 동기 작업이라, props가 그대로면(완료된
 // 메시지·뷰어의 .md 본문) 부모 리렌더에 파싱이 따라 돌지 않게 여기서 한 번 더 막는다
 export const Markdown = memo(function Markdown({
   text,
   plain,
   codeLang,
-  decorate
+  decorate,
+  onOpenFile
 }: {
   text: string
   plain?: boolean
@@ -82,6 +112,8 @@ export const Markdown = memo(function Markdown({
   codeLang?: string
   /** 하이라이트 HTML 후처리 — 호버 카드의 시맨틱 색 사전 주입 지점 */
   decorate?: (html: string) => string
+  /** Open local links using the owning chat's working directory and file viewer. */
+  onOpenFile?: (path: string) => void
 }) {
   const components = useMemo<Components>(() => {
     if (!codeLang && !decorate) return plain ? componentsPlain : componentsHighlighted
@@ -92,11 +124,15 @@ export const Markdown = memo(function Markdown({
     }
     return { ...baseComponents, code: inline, pre: makePre(!!plain, decorate) }
   }, [plain, codeLang, decorate])
+  const linkedComponents = useMemo<Components>(
+    () => onOpenFile ? { ...components, a: makeLink(onOpenFile) } : components,
+    [components, onOpenFile]
+  )
   // remark 파싱도 동기 작업이다 — 아주 큰 본문(거대한 .md 파일, 초장문 답변)은 파싱
   // 자체가 프레임을 통째로 잡아먹으므로 구조 없이 원문 그대로 보여준다
   if (text.length > MD_PARSE_LIMIT) return <pre className="md-overflow">{text}</pre>
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={linkedComponents} urlTransform={onOpenFile ? markdownUrlTransform : undefined}>
       {text}
     </ReactMarkdown>
   )

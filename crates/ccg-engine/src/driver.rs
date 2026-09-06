@@ -144,7 +144,11 @@ pub fn build_spawn_spec(
         ("CLAUDE_CODE_ENTRYPOINT".to_string(), "sdk-ts".to_string()),
         ("MSBUILDDISABLENODEREUSE".to_string(), "1".to_string()),
     ];
-    let mut env_remove = vec!["NODE_OPTIONS".to_string(), "DEBUG".to_string()];
+    let mut env_remove = if matches!(id.billing(), BillingAxis::System) {
+        vec![]
+    } else {
+        vec!["NODE_OPTIONS".to_string(), "DEBUG".to_string()]
+    };
     if let Some(dir) = &config_dir {
         env_set.push((
             "CLAUDE_CONFIG_DIR".to_string(),
@@ -152,6 +156,7 @@ pub fn build_spawn_spec(
         ));
     }
     match id.billing() {
+        BillingAxis::System => {}
         BillingAxis::ApiKey { .. } => {
             if let Some(k) = api_key {
                 env_set.push(("ANTHROPIC_API_KEY".to_string(), k.to_string()));
@@ -185,7 +190,11 @@ fn build_codex_spawn_spec(id: &RunIdentity, resume: Option<&str>) -> SpawnSpec {
         cwd: PathBuf::from(id.cwd().as_str()),
         // MSBuild 좀비 차단은 엔진과 무관한 앱 규약이라 여기도 그대로 간다.
         env_set: vec![("MSBUILDDISABLENODEREUSE".to_string(), "1".to_string())],
-        env_remove: vec!["NODE_OPTIONS".to_string(), "DEBUG".to_string()],
+        env_remove: if matches!(id.billing(), BillingAxis::System) {
+            vec![]
+        } else {
+            vec!["NODE_OPTIONS".to_string(), "DEBUG".to_string()]
+        },
         resume: resume.map(|s| s.to_string()),
         codex: Some(crate::codex::build_plan(id, resume)),
     }
@@ -715,6 +724,25 @@ mod tests {
         let (frames, stats) = run(data, 3, MAX_LINE);
         assert_eq!(stats.parse_errors, 1);
         assert_eq!(frames.len(), 1);
+    }
+
+    #[test]
+    fn system_environment_runs_without_app_accounts_or_api_keys() {
+        for engine in [EngineKind::Claude, EngineKind::Codex] {
+            let mut raw = ident("test-model", ModeId::Normal).to_raw();
+            raw.engine.kind = engine;
+            raw.engine.codex_account = Some("stale-managed-account".into());
+            raw.billing.kind = BillingKind::System;
+            let defaults = IdentityDefaults::default();
+            let id = RunIdentity::normalize(raw, &defaults).expect("system login belongs to the CLI");
+            assert_eq!(id.account(), None);
+            assert_eq!(id.to_raw().billing.kind, BillingKind::System);
+            assert_eq!(RunIdentity::normalize(id.to_raw(), &defaults).unwrap(), id);
+            let spec = build_spawn_spec("system-cli".into(), &id, None, false, None, None);
+            assert!(spec.env_remove.is_empty(), "corporate NODE_OPTIONS and credentials must be inherited");
+            assert!(!spec.env_set.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY" || k == "CLAUDE_CONFIG_DIR"));
+            if let Some(plan) = spec.codex { assert!(!plan.api_mode); assert_eq!(plan.account, None); }
+        }
     }
 
     fn ident(model: &str, mode: ModeId) -> RunIdentity {

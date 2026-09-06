@@ -14,6 +14,7 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
             json!(ok)
         }
         ch::PICK_DIRECTORY => pick_directory(app),
+        "engine-environment:pick-path" => pick_engine_environment_path(app, arg(p, 0)),
 
         // ── 계정 (읽기 전용 — 토큰 복호 없이 표시용 메타만) ─────────────────
         ch::AUTH_LIST_ACCOUNTS => list_claude_accounts(),
@@ -100,6 +101,53 @@ fn pick_directory(app: &AppHandle) -> Value {
             .into_path()
             .map(|pb| json!(pb.to_string_lossy().to_string()))
             .unwrap_or(Value::Null),
+        _ => Value::Null,
+    }
+}
+
+fn pick_engine_environment_path(app: &AppHandle, options: &Value) -> Value {
+    use tauri_plugin_dialog::DialogExt;
+    let folder = match options.get("kind").and_then(Value::as_str) {
+        Some("cliPath") => false,
+        Some("configDir") => true,
+        _ => return json!({ "error": "Unknown path type" }),
+    };
+    let title = if folder {
+        ccg_fs::t("설정 폴더 선택", "Choose configuration folder")
+    } else {
+        ccg_fs::t("CLI 실행 파일 선택", "Choose CLI executable")
+    };
+    let mut picker = app.dialog().file().set_title(title);
+    if let Some(parent) = dialog_parent(app) {
+        picker = picker.set_parent(&parent);
+    }
+    // Open at the current path, or the nearest existing parent of a typed path.
+    let initial = std::path::Path::new(options.get("defaultPath").and_then(Value::as_str).unwrap_or("").trim());
+    if initial.is_absolute() {
+        if let Some(dir) = initial.ancestors().find(|p| p.is_dir()) {
+            picker = picker.set_directory(dir);
+        }
+        if !folder && initial.is_file() {
+            if let Some(name) = initial.file_name() {
+                picker = picker.set_file_name(name.to_string_lossy());
+            }
+        }
+    }
+    #[cfg(windows)]
+    if !folder {
+        picker = picker
+            .add_filter(ccg_fs::t("실행 파일", "Executables"), &["exe", "cmd", "bat", "com"])
+            .add_filter(ccg_fs::t("모든 파일", "All files"), &["*"]);
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _guard = DialogGuard::new();
+    if folder {
+        picker.pick_folder(move |path| { let _ = tx.send(path); });
+    } else {
+        picker.pick_file(move |path| { let _ = tx.send(path); });
+    }
+    match rx.recv() {
+        Ok(Some(path)) => path.into_path().map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null),
         _ => Value::Null,
     }
 }

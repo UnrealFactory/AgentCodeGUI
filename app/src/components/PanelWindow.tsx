@@ -100,7 +100,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   useLang() // 언어 전환 브로드캐스트 재렌더 (메인 창 설정에서 바꿔도 따라온다)
   const panelId = boot.panelId
   const slot = boot.slot
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession(
+  const { state, elapsed, busy, begin, answerPermission, clearQuestion, answerQuestion, load, interruptTurn } = useAgentSession(
     (cb) => window.api.multi?.onEvent?.(panelId, cb) ?? (() => {})
   )
   const [meta, setMeta] = useState<PanelMeta>(() => metaFromBoot(boot))
@@ -409,7 +409,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   const onPermission = useEvent((behavior: 'allow' | 'allow_always' | 'deny') => {
     if (!state.pendingPermission) return
     window.api.multi?.respondPermission({ panelId, requestId: state.pendingPermission.requestId, behavior }).catch(() => {})
-    clearPermission()
+    answerPermission(behavior)
   })
   const onAnswer = useEvent((answers: string[][]) => {
     if (!state.pendingQuestion) return

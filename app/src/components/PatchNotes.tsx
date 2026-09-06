@@ -152,6 +152,32 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.0.13': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '시스템 환경 연결과 Claude 계획 검토를 추가하고, 파일 링크와 계정 표시·세션 복구를 개선했습니다.',
+      notes: [
+        { tag: '환경', name: '내 PC의 CLI와 로그인 사용', desc: 'Claude와 Codex 각각 앱 관리 또는 시스템 환경을 선택할 수 있습니다. 시스템 환경에서는 PC에 설치된 CLI와 기존 로그인·설정을 사용합니다. 환경 변경은 앱을 다시 시작한 뒤 새 대화에 적용됩니다.' },
+        { tag: '설정', name: '실행 파일과 설정 폴더를 쉽게 지정', desc: '자동 감지 결과와 진행 상태를 확인하고, 파일·폴더 선택 버튼으로 경로를 직접 지정할 수 있습니다. 변경할 때만 저장·취소 버튼이 나타나며, 경로 글꼴과 툴팁도 다듬었습니다.' },
+        { tag: '계획', name: '해당 세션에서 Claude 계획 검토', desc: 'Claude가 계획 승인을 요청하면 해당 대화 안에서 내용을 읽고 승인하거나 거절할 수 있습니다. 계획 새로고침·복사를 지원하며, 승인·거절 결과는 질문 답변처럼 채팅에 남고 다시 열어도 유지됩니다.' },
+        { tag: '파일', name: '채팅의 로컬 파일 링크 열기', desc: '상세 제안서나 SVG 시안 등 로컬 파일 링크에 밑줄만 표시되고 클릭해도 열리지 않던 문제를 수정했습니다.' },
+        { tag: '계정', name: '사용 중인 계정을 정확하게 표시', desc: 'Claude와 GPT의 사용 세션 수가 섞여 집계되던 문제를 수정했습니다. GPT 계정에도 현재·사용 중 표시와 주간 소진 계정 숨기기를 추가하고, 초기화 시각이 지난 계정은 다시 표시합니다.' },
+        { tag: '복구', name: '한도 소진 뒤 GPT 세션이 막히던 오류 수정', desc: '과거 Claude 계정 연결 정보 때문에 GPT 세션이 Clear 후에도 실행되지 않던 문제를 수정했습니다. 사용 가능한 GPT 계정으로 전환한 뒤 기존 세션에서 대화를 이어갈 수 있습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Adds system environments and Claude plan review, with fixes for file links, account indicators and session recovery.',
+      notes: [
+        { tag: 'Environment', name: 'Use your installed CLI and login', desc: 'Choose an app-managed or system environment separately for Claude and Codex. System mode uses the CLI, login and settings already on your PC. Environment changes apply to new chats after restarting the app.' },
+        { tag: 'Settings', name: 'Choose executable and config paths', desc: 'Automatic detection now shows progress and results, and file and folder pickers let you select paths directly. Save and Cancel appear only when changes are pending. Path typography and tooltips have also been refined.' },
+        { tag: 'Plans', name: 'Review Claude plans in their own session', desc: 'When Claude requests plan approval, read and approve or decline the plan inside that conversation. Plans support refresh and copy. Decisions appear in chat like question answers and remain after reopening.' },
+        { tag: 'Files', name: 'Open local file links in chat', desc: 'Fixed underlined local file links, such as proposals and SVG previews, doing nothing when clicked.' },
+        { tag: 'Accounts', name: 'Accurate account usage indicators', desc: 'Fixed Claude and GPT sessions being counted together. GPT accounts now show current and in-use indicators and support hiding accounts with exhausted weekly limits. Accounts reappear once their reset time has passed.' },
+        { tag: 'Recovery', name: 'Recover GPT sessions after a limit', desc: 'Fixed stale Claude account references blocking GPT sessions even after Clear. Switching to an available GPT account now lets you continue in the existing session.' }
+      ]
+    }
+  },
   '3.0.12': {
     ko: {
       eyebrow: 'UPDATE',

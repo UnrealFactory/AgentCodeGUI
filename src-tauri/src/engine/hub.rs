@@ -357,6 +357,15 @@ impl Hub {
             if let Some(p) = seed {
                 raw = raw.patched(p);
             }
+            if super::environment::is_system(raw.engine.kind) {
+                raw.billing.kind = ccg_engine::identity::BillingKind::System;
+                raw.engine.codex_account = None;
+                raw.output_style = None;
+            } else if raw.billing.kind == ccg_engine::identity::BillingKind::System {
+                raw.billing.kind = ccg_engine::identity::BillingKind::Subscription;
+                raw.billing.account = None;
+                raw.billing.drop_env_key = None;
+            }
             let defaults = ident::defaults();
             let dump = std::env::var("CCG_ENGINE_LOG")
                 .ok()
@@ -757,6 +766,17 @@ impl Hub {
         // ★3.0.8 — 요청이 실어 온 정체성 축을 런타임 생성 **전에** 얹고, 거부의 표면을 op별로 가른다
         // (`ensure_for` 참고). `Op::Run`의 아래 `IdentitySet` 패치는 그대로 두었다 — 슬롯이 이미
         // 있는 채팅(대부분)은 그 문이 정체성을 바꾸고, 방금 seed로 만든 런타임에서는 `Noop`이다.
+        if let Op::Run(req) = &op {
+            if let Err(message) = super::environment::bind_chat(&chat, req) {
+                self.reject_seq += 1;
+                let run = format!("env-{}-{}", std::process::id(), self.reject_seq);
+                self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "analyzing" }));
+                self.fanout(&chat, json!({ "type": "error", "runId": run, "message": message }));
+                self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "error" }));
+                answer(json!({ "ok": false }));
+                return;
+            }
+        }
         let seed = match &op {
             Op::Run(req) => Some(ident::patch_from_run_request(req)),
             Op::IdentitySet { patch, .. } => Some(patch.clone()),

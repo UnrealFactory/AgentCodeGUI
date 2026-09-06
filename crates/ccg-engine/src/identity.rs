@@ -90,6 +90,7 @@ pub enum SkillOverride {
 pub enum BillingKind {
     Subscription,
     ApiKey,
+    System,
 }
 
 /// 정규화된 절대경로 — 구분자 통일 + 후행 `\` 제거. **표시·스폰용 원래 대소문자는 보존**하고,
@@ -196,6 +197,8 @@ pub enum EngineAxis {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BillingAxis {
+    /// Authentication is owned by the configured system CLI environment.
+    System,
     Subscription {
         account: AccountEmail,
         #[serde(rename = "dropEnvKey")]
@@ -275,7 +278,7 @@ impl RunIdentity {
     pub fn account(&self) -> Option<&str> {
         match &self.billing {
             BillingAxis::Subscription { account, .. } => Some(account),
-            BillingAxis::ApiKey { .. } => None,
+            BillingAxis::ApiKey { .. } | BillingAxis::System => None,
         }
     }
     /// 채팅별 추가 지시(§2.3에서 trim + 빈 문자열 = 없음으로 정규화된 값).
@@ -333,6 +336,11 @@ impl RunIdentity {
             } => (EngineKind::Codex, model.clone(), *effort, account.clone(), tier.clone()),
         };
         let billing = match &self.billing {
+            BillingAxis::System => RawBilling {
+                kind: BillingKind::System,
+                account: None,
+                drop_env_key: None,
+            },
             BillingAxis::Subscription {
                 account,
                 drop_env_key,
@@ -379,6 +387,7 @@ impl RunIdentity {
     ) -> Result<RunIdentity, IdentityError> {
         // billing 먼저 — 계정/키 문제는 폴더 문제보다 사용자 조치가 명확하다.
         let billing = match raw.billing.kind {
+            BillingKind::System => BillingAxis::System,
             BillingKind::ApiKey => {
                 let key_fp = defaults
                     .api_key
@@ -388,17 +397,22 @@ impl RunIdentity {
                 BillingAxis::ApiKey { key_fp }
             }
             BillingKind::Subscription => {
-                let account = raw
-                    .billing
-                    .account
-                    .clone()
-                    .or_else(|| defaults.default_account.clone())
-                    .ok_or_else(|| IdentityError::AccountUnavailable(String::new()))?;
-                if !defaults.known_accounts.is_empty()
-                    && !defaults.known_accounts.contains(&account)
-                {
-                    return Err(IdentityError::AccountUnavailable(account));
-                }
+                let account = if raw.engine.kind == EngineKind::Codex {
+                    // This legacy field belongs to Claude. Preserve a saved value for
+                    // round trips, but it cannot block Codex startup, account switching,
+                    // or /clear. Codex validates its own account in the engine axis below.
+                    raw.billing.account.clone().unwrap_or_default()
+                } else {
+                    let account = raw.billing.account.clone()
+                        .or_else(|| defaults.default_account.clone())
+                        .ok_or_else(|| IdentityError::AccountUnavailable(String::new()))?;
+                    if !defaults.known_accounts.is_empty()
+                        && !defaults.known_accounts.contains(&account)
+                    {
+                        return Err(IdentityError::AccountUnavailable(account));
+                    }
+                    account
+                };
                 // 전역 ANTHROPIC_API_KEY가 없으면 이 축은 의미가 없다 → false 고정.
                 // 있으면 그 **키 지문별로 저장된 사용자 답**, 미응답이면 안전값 true(구독).
                 let drop_env_key = if !defaults.env_api_key_present {
@@ -449,11 +463,11 @@ impl RunIdentity {
             // 계정이 하나도 없으면 `None`으로 남는다: 그 판정(=로그인 안내)은 스폰
             // 시점의 셸이 한다. 정체성 자체는 "계정 미지정"이라는 정직한 값을 유지한다.
             EngineKind::Codex => {
-                let account = raw
-                    .engine
-                    .codex_account
-                    .clone()
-                    .or_else(|| defaults.default_codex_account.clone());
+                let account = if raw.billing.kind == BillingKind::Subscription {
+                    raw.engine.codex_account.clone().or_else(|| defaults.default_codex_account.clone())
+                } else {
+                    None
+                };
                 if let Some(a) = &account {
                     if !defaults.known_codex_accounts.is_empty()
                         && !defaults.known_codex_accounts.contains(a)
@@ -723,6 +737,7 @@ fn norm_leaf_value(r: &RunIdentity, f: IdentityField) -> serde_json::Value {
         EngineAxis::Codex { account, tier, .. } => (EngineKind::Codex, account.clone(), tier.clone()),
     };
     let (bkind, account, drop_env_key, key_fp) = match &r.billing {
+        BillingAxis::System => (BillingKind::System, None, None, None),
         BillingAxis::Subscription {
             account,
             drop_env_key,

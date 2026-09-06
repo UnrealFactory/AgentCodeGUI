@@ -274,7 +274,7 @@ const SAVE_DEBOUNCE_BUSY_MS = 2000
 
 function MainApp({ user }: { user: AppUser }) {
   const lang = useLang() // 언어 전환 시 아래 useMemo(사이드바 섹션 라벨 등)가 새 언어로 재계산되게
-  const { state, elapsed, busy, begin, clearPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted } = useAgentSession()
+  const { state, elapsed, busy, begin, answerPermission, clearQuestion, answerQuestion, load, interruptTurn, noteVerdict, noteReverted } = useAgentSession()
   // 워크플로 상주 중(턴은 끝나 busy=false) — 전송·채팅 전환이 워크플로를 죽이지 않게 잠근다
   const wfAlive = state.workflows.some((w) => w.status === 'running')
   // 턴을 막고 있는 포그라운드 Bash가 있을 때만 셸 팝오버에 "건너뛰기"(Ctrl+B) 버튼을 노출
@@ -1673,7 +1673,7 @@ function MainApp({ user }: { user: AppUser }) {
     window.api
       .respondPermission({ requestId: state.pendingPermission.requestId, behavior })
       .catch(() => {})
-    clearPermission()
+    answerPermission(behavior)
   }
 
   // ── ★ 3.0 M-UX R2 — 폴백 확인 카드의 응답은 전용 채널로 (§4.4b) ─────────────

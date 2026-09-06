@@ -117,6 +117,7 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
 /// `CCG_CLAUDE_BIN`은 하네스 전용 우회로다(`CCG_CODEX_BIN`과 대칭).
 /// 폴백은 PATH의 `claude.exe` — 스폰 실패는 T3(엔진 층)가 사용자 문장으로 낸다.
 pub fn claude_bin() -> PathBuf {
+    if let Some(p) = super::environment::cli(ccg_engine::identity::EngineKind::Claude) { return p; }
     if let Ok(p) = std::env::var("CCG_CLAUDE_BIN") {
         if !p.is_empty() {
             return PathBuf::from(p);

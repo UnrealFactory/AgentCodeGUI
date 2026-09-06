@@ -8,6 +8,7 @@ import { initViewerWindow } from './lib/viewerWindow'
 import { warmFileViewer } from './lib/fileViewer'
 import { initGlass } from './lib/glass'
 import { initLang } from './lib/i18n'
+import { loadEngineEnvironments } from './api/engineEnvironment'
 import './styles.css'
 
 // a session window ("추가 세션") loads the same bundle with a #session hash — render the
@@ -53,7 +54,7 @@ document.addEventListener('click', (e) => {
 // load saved UI prefs (viewer size/zoom, chat zoom) before first paint so the
 // hooks read the persisted values synchronously and the UI doesn't flash a default
 // 뷰어 창 모드도 같은 자리에서 — 둘 다 부팅 페이로드(window.__CCG_BOOT)라 왕복이 없다.
-Promise.all([loadPrefs(), initViewerWindow()]).finally(() => {
+Promise.all([loadPrefs(), initViewerWindow(), loadEngineEnvironments().catch(() => {})]).finally(() => {
   initGlass() // 저장된 유리(벽지 비침) 값도 첫 페인트 전에 — 기본 틴트가 번쩍이지 않게
   initLang() // 저장된 UI 언어도 첫 렌더 전에 — 모든 t()가 처음부터 맞는 언어를 준다
   createRoot(document.getElementById('root')!).render(
