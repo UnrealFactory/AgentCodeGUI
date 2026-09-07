@@ -1,8 +1,10 @@
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
-import { markdownFilePath, markdownUrlTransform } from '../lib/markdownLinks'
+import { markdownFilePath, markdownImageSource, markdownImageUrlTransform, markdownUrlTransform } from '../lib/markdownLinks'
+import { imageName } from '../lib/images'
+import { t } from '../lib/i18n'
 import { paletteClassFor } from './fileType'
 
 // flatten a hast node to its raw text (used to pull code out of a <pre>)
@@ -97,6 +99,40 @@ function makeLink(onOpenFile: (path: string) => void): Components['a'] {
   }
 }
 
+function MarkdownImage({ src = '', alt, title, cwd, onOpenFile }: {
+  src?: string
+  alt?: string
+  title?: string
+  cwd?: string
+  onOpenFile?: (path: string) => void
+}) {
+  const image = markdownImageSource(src, cwd)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [image.src])
+  const label = alt || (image.path ? imageName(image.path) : t('이미지', 'Image'))
+  if (failed || !image.src) return <span className="md-image-error">{label} · {t('이미지를 불러올 수 없어요', 'Unable to load image')}</span>
+  const open = image.path && onOpenFile ? () => onOpenFile(image.path!) : undefined
+  return (
+    <img
+      src={image.src}
+      alt={alt ?? ''}
+      title={title}
+      className={'md-image' + (open ? ' openable' : '')}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onError={() => setFailed(true)}
+      role={open ? 'button' : undefined}
+      tabIndex={open ? 0 : undefined}
+      aria-label={open ? t(`이미지 열기: ${label}`, `Open image: ${label}`) : undefined}
+      onClick={open ? (e) => { e.preventDefault(); e.stopPropagation(); open() } : undefined}
+      onKeyDown={open ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); open() }
+      } : undefined}
+    />
+  )
+}
+
 // memo — remark 파싱은 글 길이에 비례하는 동기 작업이라, props가 그대로면(완료된
 // 메시지·뷰어의 .md 본문) 부모 리렌더에 파싱이 따라 돌지 않게 여기서 한 번 더 막는다
 export const Markdown = memo(function Markdown({
@@ -104,6 +140,7 @@ export const Markdown = memo(function Markdown({
   plain,
   codeLang,
   decorate,
+  cwd,
   onOpenFile
 }: {
   text: string
@@ -112,6 +149,8 @@ export const Markdown = memo(function Markdown({
   codeLang?: string
   /** 하이라이트 HTML 후처리 — 호버 카드의 시맨틱 색 사전 주입 지점 */
   decorate?: (html: string) => string
+  /** Directory for relative image paths. Absolute image paths work without it. */
+  cwd?: string
   /** Open local links using the owning chat's working directory and file viewer. */
   onOpenFile?: (path: string) => void
 }) {
@@ -125,14 +164,18 @@ export const Markdown = memo(function Markdown({
     return { ...baseComponents, code: inline, pre: makePre(!!plain, decorate) }
   }, [plain, codeLang, decorate])
   const linkedComponents = useMemo<Components>(
-    () => onOpenFile ? { ...components, a: makeLink(onOpenFile) } : components,
-    [components, onOpenFile]
+    () => ({
+      ...components,
+      ...(onOpenFile ? { a: makeLink(onOpenFile) } : {}),
+      img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} cwd={cwd} onOpenFile={onOpenFile} />
+    }),
+    [components, cwd, onOpenFile]
   )
   // remark 파싱도 동기 작업이다 — 아주 큰 본문(거대한 .md 파일, 초장문 답변)은 파싱
   // 자체가 프레임을 통째로 잡아먹으므로 구조 없이 원문 그대로 보여준다
   if (text.length > MD_PARSE_LIMIT) return <pre className="md-overflow">{text}</pre>
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={linkedComponents} urlTransform={onOpenFile ? markdownUrlTransform : undefined}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={linkedComponents} urlTransform={onOpenFile ? markdownUrlTransform : markdownImageUrlTransform}>
       {text}
     </ReactMarkdown>
   )

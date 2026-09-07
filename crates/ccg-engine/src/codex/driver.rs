@@ -33,6 +33,7 @@ const EXIT_CODE_GRACE: Duration = Duration::from_millis(700);
 /// 그때 codex는 사용자 실홈(`~/.codex`)을 쓴다. 앱은 실홈을 건드리지 않는 것이 규약이라
 /// 셸은 항상 이 훅을 꽂아야 한다(`engine/any.rs`).
 pub type HomeResolver = Arc<dyn Fn(&CodexPlan) -> Option<PathBuf> + Send + Sync>;
+pub type ContextResolver = Arc<dyn Fn(&CodexPlan) -> std::io::Result<super::ContextOverrides> + Send + Sync>;
 
 pub struct CodexDriver {
     /// **앱이 관리하는 codex 실행본**(없으면 전역 `codex`). `SpawnSpec.cli`는 Claude용
@@ -52,6 +53,7 @@ pub struct CodexDriver {
     /// 상태기계에게 넘길 프레임 대기열(한 RPC가 프레임 여럿을 낳는다).
     out: VecDeque<Value>,
     home: Option<HomeResolver>,
+    context: Option<ContextResolver>,
     /// 마지막 스폰이 쓴 `CODEX_HOME`(진단 — `engine:debug`가 읽는다).
     pub last_home: Option<PathBuf>,
 }
@@ -73,6 +75,7 @@ impl CodexDriver {
             tx: Transcoder::new(CodexPlan::default()),
             out: VecDeque::new(),
             home: None,
+            context: None,
             last_home: None,
         }
     }
@@ -80,6 +83,12 @@ impl CodexDriver {
     /// 계정별 격리 `CODEX_HOME` 훅. 셸이 꽂는다([`HomeResolver`] 참고).
     pub fn with_home_resolver(mut self, r: HomeResolver) -> Self {
         self.home = Some(r);
+        self
+    }
+
+    /// Read saved settings at each process start, including thread resume.
+    pub fn with_context_resolver(mut self, r: ContextResolver) -> Self {
+        self.context = Some(r);
         self
     }
 
@@ -225,7 +234,10 @@ fn append_tail(file: &str, text: &str) {
 
 impl CliDriver for CodexDriver {
     fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
-        let plan = spec.codex.clone().unwrap_or_default();
+        let mut plan = spec.codex.clone().unwrap_or_default();
+        if let Some(resolve) = &self.context {
+            plan.context = resolve(&plan)?;
+        }
         // 계정 격리 홈은 **스폰 인자가 아니라 계정 스토어의 산물**이라 여기서 묻는다.
         self.last_home = self.home.as_ref().and_then(|r| r(&plan));
         self.tx = Transcoder::new(plan);

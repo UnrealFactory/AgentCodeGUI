@@ -383,7 +383,8 @@ impl Hub {
                 self.job.clone(),
                 dump.clone(),
             )
-            .with_home_resolver(super::codex_versions::resolver());
+            .with_home_resolver(super::codex_versions::resolver())
+            .with_context_resolver(super::codex_context::resolver());
             let any = super::any::AnyDriver::new(ClaudeDriver::new(self.job.clone(), dump), codex);
             let (tap_drv, tapped) = super::tap::TapDriver::new(any);
             let rt = match ChatRuntime::new(
@@ -924,6 +925,52 @@ impl Hub {
                 always,
                 answers,
             } => {
+                if kind == AskKind::Question {
+                    if let Some(questions) = slot.wire.async_questions.get(&request_id).cloned() {
+                        if slot.wire.async_answering.contains(&request_id) {
+                            answer(verdict_wire("respond", &Verdict::Accepted));
+                            return;
+                        }
+                        let rows = answers.clone().unwrap_or_default();
+                        let pairs: Vec<String> = questions.as_array().into_iter().flatten().enumerate()
+                            .filter_map(|(i, q)| {
+                                let picked = rows.get(i)?.iter().filter(|a| !a.trim().is_empty())
+                                    .cloned().collect::<Vec<_>>().join(", ");
+                                (!picked.is_empty()).then(|| format!("{}\n답변: {picked}", q["question"].as_str().unwrap_or("")))
+                            }).collect();
+                        let run = slot.wire.run_id.clone();
+                        if pairs.is_empty() {
+                            slot.wire.async_questions.remove(&request_id);
+                            self.fanout(&chat, json!({ "type": "question-closed", "runId": run, "requestId": request_id }));
+                            answer(verdict_wire("respond", &Verdict::Accepted));
+                            return;
+                        }
+                        let text = format!("사용자가 질문에 답했습니다. 이 답을 반영해 이어서 진행하세요.\n\n{}", pairs.join("\n\n"));
+                        let active = matches!(slot.rt.state(), StateTag::Streaming | StateTag::AwaitingUser);
+                        let v = if active {
+                            slot.wire.async_answering.insert(request_id.clone());
+                            slot.wire.async_answers.insert(request_id.clone(), rows.clone());
+                            slot.rt.dispatch(Cmd::AnswerAsyncQuestion { request_id: request_id.clone(), text })
+                        } else if matches!(slot.rt.state(), StateTag::Idle | StateTag::Resident | StateTag::HeldResult) {
+                            slot.rt.dispatch(Cmd::Send { text })
+                        } else {
+                            Verdict::Rejected("turn_unavailable")
+                        };
+                        let accepted = matches!(v, Verdict::Accepted | Verdict::Queued);
+                        if !active || !accepted {
+                            let events = slot.wire.translate(&json!({ "type": "system", "subtype": "ccg_codex",
+                                "kind": "async_answer_result", "requestId": request_id,
+                                "error": if accepted { Value::Null } else { json!(ccg_fs::t("작업 상태가 바뀌었어요. 잠시 후 다시 보내주세요.", "The task state changed. Please try sending again in a moment.")) } }));
+                            // Idle replies start a normal turn; record the answer after acceptance.
+                            for mut event in events {
+                                if accepted && event["type"] == "question-closed" { event["answers"] = json!(rows); }
+                                self.fanout(&chat, event);
+                            }
+                        }
+                        answer(verdict_wire("respond", &v));
+                        return;
+                    }
+                }
                 // ★M4 — Codex 채팅이면 응답 본문에 **Codex 전용 자리 둘**을 얹는다.
                 // Claude 채팅에는 절대 붙이지 않는다(그 본문은 `claude.exe`의
                 // `canUseTool` 응답으로 그대로 나간다 — 모르는 키를 실어 보낼 이유가 없다).

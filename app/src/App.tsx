@@ -333,6 +333,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 설정 모달을 특정 탭으로 열기 (키 없이 API 토글을 누르면 'api' 탭으로 바로)
   const [settingsView, setSettingsView] = useState<'version' | 'api' | undefined>(undefined)
   const [openFilePath, setOpenFilePath] = useState<string | null>(null)
+  const [openFileLine, setOpenFileLine] = useState<number | undefined>()
   // Git 카드(탐색기 하단 스트립) — null=닫힘, {root}=열림(root는 스트립이 고른 저장소 —
   // 없으면 카드가 발견 목록의 첫 저장소로). 카드에서 연 파일의 일회성 뷰어 오버라이드는
   // gitViewer(커밋 스냅샷·일회성 diff·해시 칩) — 일반 경로로 연 파일은 null이라 뷰어가 평소처럼 돈다.
@@ -908,7 +909,7 @@ function MainApp({ user }: { user: AppUser }) {
   const activeEmpty = state.messages.length === 0 && !activeChat?.title
 
   // 포커스 밖 알림 — 이 창이 비포커스일 때 턴 종료/승인/질문을 커서 모니터 토스트로.
-  // 단일 뷰는 실행 중 채팅 전환이 막혀 있어 활성 채팅 하나만 감시하면 충분하다.
+  // 현재 열린 채팅을 감시한다. 채팅 전환 후 복원된 완료 상태는 새 알림으로 취급하지 않는다.
   useTurnNotify(state, busy, activeChat?.title ?? '', { surface: 'single', id: activeChatId })
   // 토스트 클릭 라우팅 — 메인이 창을 앞으로 가져온 뒤 보낸다: 뷰 전환 + 대상 선택
   const onNotifyJump = useEvent((t: NotifyTarget) => {
@@ -1872,11 +1873,12 @@ function MainApp({ user }: { user: AppUser }) {
   // 일반 경로 열기는 Git 오버라이드를 지운다 — 직전에 커밋 스냅샷을 봤어도 새 파일은 평소대로.
   // 끈적한 창 모드면 독립 뷰어 창으로 보낸다 — 판정은 동기라 카드 경로는 예전처럼 클릭 즉시다.
   // 창을 못 세우면(false) 카드로 물러난다(모드는 그대로 — 다음 클릭이 다시 창을 노린다).
-  const openPath = (path: string): void => {
+  const openPath = (path: string, line?: number): void => {
+    setOpenFileLine(line)
     setGitViewer(null)
     setDocked(null)
     if (viewerWindowMode()) {
-      void openInViewerWindow({ path, cwd, diffs: state.diffs, askable: true }).then((took) => {
+      void openInViewerWindow({ path, line, cwd, diffs: state.diffs, askable: true, backToParent: !!openSubagentId }).then((took) => {
         if (!took) setOpenFilePath(path)
       })
       return
@@ -1887,6 +1889,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 연 파일은 override로 뷰어에.
   const onOpenGit = useEvent((root?: string) => setGitOpen({ root }))
   const onOpenGitFile = useEvent((path: string, ov: GitViewerOverride) => {
+    setOpenFileLine(undefined)
     setDocked(null)
     if (viewerWindowMode()) {
       void openInViewerWindow({ path, cwd, diffs: state.diffs, override: ov, askable: true }).then((took) => {
@@ -1906,6 +1909,8 @@ function MainApp({ user }: { user: AppUser }) {
     const src = docked
     void openInViewerWindow({
       path: p,
+      line: p === (src ? src.path : openFilePath) ? (src ? src.line : openFileLine) : undefined,
+      backToParent: !!openSubagentId || src?.backToParent,
       cwd: src ? src.cwd : cwd,
       diffs: src ? diffsOf(src) : state.diffs,
       // 정의 점프로 다른 파일에 들어가 있으면 Git 스냅샷은 원래 파일의 것 — 넘기지 않는다
@@ -1938,7 +1943,7 @@ function MainApp({ user }: { user: AppUser }) {
   useEffect(() => setGitOpen(null), [gitCwd, mode])
   const onOpenFile = useEvent((f: { path: string }) => openPath(f.path))
   // click a file in a tool-log row / explorer — same viewer
-  const onOpenToolFile = useEvent((path: string) => openPath(path))
+  const onOpenToolFile = useEvent((path: string, line?: number) => openPath(path, line))
   const onOpenSubagent = useEvent((a: SubAgentInfo) => setOpenSubagentId(a.id))
   // 컨텍스트 팝오버 열 때 사용량 강제 새로고침 — 추가 크레딧 잔액이 그 순간 최신이게
   const onRefreshUsage = useEvent(() => {
@@ -2469,6 +2474,7 @@ function MainApp({ user }: { user: AppUser }) {
                   <MessageView
                     key={m.id}
                     item={m}
+                    cwd={cwd}
                     live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                     running={busy}
                     onOpenFile={onOpenToolFile}
@@ -2608,6 +2614,8 @@ function MainApp({ user }: { user: AppUser }) {
         <Suspense fallback={null}>
           <FileModal
             path={docked ? docked.path : openFilePath}
+            line={docked ? docked.line : openFileLine}
+            backToParent={!!openSubagentId || docked?.backToParent}
             cwd={docked ? docked.cwd : cwd}
             diffs={docked ? diffsOf(docked) : state.diffs}
             override={docked ? docked.override : gitViewer}
@@ -2631,7 +2639,7 @@ function MainApp({ user }: { user: AppUser }) {
         />
       )}
 
-      <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
+      <SubAgentModal agent={openSubagent} cwd={cwd} onClose={() => setOpenSubagentId(null)} onOpenFile={onOpenToolFile} />
 
       {/* btw 알약 도크 — 이 채팅에서 띄운 질문 창들. DOM에서 워크플로 도크보다 앞이어야
           동시 상주 시 형제 선택자(:has ~)로 한 층 위로 비킨다 */}

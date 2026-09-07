@@ -50,6 +50,8 @@ export function ViewerWindow(): React.ReactElement {
           <FileModal
             windowed
             path={file.path}
+            line={file.line}
+            backToParent={file.backToParent}
             cwd={file.cwd}
             diffs={diffsOf(file)}
             override={file.override}
@@ -58,7 +60,7 @@ export function ViewerWindow(): React.ReactElement {
               setFile(null)
               void api.hide()
             }}
-            onDock={(path) => void api.dock({ ...file, path, override: path === file.path ? file.override : null })}
+            onDock={(path) => void api.dock({ ...file, path, line: path === file.path ? file.line : undefined, override: path === file.path ? file.override : null })}
             onAskSelection={file.askable ? (p) => void api.askSelection(p) : undefined}
           />
         </Suspense>

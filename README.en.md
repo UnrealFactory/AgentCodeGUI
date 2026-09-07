@@ -71,8 +71,9 @@ Replies and tool activity stay in order in one conversation. **Expand an Edit ro
 
 - **File explorer and code viewer** — file search, read and edit modes (`Ctrl+E`), save (`Ctrl+S`), change marks toggle (`Ctrl+D`), viewer in its own window
 - **Code intelligence** — go to definition (`F12`), hover docs, completion. TypeScript, JavaScript, and Python work with nothing to install; C# and C/C++ are one click away in Settings
-- **Previews** — HTML pages, Markdown documents, images and SVG
-- **Tool cards** — full Bash output, the pages a web search found, and MCP tool requests and responses, one click from the row
+- **Previews** — HTML pages, Markdown documents, images and SVG. Local images attached in chat display inline and open in the image viewer when clicked
+- **Tool cards** — inspect and copy full Bash commands, output and exit codes, plus MCP arguments, responses and errors
+- **Web activity** — expand Codex search queries and result links, including page-open and in-page search details when supplied by the engine
 
 <br>
 
@@ -83,6 +84,12 @@ When Claude Code's Workflow tool runs several agents in stages, a **stage rail w
 <img src="docs/images/en/workflow.png" width="1100" alt="Workflow card — research, improve, and verify stages with per-agent progress">
 
 The five chips in the work bar are always visible. Click one for the list, then click an item for a detail card such as a subagent log or a shell's output.
+
+**Open the tools a subagent used, too.** Read opens the file; Bash, Search and MCP open request/result cards; Web expands queries and result links. Close, `Esc` or a left mouse gesture returns to the previous card.
+
+<img src="docs/images/en/tool-history.png" width="900" alt="Subagent tool history — file reads, web queries and result links, and command execution">
+
+<sub>Actual app, version 3.1.0 · tool activity and search results are sample data</sub>
 
 <table>
 <tr>
@@ -118,6 +125,7 @@ Questions and permission requests from the agent arrive as cards. In plan mode y
 
 - **Permission cards** — allow once, allow for this session, or deny. Per chat, choose a permission mode: normal, plan, partial, auto, or allow all
 - **Decisions stay** — answers and plan approvals are recorded in the chat and survive reopening it
+- **Codex questions during a task** — answer in a card without manually stopping the work. Failed sends preserve your input for retry
 - **Side questions** — `/btw` opens a window that inherits this chat's context so you can ask without interrupting the main work
 
 <br>
@@ -155,6 +163,7 @@ Register several Anthropic and OpenAI subscription accounts and pick one per cha
 </table>
 
 - **When a limit runs out**, continue on another account with headroom, or resume where you stopped when the current account resets
+- **Codex resets** — click the balance on an OpenAI account card to see available grant/expiry details and use a reset manually. Unconfirmed requests reuse the same request on retry to prevent double spending. Availability depends on the account and Codex version
 - **Who is using what** — when another panel uses the same account, it shows as "In use · Slot N"
 - **API keys work too** — add a key under Settings › API to run without a subscription. With an Anthropic key you also get per-chat cost, cumulative spend, and a budget
 - **Credentials are encrypted (DPAPI) in the app home** and never mixed with your terminal's Claude Code or Codex login. To reuse a CLI and login already on your PC, pick the **system environment** below
@@ -209,6 +218,14 @@ Click the Git strip under the explorer to open the change list and commit compos
 - **System environment** — use the CLI already installed on your PC with its login and settings. Detects the executable and config folder, or set them yourself. A change takes effect for new chats after the app restarts
 - Output style (Concise, Explanatory, Learning, …) is chosen under Settings › Engine as well
 
+**Adjust Codex context per model.** Settings › Engine shows context windows and auto-compaction thresholds for the models available in chat. **Default** is selected initially; choose and save **Recommended**, or enter **Custom** values when needed. Recommended currently uses 512,000 / 430,000 tokens for Astra and keeps other models at their defaults.
+
+<img src="docs/images/en/codex-context.png" width="800" alt="Codex settings — a separate context management switch and per-model context windows and compaction thresholds">
+
+<sub>Context management is experimental and starts OFF. The switch saves automatically; model values use a Save button. Both apply to new or reconnected chats</sub>
+
+**Context management**, which uses notes and searchable history, is independent of **context window settings**. Your existing Codex configuration file stays unchanged. The chat gauge shows the usable capacity reported by the engine, which may differ from the value you entered.
+
 <br>
 
 <details>
@@ -254,7 +271,7 @@ Both work. With a subscription the app tracks your limits and helps you switch o
 In the default (app-managed) environment you sign in separately into the app home (`~/.agentcodegui3`), apart from your terminal login. Choose the **system environment** under Settings › Engine to use the CLI, login, and settings already on your PC.
 
 **Where is my data?**<br>
-Chats, settings, and accounts live locally in `~/.agentcodegui3`, and account tokens are encrypted with Windows DPAPI. Your conversation goes out through the engines (Claude Code · Codex CLI) alone. Beyond that, the app itself contacts Anthropic's sign-in and usage APIs (the OpenAI side is handled by Codex CLI), GitHub for update checks, jsDelivr and Google Fonts for the UI typefaces, Google for the site icons on web-search result rows, and, only when you choose them, the npm registry (app-managed engine install) and GitHub/NuGet (language-server install). There is no analytics or telemetry server.
+Chats, settings, and accounts live locally in `~/.agentcodegui3`, and account tokens are encrypted with Windows DPAPI. Your conversation goes out through the engines (Claude Code · Codex CLI) alone. Beyond that, the app itself contacts Anthropic's sign-in and usage APIs (the OpenAI side is handled by Codex CLI), GitHub for update checks, jsDelivr and Google Fonts for the UI typefaces, and, only when you choose them, the npm registry (app-managed engine install) and GitHub/NuGet (language-server install). There is no analytics or telemetry server.
 
 **What do I need to install an engine?**<br>
 The app-managed environment needs Node.js (npm). If the CLI is already installed, connect it as a system environment and npm is not required.

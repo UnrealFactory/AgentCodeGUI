@@ -859,6 +859,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'question-request':
       return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine } }
 
+    case 'question-closed':
+      return state.pendingQuestion?.requestId === e.requestId ? { ...state, pendingQuestion: null } : state
+
     case 'compact': {
       // 컨텍스트가 가득 차 CLI가 스스로 대화를 요약함(auto-compact) — 게이지가 곧 뚝
       // 떨어지므로(엔진이 이 이벤트를 압축 후 첫 context보다 먼저 보낸다) 이유를 카드로

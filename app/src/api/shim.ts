@@ -421,9 +421,14 @@ const api: WindowApi = {
     setDefaultAccount: (email: string) => callStrict(IPC.codexSetDefaultAccount, [email]),
     cancelLogin: () => callVoid(IPC.codexLoginCancel),
     reorderAccounts: (emails: string[]) => callStrict(IPC.codexReorderAccounts, [emails]),
-    accountsUsage: () => call(IPC.codexAccountsUsage, [], [])
+    accountsUsage: (fresh?: boolean) => call(IPC.codexAccountsUsage, [fresh], []),
+    consumeResetCredit: (email: string, idempotencyKey: string) => callStrict(IPC.codexResetCreditConsume, [email, idempotencyKey])
   },
   engineAutoUpdate: (enabled?: boolean) => call(IPC.engineAutoUpdate, [enabled], true),
+  codexContext: {
+    get: () => callStrict(IPC.codexContextGet, []),
+    save: (settings) => callStrict(IPC.codexContextSave, [settings])
+  },
   engineUpdate: {
     status: () => call(IPC.engineUpdateStatus, [], NO_ENGINE_UPDATE),
     onEvent: (cb: (s: EngineUpdateStatus) => void) => subscribe(IPC.engineUpdateEvent, cb)

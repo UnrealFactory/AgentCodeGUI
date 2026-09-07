@@ -5,20 +5,14 @@ import {
   IconFile,
   IconCheck,
   IconSearch,
-  IconClose,
-  IconEye,
-  IconPencil,
-  IconTerminal,
-  IconGlobe,
-  IconPlug,
-  IconWrench
+  IconClose
 } from './icons'
 import { FileBadge } from './fileType'
 import { Markdown } from './Markdown'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { t } from '../lib/i18n'
 import { settleText, useSettledReason } from '../lib/settled'
-import { fmtToolResult } from '../lib/toolResult'
+import { ToolActivityRow, type OpenToolFile } from './ToolActivity'
 
 // 미완료 할 일의 원형 마커 (PoC pop-todo의 circle glyph — 전용 아이콘이 없어 인라인)
 function TodoCircle() {
@@ -80,19 +74,6 @@ function saIcon(name: string, size: number): ReactNode {
   if (n.includes('verify') || n.includes('test') || n.includes('검증')) return <IconCheck size={size} />
   if (n.includes('build') || n.includes('구현') || n.includes('code')) return <IconFile size={size} />
   return <IconBot size={size} />
-}
-
-// 도구 사용 행 아이콘 — Chat.tsx toolIcon과 같은 매핑. Chat이 이 파일을 import하는
-// 방향이라 거기서 가져오면 순환 — 소형 사본을 둔다.
-function dcToolIcon(kind: string, size: number): ReactNode {
-  if (kind === 'search') return <IconSearch size={size} />
-  if (kind === 'read') return <IconEye size={size} />
-  if (kind === 'write') return <IconFile size={size} />
-  if (kind === 'edit') return <IconPencil size={size} />
-  if (kind === 'bash') return <IconTerminal size={size} />
-  if (kind === 'web') return <IconGlobe size={size} />
-  if (kind === 'mcp') return <IconPlug size={size} />
-  return <IconWrench size={size} />
 }
 
 // 라벨은 함수로 늦춰 렌더 때 t() 평가 — 모듈 스코프 상수에 언어가 박제되지 않게
@@ -185,14 +166,14 @@ function saBadge(status: SubAgentStatus, why: { label: string; sub: string } | n
 
 // 서브에이전트 상세 카드 — PoC 상세 카드 문법(.dc-*): 아이콘 타일 + 제목/서브 + 상태
 // 배지 헤더, 본문은 섹션 라벨(결과 · 과정 · 도구 사용) 아래 카드, 푸터는 스탯 칩.
-export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; onClose: () => void }) {
+export function SubAgentModal({ agent, cwd, onClose, onOpenFile }: { agent: SubAgentInfo | null; cwd?: string; onClose: () => void; onOpenFile?: OpenToolFile }) {
   // 마우스 제스처(U/D 스크롤·DR 닫기)의 대상 카드 엘리먼트
   const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
   const why = useSaSettled(agent) // ★ R3 — 정리됨(사유) 어휘. 없으면 평소의 완료/실행 중
   useEffect(() => {
     if (!agent) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && !document.querySelector('.tool-detail-overlay, .fv-overlay.from-detail')) onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -226,7 +207,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
               </div>
               <div className="dc-box">
                 <div className="content dc-md">
-                  <Markdown text={agent.activity} />
+                  <Markdown text={agent.activity} cwd={cwd} onOpenFile={onOpenFile} />
                 </div>
               </div>
             </>
@@ -256,25 +237,7 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
             <div className="dc-box tools">
               {/* 항목 변수는 tu — t는 i18n 함수라 가리면 안 된다 */}
               {agent.tools.map((tu) => (
-                <div className="dc-tool" key={tu.id}>
-                  <span className="tic">{dcToolIcon(tu.kind, 15)}</span>
-                  <span className="tname">{tu.verb}</span>
-                  <span className="targ">{tu.target}</span>
-                  <span className="tend">
-                    {tu.status === 'running' ? (
-                      <span className="spin" />
-                    ) : tu.status === 'error' ? (
-                      <span style={{ color: 'var(--red)' }}>{t('오류', 'Error')}</span>
-                    ) : tu.result ? (
-                      // ★TOOLROW — 본채팅 행과 같은 토큰 해석(`145 lines`→「145줄」 등)
-                      fmtToolResult(tu.result)
-                    ) : (
-                      <span className="ok">
-                        <IconCheck size={12} />
-                      </span>
-                    )}
-                  </span>
-                </div>
+                <ToolActivityRow key={tu.id} t={tu} onOpenFile={onOpenFile} />
               ))}
             </div>
           ) : (
@@ -299,11 +262,12 @@ export function SubAgentModal({ agent, onClose }: { agent: SubAgentInfo | null; 
           </span>
         </div>
       </div>
-      {/* 우클릭 드래그 제스처 — 뷰어와 같은 문법 (U 맨 위 · D 맨 아래 · DR 닫기) */}
+      {/* 우클릭 드래그 제스처 — L 뒤로 · U 맨 위 · D 맨 아래 · DR 닫기 */}
       <MouseGestureLayer
         target={cardEl}
         actions={[
           ...scrollGestures(() => cardEl?.querySelector('.dc-body')),
+          { pattern: 'L', label: t('뒤로', 'Back'), run: onClose },
           { pattern: 'DR', label: t('카드 닫기', 'Close card'), run: onClose }
         ]}
       />

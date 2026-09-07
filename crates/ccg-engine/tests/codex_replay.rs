@@ -209,6 +209,35 @@ fn resume_reuses_the_saved_thread_id() {
     cover("thread/resume");
 }
 
+#[test]
+fn context_overrides_reach_start_and_resume_without_disabling_other_features() {
+    use ccg_engine::codex::ContextOverrides;
+    for resume in [None, Some("th-existing".to_string())] {
+        for management in [None, Some(true), Some(false)] {
+            let mut p = plan();
+            p.resume = resume.clone();
+            p.context = ContextOverrides { management, window: Some(512000), compact: Some(430000) };
+            let mut r = Rig::new(p);
+            r.out(initialize_request("context-init", None));
+            r.rpc(json!({"id":1,"result":{}}));
+            r.out(user_message("context settings"));
+            let request = r.sent(if resume.is_some() { "thread/resume" } else { "thread/start" }).unwrap();
+            let c = &request["params"]["config"];
+            assert_eq!(c["model_context_window"], 512000);
+            assert_eq!(c["model_auto_compact_token_limit"], 430000);
+            assert_eq!(c["features"]["unified_exec"], true);
+            assert!(c["tools"]["experimental_request_user_input"].is_object());
+            match management {
+                Some(enabled) => assert_eq!(c["features"]["context_management"]["experimental_mode"], enabled),
+                None => assert!(c["features"].get("context_management").is_none()),
+            }
+        }
+    }
+    let p = plan().thread_params();
+    assert!(p["config"].get("model_context_window").is_none());
+    assert!(p["config"].get("model_auto_compact_token_limit").is_none());
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ② 스트리밍 · 생각 줄
 // ─────────────────────────────────────────────────────────────────────────────
@@ -338,6 +367,54 @@ fn tool_items_become_tool_use_and_tool_result() {
                   "action": { "type": "search", "queries": ["rust jsonrpc"] } } } }));
     cover("item/completed{mcpToolCall|webSearch}");
     assert_eq!(r.frames[0]["message"]["content"][0]["content"], "rust jsonrpc");
+    assert_eq!(r.frames[0]["message"]["content"][0]["ccg_web_target"], "rust jsonrpc");
+}
+
+#[test]
+fn mcp_details_keep_arguments_text_structured_results_and_errors() {
+    // Shapes verified against codex 0.153.4 generate-ts: ThreadItem/McpToolCallResult/Error.
+    let mut r = started();
+    r.rpc(json!({ "method": "item/started", "params": { "threadId": "th-1",
+        "item": { "id": "m1", "type": "mcpToolCall", "server": "sample", "tool": "lookup",
+            "arguments": { "query": "실제 요청", "limit": 3 } } } }));
+    assert_eq!(r.frames[0]["message"]["content"][0]["input"], json!({"query":"실제 요청","limit":3}));
+    r.clear();
+    r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1",
+        "item": { "id": "m1", "type": "mcpToolCall", "status": "completed", "durationMs": 123,
+            "result": { "content": [{ "type": "text", "text": "실제 결과" },
+                { "type": "resource", "resource": { "uri": "file:///example", "text": "resource body" } },
+                { "type": "image", "data": "BASE64_NOT_FOR_LOGS", "mimeType": "image/png" }],
+                "structuredContent": { "found": 3 }, "_meta": { "hidden": "PRIVATE_META" } }, "error": null } } }));
+    let block = &r.frames[0]["message"]["content"][0];
+    let body = block["content"].as_str().unwrap();
+    assert!(body.contains("실제 결과") && body.contains("resource body") && body.contains("\"found\": 3"));
+    assert!(body.contains("[image]") && !body.contains("BASE64_NOT_FOR_LOGS") && !body.contains("PRIVATE_META"));
+    assert_eq!(block["is_error"], false);
+    assert_eq!(block["ccg_duration_ms"], 123);
+    r.clear();
+    r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1",
+        "item": { "id": "m2", "type": "mcpToolCall", "status": "failed", "result": null,
+            "error": { "message": "Permission denied by server" } } } }));
+    assert_eq!(r.frames[0]["message"]["content"][0]["content"], "Permission denied by server");
+    assert_eq!(r.frames[0]["message"]["content"][0]["is_error"], true);
+}
+
+#[test]
+fn command_completion_uses_status_even_without_an_exit_code() {
+    for (status, code, failed) in [
+        ("failed", Value::Null, true), ("declined", Value::Null, true),
+        ("completed", json!(2), true), ("completed", json!(0), false),
+        ("completed", Value::Null, false),
+    ] {
+        let mut r = started();
+        r.rpc(json!({"method":"item/completed","params":{"threadId":"th-1",
+            "item":{"id":"cmd","type":"commandExecution","status":status,"exitCode":code,"aggregatedOutput":"","durationMs":12}}}));
+        let block = &r.frames[0]["message"]["content"][0];
+        assert_eq!(block["is_error"], failed, "{status} / {code}");
+        assert_eq!(block["ccg_exit_code"], code);
+        assert_eq!(block["ccg_duration_ms"], 12);
+        if failed { assert!(!block["content"].as_str().unwrap().is_empty(), "empty failures need a reason"); }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -408,6 +485,35 @@ fn all_four_approval_shapes_and_the_question_card() {
     assert_eq!(r.rpcs[0]["id"], 16);
     assert!(r.rpcs[0]["error"]["message"].as_str().unwrap().contains("unsupported"));
     assert!(r.frames.is_empty(), "카드로 올리지 않는다");
+}
+
+#[test]
+fn async_questions_are_cards_and_answers_steer_the_same_turn() {
+    let mut r = started();
+    r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1", "turnId": "tu-1",
+        "item": { "type": "agentMessage", "id": "aq1", "text": "언제 떨리나요?",
+            "questions": [{ "title": "언제 떨리나요?", "options": ["답변 중", "완료 후"] },
+                { "title": "추가 설명", "options": null }] } } }));
+    let card = r.frames.iter().find(|f| f["kind"] == "async_question").unwrap().clone();
+    assert_eq!(card["questions"][0]["options"][1]["label"], "완료 후");
+    assert_eq!(card["questions"][1]["options"], json!([]));
+    assert!(r.frames_of("control_request").is_empty(), "async question must not block the engine");
+    r.out(json!({ "type": "control_request", "request_id": card["requestId"],
+        "request": { "subtype": "ccg_async_answer", "text": "답변 중" } }));
+    let steer = r.sent("turn/steer").unwrap().clone();
+    assert_eq!(steer["params"]["expectedTurnId"], "tu-1");
+    assert_eq!(steer["params"]["input"][0]["text"], "답변 중");
+    assert!(r.sent("turn/interrupt").is_none());
+    assert!(r.sent("turn/start").is_none());
+    r.rpc(json!({ "id": steer["id"], "result": { "turnId": "tu-1" } }));
+    assert_eq!(r.frames.last().unwrap()["kind"], "async_answer_result");
+    assert!(r.frames.last().unwrap()["error"].is_null());
+    r.out(json!({ "type": "control_request", "request_id": card["requestId"],
+        "request": { "subtype": "ccg_async_answer", "text": "다시 답변" } }));
+    let id = r.sent("turn/steer").unwrap()["id"].clone();
+    r.rpc(json!({ "id": id, "error": { "code": -32600, "message": "no active turn" } }));
+    assert_eq!(r.frames.last().unwrap()["error"], "no active turn");
+    assert!(r.frames_of("result").is_empty(), "a rejected answer must not terminate the run");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

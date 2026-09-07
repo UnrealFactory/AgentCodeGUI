@@ -10,6 +10,8 @@ import type {
 } from '@shared/protocol'
 import { FileBadge } from './fileType'
 import { EngineEnvironmentCard } from './EngineEnvironmentCard'
+import { CodexResetCredits } from './CodexResetCredits'
+import { CodexContextCard } from './CodexContextCard'
 import { useEngineEnvironments } from '../api/engineEnvironment'
 // ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
 import {
@@ -682,6 +684,7 @@ function AccountView(): React.ReactElement {
                 </div>
                 {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
                 <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
+                <CodexResetCredits email={a.email} disabled={busy != null} />
               </div>
               <CodexLimits u={cxUsage[a.email]} />
               <div className="acts">
@@ -1049,6 +1052,7 @@ function EngineView(): React.ReactElement {
       <div className="set-sec">OpenAI</div>
       <EngineEnvironmentCard engine="codex" />
       {environments?.codex.mode !== 'system' && <EngineCard name="Codex CLI" tile={<LogoOpenAI size={20} />} fallback={t('전역 설치', 'global install')} api={window.api.codexEngine} />}
+      <CodexContextCard />
       <div className="set-sec">{t('공통', 'Common')}</div>
       <div className="sc2 tgl" style={{ marginTop: 0 }}>
         <div>
@@ -2396,7 +2400,7 @@ function isExtPattern(s: string): boolean {
 
 // 우클릭 드래그 제스처 — 켜고 끄기 + 동작 목록 + 감도(시작 거리·획 길이).
 // 값은 prefs에 저장되고 MouseGestureLayer가 제스처 시작 시점마다 읽으므로 즉시 반영된다.
-// 동작 매핑은 각 화면에 고정(FileModal 5종 · Bash 로그 3종 · Git 카드 닫기 · 설정창 ↑/↓/↓→ ·
+// 동작 매핑은 각 화면에 고정(파일 뷰어 탐색 · 도구·서브에이전트 상세 ←/↑/↓/↓→ · Git 카드 닫기 · 설정창 ↑/↓/↓→ ·
 // 대화 스레드 ↑/↓/↑←/↑↓ · 추가 채팅 창은 →↑ 최대화·↓→ 닫기 · 멀티 패널은 →↑ 크게 보기,
 // 크게 보기 카드는 ↓→ 닫기) — 여기 목록과 함께 바꿔야 한다.
 // 이름·설명이 언어를 따라가야 해서 상수가 아닌 함수 — 렌더 때 t()가 평가된다
@@ -2404,8 +2408,11 @@ function gestureList(): { pattern: string; name: string; desc: string }[] {
   return [
     {
       pattern: 'L',
-      name: t('이전 파일', 'Previous file'),
-      desc: t('정의 점프로 떠나온 파일로 돌아가요 — 파일 뷰어', 'Back to the file you jumped from — file viewer')
+      name: t('뒤로', 'Back'),
+      desc: t(
+        '이전 파일이나 도구 목록으로 돌아가요. 도구·서브에이전트 상세에서는 현재 카드를 닫아요',
+        'Returns to the previous file or tool list; closes the current tool or subagent detail to go back'
+      )
     },
     {
       pattern: 'R',

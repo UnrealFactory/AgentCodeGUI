@@ -42,6 +42,8 @@ export function setViewerWindowMode(on: boolean): void {
 /** 카드 뷰어의 prop 묶음 → 뷰어 창 페이로드(그 파일의 diff 하나만 추린다). */
 export function viewerPayload(p: {
   path: string
+  line?: number
+  backToParent?: boolean
   cwd: string
   diffs?: Record<string, FileDiff>
   override?: ViewerOpenPayload['override']
@@ -49,7 +51,7 @@ export function viewerPayload(p: {
 }): ViewerOpenPayload {
   // 카드 뷰어의 조회 규칙과 같다(FileModal: diffs[effPath.replace(/\\/g, '/')])
   const diff = p.diffs?.[p.path.replace(/\\/g, '/')] ?? null
-  return { path: p.path, cwd: p.cwd, diff, override: p.override ?? null, askable: !!p.askable }
+  return { path: p.path, ...(p.line != null ? { line: p.line } : {}), ...(p.backToParent ? { backToParent: true } : {}), cwd: p.cwd, diff, override: p.override ?? null, askable: !!p.askable }
 }
 
 /** 뷰어 창의 diffs prop — 페이로드의 diff 하나를 카드 뷰어의 조회 키로 되돌린다. */

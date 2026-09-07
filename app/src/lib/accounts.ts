@@ -107,6 +107,7 @@ let usageFlightManual = false
 /** 도는 조회 뒤에 한 번 더 돌 **수동 재시도**(F5 부수 — 워밍 결과를 재시도로 속이지 않는다). */
 let usageQueued: Promise<Record<string, AccountUsage>> | null = null
 let cxUsageFlight: Promise<Record<string, CodexAccountUsage>> | null = null
+let cxUsageRevision = 0
 let lastWarmAt = 0
 
 // ── ★2026-09-05 — 지난 창은 저절로 다시 묻는다 ──────────────────────────────
@@ -290,14 +291,24 @@ export function refreshUsage(q: UsageQuery = {}): Promise<Record<string, Account
   return runUsage(q)
 }
 
-export function refreshCodexUsage(): Promise<Record<string, CodexAccountUsage>> {
-  if (cxUsageFlight) return cxUsageFlight
+/** 사용 후 받은 계정 값은 진행 중이던 이전 조회보다 우선한다. */
+export function putCodexUsage(email: string, usage?: CodexAccountUsage): void {
+  cxUsageRevision++
+  const next = { ...state.cxUsage }
+  if (usage) next[email] = usage
+  else delete next[email]
+  emit({ cxUsage: next })
+}
+
+export function refreshCodexUsage(fresh = false): Promise<Record<string, CodexAccountUsage>> {
+  if (cxUsageFlight) return fresh ? cxUsageFlight.then(() => refreshCodexUsage(true)) : cxUsageFlight
+  const revision = cxUsageRevision
   emit({ cxLoading: true })
   cxUsageFlight = window.api.codexAuth
-    .accountsUsage()
+    .accountsUsage(fresh)
     .then((rows) => {
       cxUsageFlight = null
-      const map = byEmail(rows)
+      const map = revision === cxUsageRevision ? byEmail(rows) : state.cxUsage
       emit({ cxUsage: map, cxLoading: false })
       return map
     })

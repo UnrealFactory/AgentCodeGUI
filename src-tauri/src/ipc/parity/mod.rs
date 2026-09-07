@@ -36,7 +36,7 @@ use tauri::{AppHandle, Emitter, WebviewWindow};
 mod aimsg;
 mod btw;
 mod codex;
-mod codex_tooling;
+pub(crate) mod codex_tooling;
 mod dialog;
 pub mod misc;
 mod tooling;
@@ -74,6 +74,7 @@ pub mod ch {
     /// 여기 있는 이유: 이 채널만 **프로세스를 태운다**(≈0.7초/계정). 성격이 위 한도 조회와
     /// 같으므로 자리도 같다 — 저기 두면 창 컨트롤·스토어 저장이 그 시간 동안 굶는다.
     pub const CODEX_ACCOUNTS_USAGE: &str = "codex-auth:accounts-usage";
+    pub const CODEX_RESET_CREDIT_CONSUME: &str = "codex-auth:reset-credit-consume";
     /// ★M5 — AI 커밋 메시지(`git:ai-message({cwd,files,account?,model?,effort?})`).
     /// `ipc/git.rs`가 아니라 여기 있는 이유: 저 모듈은 `ccg_fs::git`의 얇은 변환기이고
     /// 이 채널만 **엔진 프로세스를 스폰**한다(최대 90초). 성격이 다르면 자리도 다르다.
@@ -96,9 +97,12 @@ pub fn owns(channel: &str) -> bool {
             | ch::SKILL_LIST
             | ch::SKILL_SET_ENABLED
             | ch::CODEX_MODELS
+            | "codex:context-get"
+            | "codex:context-save"
             | "codex:tooling"
             | "codex:tooling-set-enabled"
             | ch::CODEX_ACCOUNTS_USAGE
+            | ch::CODEX_RESET_CREDIT_CONSUME
             | ch::GIT_AI_MESSAGE
     ) || misc::owns(channel)
 }
@@ -107,6 +111,8 @@ pub fn owns(channel: &str) -> bool {
 /// 바로 주는 이유: 소유 판정이 이미 `owns`에서 끝났기 때문이다(두 번 셀 필요가 없다).
 pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
     match channel {
+        "codex:context-get" => crate::engine::codex_context::get(),
+        "codex:context-save" => crate::engine::codex_context::save(super::arg(p, 0)),
         ch::BTW_OPEN => btw::open(app, window, super::arg(p, 0)),
         ch::USAGE_GET => {
             // 2.6.2 `getUsage(fresh, account)` — 인자 배열 그대로(심 규약 §2).
@@ -145,7 +151,17 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
         // ★R28b RVERD — 조회기는 **엔진 쪽에 이미 있다**(`engine::codex_limit`). 여기서
         // 다시 만들지 않는 이유는 캐시가 한 벌이어야 하기 때문이다: 재검증 훅과 이 채널이
         // 각자 조회하면 대기 중인 codex 채팅 하나가 app-server를 분당 몇 번씩 태운다.
-        ch::CODEX_ACCOUNTS_USAGE => crate::engine::codex_limit::accounts_usage(),
+        ch::CODEX_ACCOUNTS_USAGE => {
+            if super::arg(p, 0).as_bool().unwrap_or(false) {
+                crate::engine::codex_limit::refresh_accounts_usage()
+            } else {
+                crate::engine::codex_limit::accounts_usage()
+            }
+        }
+        ch::CODEX_RESET_CREDIT_CONSUME => crate::engine::codex_limit::consume_reset_credit(
+            super::arg(p, 0).as_str().unwrap_or(""),
+            super::arg(p, 1).as_str().unwrap_or(""),
+        ),
 
         // ★M5 — diff를 읽고 엔진을 1턴 돌린다(최대 90초 · 블로킹 팔).
         ch::GIT_AI_MESSAGE => aimsg::ai_message(super::arg(p, 0)),

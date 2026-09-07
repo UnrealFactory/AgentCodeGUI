@@ -121,7 +121,7 @@ export interface SessionState {
   // engine — 요청한 엔진(카드 헤더 'Claude의 승인 요청'/'GPT의 승인 요청' 표기), 생략=claude
   pendingPermission: { requestId: string; toolName: string; summary: string; engine?: EngineId; plan?: PlanPreview } | null
   // engine — 질문을 던진 엔진(카드 헤더 'Claude의 질문'/'GPT의 질문' 표기), 생략=claude
-  pendingQuestion: { requestId: string; questions: AgentQuestion[]; engine?: EngineId } | null
+  pendingQuestion: { requestId: string; questions: AgentQuestion[]; engine?: EngineId; nonBlocking?: boolean; answering?: boolean } | null
   session: { sessionId: string; model: string; cwd: string } | null
   result: {
     costUsd: number | null
@@ -189,7 +189,7 @@ type Action =
   | { type: 'answer-permission'; requestId: string; behavior: 'allow' | 'allow_always' | 'deny' }
   | { type: 'clear-question' }
   // 질문에 답을 보냄 — pendingQuestion을 닫으며 문답 흔적(qa)을 스레드에 남긴다
-  | { type: 'answer-question'; answers: string[][] }
+  | { type: 'answer-question'; answers: string[][]; confirmed?: boolean }
   // 취소 = 중단 — 클로드 코드처럼 턴을 그 자리에서 끊는다. CLI 세션에는 이 턴(보낸 말
   // + 부분 답변)이 실제로 남아 재개 시 모델도 그걸 보므로, 화면에서 걷어내면 세션과
   // 화면이 어긋난다. 흔적은 그대로 두고 '중단함' 마커만 남긴다.
@@ -607,6 +607,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
   if (action.type === 'answer-question') {
     const pq = state.pendingQuestion
     if (!pq) return state
+    if (pq.nonBlocking && !action.confirmed) {
+      return { ...state, pendingQuestion: { ...pq, answering: true } }
+    }
     // 실제로 답한 질문만 흔적으로 남긴다 (전부 비어 있으면 카드만 닫는다)
     const pairs = pq.questions
       .map((q, i) => ({ q: q.question, a: action.answers[i] ?? [] }))
@@ -985,7 +988,10 @@ export function reducer(state: SessionState, action: Action): SessionState {
         ...t,
         status: e.status,
         result: e.result,
-        ...(e.output ? { output: e.output } : {}),
+        ...(e.output != null ? { output: e.output } : {}),
+        ...(e.outputTruncated != null ? { outputTruncated: e.outputTruncated } : {}),
+        ...(e.outputLines != null ? { outputLines: e.outputLines } : {}),
+        ...(e.exitCode != null ? { exitCode: e.exitCode } : {}),
         ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
         ...(e.links ? { links: e.links } : {}),
         ...(e.files ? { files: e.files } : {}),
@@ -1266,7 +1272,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
       return { ...state, pendingPermission: { requestId: e.requestId, toolName: e.toolName, summary: e.summary, engine: e.engine, plan: e.plan } }
 
     case 'question-request':
-      return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine } }
+      if (e.nonBlocking && (staleRun(e.runId) || state.interrupted)) return state
+      return { ...state, pendingQuestion: { requestId: e.requestId, questions: e.questions, engine: e.engine, nonBlocking: e.nonBlocking } }
+
+    case 'question-closed':
+      if (state.pendingQuestion?.requestId !== e.requestId) return state
+      return e.answers?.length
+        ? reducer(state, { type: 'answer-question', answers: e.answers, confirmed: true })
+        : { ...state, pendingQuestion: null }
 
     case 'compact': {
       // 컨텍스트가 가득 차 CLI가 스스로 대화를 요약함(auto-compact) — 게이지가 곧 뚝
@@ -1348,7 +1361,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
           contextWindow: window
         },
         pendingPermission: null,
-        pendingQuestion: null,
+        pendingQuestion: state.pendingQuestion?.nonBlocking ? state.pendingQuestion : null,
         pendingCommand: null,
         // API 모드 실행의 비용만 대화 누적에 더한다 (컨텍스트 팝오버 '이번 대화 비용')
         spentUsd: (state.spentUsd ?? 0) + (e.viaApi && e.costUsd ? e.costUsd : 0),

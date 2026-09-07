@@ -24,6 +24,9 @@ import type {
   AccountsUsageOpts,
   CodexAccountInfo,
   CodexAccountUsage,
+  CodexResetCreditResult,
+  CodexContextSettings,
+  CodexContextResult,
   ApiUsageRecord,
   UserProfile,
   EngineVersionEntry,
@@ -132,10 +135,15 @@ export interface WindowApi {
     /** 계정 표시 순서 변경(설정 꾹-드래그) → 갱신된 목록 */
     reorderAccounts(emails: string[]): Promise<CodexAccountInfo[]>
     /** 등록 계정별 한도(rateLimits) 일괄 조회 — planType은 표시 플랜으로도 우선 사용 */
-    accountsUsage(): Promise<CodexAccountUsage[]>
+    accountsUsage(fresh?: boolean): Promise<CodexAccountUsage[]>
+    consumeResetCredit(email: string, idempotencyKey: string): Promise<CodexResetCreditResult>
   }
   /** 두 엔진 CLI 공통 자동 업데이트 — 인자 있으면 설정, 항상 현재 값을 반환 (설정 → Engine → 공통) */
   engineAutoUpdate(enabled?: boolean): Promise<boolean>
+  codexContext: {
+    get(): Promise<CodexContextResult>
+    save(settings: Partial<CodexContextSettings>): Promise<CodexContextResult>
+  }
   /** 부팅 자동 업데이트 카드 — 메인이 부팅 직후 두 엔진을 설치→활성화→정리하며
    *  진행 스냅샷(REPLACE)을 흘린다. status()는 마운트 때 현재 상태 따라잡기용. */
   engineUpdate: {

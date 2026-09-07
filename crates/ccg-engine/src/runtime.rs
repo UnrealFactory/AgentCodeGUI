@@ -76,6 +76,7 @@ pub enum Cmd {
     StopAll,
     QueueRestore { token: String },
     Respond { kind: AskKind, request_id: String, accept: bool },
+    AnswerAsyncQuestion { request_id: String, text: String },
     BgStop { id: LiveId },
     BgBackground,
     IdentitySet { patch: RawIdentityPatch, policy: ApplyPolicy, op: PendingOp },
@@ -107,6 +108,7 @@ impl Cmd {
                 AskKind::Question => "respond_question",
                 AskKind::Dialog => "respond_dialog",
             },
+            Cmd::AnswerAsyncQuestion { .. } => "respond_async_question",
             Cmd::BgStop { .. } => "bg_task.stop",
             Cmd::BgBackground => "bg_task.background",
             Cmd::IdentitySet { op, .. } => {
@@ -1404,6 +1406,18 @@ impl<D: CliDriver> ChatRuntime<D> {
     fn execute(&mut self, cmd: Cmd, verdict: Verdict) -> Verdict {
         let now = self.now();
         match cmd {
+            Cmd::AnswerAsyncQuestion { request_id, text } => {
+                if verdict != Verdict::Accepted { return verdict; }
+                if !matches!(self.identity().engine(), crate::identity::EngineAxis::Codex { .. }) {
+                    return Verdict::Rejected("unsupported_engine");
+                }
+                if self.stream.is_none() || text.trim().is_empty() {
+                    return Verdict::Rejected("no_active_turn");
+                }
+                self.driver.send(json!({ "type": "control_request", "request_id": request_id,
+                    "request": { "subtype": "ccg_async_answer", "text": text } }));
+                Verdict::Accepted
+            }
             // ★3.0.5 — `Send`는 렌더러가 말풍선을 이미 그린 발화다(`echoed`). `Enqueue`는 아니다.
             Cmd::Send { text } => {
                 // The shell stages the request's picker before Send. While the

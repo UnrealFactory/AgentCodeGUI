@@ -10,6 +10,23 @@ import type { ReactNode } from 'react'
 import type { ToolFile, ToolLogItem } from '@shared/protocol'
 import { t } from './i18n'
 
+/** Older Codex logs saved the completed query only in output. Recover it for
+ * display, and keep the initial placeholder out of the request details. */
+export function webToolDetails(tl: ToolLogItem): ToolLogItem {
+  if (tl.kind !== 'web' || tl.status === 'running') return tl
+  const placeholder = (value: string) => /^검색\s*중(?:…|\.{3})?$/.test(value.trim())
+  const missing = !tl.target.trim() || placeholder(tl.target)
+  const target = missing
+    ? (tl.status === 'done' ? tl.output?.trim() : '') || t('웹 검색', 'Web search')
+    : tl.target
+  let args = tl.args
+  try {
+    const input = JSON.parse(args || '{}')
+    if (typeof input.query === 'string' && placeholder(input.query)) args = undefined
+  } catch { /* Keep incomplete request JSON available in the details. */ }
+  return target === tl.target && args === tl.args ? tl : { ...tl, target, args }
+}
+
 /** New logs carry exact paths. Older Codex logs only had a joined target;
  * recover those only when the saved file count confirms the split. */
 export function toolFiles(tl: ToolLogItem): ToolFile[] {
@@ -85,6 +102,7 @@ export interface SearchHit {
   path: string
   line?: string // 일치 줄 번호 (Grep 내용 모드)
   text?: string // 일치 줄 본문
+  count?: number // Grep count mode reports counts, not navigation lines.
 }
 
 /**
@@ -95,7 +113,7 @@ export interface SearchHit {
  * 머리말(`Found N files`)·잘림 안내는 목록에서 뺀다. 파일로 안 읽히는 줄은 `rest`로 남겨
  * 카드가 터미널 웰로 보여 준다. 엔진이 줄 머리의 cwd를 이미 뗐으므로 경로는 대개 상대다.
  */
-export function parseSearchOutput(text: string): { hits: SearchHit[]; rest: string[]; truncated: boolean } {
+export function parseSearchOutput(text: string, mode?: string): { hits: SearchHit[]; rest: string[]; truncated: boolean } {
   const hits: SearchHit[] = []
   const rest: string[] = []
   let truncated = false
@@ -111,7 +129,7 @@ export function parseSearchOutput(text: string): { hits: SearchHit[]; rest: stri
     // `path:NN:text` — 경로는 드라이브 콜론(`C:`) 뒤의 첫 `:숫자:`까지
     const m = line.match(/^((?:[a-zA-Z]:)?[^:\n]+?):(\d+)(?:[:-](.*))?$/)
     if (m && looksLikePath(m[1])) {
-      hits.push({ path: m[1], line: m[2], text: m[3] })
+      hits.push(mode === 'count' ? { path: m[1], count: Number(m[2]) } : { path: m[1], line: m[2], text: m[3] })
       continue
     }
     // 문맥 줄 `path-NN-text`(-A/-B/-C) — `-`는 파일명에도 흔해서(`foo-12-bar.h`) 경로가

@@ -462,12 +462,14 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
 
   // ── 뷰어·모달 (그리드와 동일 부품, 이 창 스코프) ──
   const [openFile, setOpenFile] = useState<string | null>(null)
+  const [openFileLine, setOpenFileLine] = useState<number | undefined>()
   // 뷰어 창 → 이 창(원래 창): 「창 안으로」로 되돌아온 파일(cwd는 이 창 것이라 경로만 받는다)
-  useEffect(() => window.api.viewer?.onDocked((p) => setOpenFile(p.path)), [])
+  useEffect(() => window.api.viewer?.onDocked((p) => { setOpenFile(p.path); setOpenFileLine(p.line) }), [])
   // 끈적한 창 모드면 독립 뷰어 창으로(그리드·본채팅과 같은 규칙). 창을 못 세우면 카드로.
-  const openFileRouted = (rel: string): void => {
+  const openFileRouted = (rel: string, line?: number): void => {
+    setOpenFileLine(line)
     if (viewerWindowMode()) {
-      void openInViewerWindow({ path: rel, cwd: curCwd, diffs: state.diffs }).then((took) => {
+      void openInViewerWindow({ path: rel, line, cwd: curCwd, diffs: state.diffs, backToParent: !!openSub }).then((took) => {
         if (!took) setOpenFile(rel)
       })
       return
@@ -573,7 +575,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
           onAddRefDir={() => void addRefDir()}
           onAddRefDirPath={(_s, p) => addRefDirPath(p)}
           onRemoveRefDir={(_s, p) => setMeta((m) => ({ ...m, refDirs: m.refDirs.filter((x) => !sameCwd(x, p)) }))}
-          onOpenFile={(_s, rel) => openFileRouted(rel)}
+          onOpenFile={(_s, rel, line) => openFileRouted(rel, line)}
           onOpenSubagent={(_s, id) => setOpenSub(id)}
           onOpenImage={(imgs, index) => setViewer({ images: imgs, index })}
           onBgTask={(_s, req: BgTaskRequest) => void window.api.multi?.bgTask?.(panelId, req).catch(() => {})}
@@ -603,13 +605,15 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
         <Suspense fallback={null}>
           <FileModal
             path={openFile}
+            line={openFileLine}
+            backToParent={!!openSub}
             cwd={curCwd}
             diffs={state.diffs}
             onClose={() => setOpenFile(null)}
             // 「별도 창으로」 — 끈적한 모드를 켜고 이 파일을 독립 창에. 창을 못 세우면 모드를 되돌린다.
             onPopout={(p) => {
               setViewerWindowMode(true)
-              void openInViewerWindow({ path: p, cwd: curCwd, diffs: state.diffs }).then((took) => {
+              void openInViewerWindow({ path: p, line: p === openFile ? openFileLine : undefined, cwd: curCwd, diffs: state.diffs, backToParent: !!openSub }).then((took) => {
                 if (took) setOpenFile(null)
                 else setViewerWindowMode(false)
               })
@@ -617,7 +621,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
           />
         </Suspense>
       )}
-      <SubAgentModal agent={openSub ? (state.subagents.find((a) => a.id === openSub) ?? null) : null} onClose={() => setOpenSub(null)} />
+      <SubAgentModal agent={openSub ? (state.subagents.find((a) => a.id === openSub) ?? null) : null} cwd={curCwd} onClose={() => setOpenSub(null)} onOpenFile={openFileRouted} />
       {viewer && (
         <ImageViewer
           images={viewer.images}

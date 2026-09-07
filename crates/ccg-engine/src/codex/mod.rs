@@ -49,6 +49,14 @@ use serde_json::{json, Value};
 /// 턴 활동 판정)까지 건드린다. 그래서 **표시 전용 값은 표시 전용 통로로** 보낸다.
 pub const SYNTH: &str = "ccg_codex";
 
+/// Optional app overrides. Absent fields leave Codex's config/model defaults intact.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContextOverrides {
+    pub management: Option<bool>,
+    pub window: Option<u64>,
+    pub compact: Option<u64>,
+}
+
 /// `thread/start`·`thread/resume`의 config 오버라이드 (2.6.2 `engine.ts:53-56` 실측 0.144.4).
 ///
 /// - `tools.experimental_request_user_input`: 빈 맵이어야 한다(**boolean은 거절됨**).
@@ -99,6 +107,7 @@ pub struct CodexPlan {
     /// `None` = 표준(파라미터를 싣지 않는다 — 서버 기본). `thread/start`·`thread/resume`·
     /// `turn/start` 셋에 다 싣는다: 스레드 값이 바뀌어도(TUI /fast 등) 우리 정체성이 이긴다.
     pub service_tier: Option<String>,
+    pub context: ContextOverrides,
 }
 
 impl CodexPlan {
@@ -110,6 +119,15 @@ impl CodexPlan {
             "sandbox": self.sandbox,
             "config": thread_config(&self.add_dirs),
         });
+        if let Some(enabled) = self.context.management {
+            p["config"]["features"]["context_management"] = json!({ "experimental_mode": enabled });
+        }
+        if let Some(window) = self.context.window {
+            p["config"]["model_context_window"] = json!(window);
+        }
+        if let Some(compact) = self.context.compact {
+            p["config"]["model_auto_compact_token_limit"] = json!(compact);
+        }
         if let Some(d) = &self.developer_instructions {
             p["developerInstructions"] = json!(d);
         }
@@ -203,6 +221,7 @@ pub fn build_plan(id: &RunIdentity, resume: Option<&str>) -> CodexPlan {
         api_mode: matches!(id.billing(), crate::identity::BillingAxis::ApiKey { .. }),
         account: id.codex_account().map(str::to_string),
         service_tier: id.codex_tier().map(str::to_string),
+        context: ContextOverrides::default(),
     }
 }
 

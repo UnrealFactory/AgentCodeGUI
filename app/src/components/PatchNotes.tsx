@@ -152,6 +152,36 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.1.0': {
+    ko: {
+      eyebrow: 'FEATURE UPDATE',
+      lead: '도구 실행 내역을 더 자세히 확인하고, Codex 초기화권과 모델별 컨텍스트를 앱에서 관리하세요. 질문 카드·이미지·스크롤·완료 알림도 개선했습니다.',
+      notes: [
+        { tag: '도구', name: 'Web 검색부터 MCP 응답까지', desc: 'Codex의 검색어와 결과 링크를 펼쳐 보고, Bash의 전체 명령·출력·종료 코드와 MCP의 요청 인자·응답·오류를 상세 카드에서 확인할 수 있습니다. Web 아이콘과 펼치기 화살표의 가독성도 다듬었습니다.' },
+        { tag: '에이전트', name: '서브에이전트의 도구 내역 열기', desc: '서브에이전트 카드 안에서도 도구를 눌러 요청·결과와 파일을 확인하세요. 상세 화면에서 닫기·Esc·왼쪽 마우스 제스처로 이전 카드에 돌아옵니다.' },
+        { tag: '초기화권', name: 'Codex 초기화권 조회와 사용', desc: '설정 › Account의 OpenAI 계정에서 보유 수량과 제공되는 상세 정보를 확인하고 직접 사용할 수 있습니다. 응답을 못 받은 요청은 같은 요청으로 재확인해 중복 사용을 방지합니다. 제공 여부는 계정과 Codex 버전에 따라 다릅니다.' },
+        { tag: '컨텍스트', name: '모델별 크기와 자동 압축 기준', desc: '설정 › Engine에서 채팅에 표시되는 Codex 모델별 값을 확인하고 기본값·추천값·직접 설정 중 선택하세요. 처음에는 기본값이며 추천값은 직접 선택해 저장할 때만 적용됩니다. 컨텍스트 관리는 별도의 ON/OFF 카드로 분리했습니다. 둘 다 새 대화·재연결부터 적용됩니다.' },
+        { tag: '질문', name: 'Codex 질문에 카드로 답하기', desc: 'Codex가 답변 중 보낸 질문도 카드로 표시합니다. 작업을 억지로 중단하지 않고 답을 보내며, 전송이 실패하면 입력을 유지해 다시 시도할 수 있습니다.' },
+        { tag: '이미지', name: '첨부 이미지를 대화 안에서', desc: 'Markdown의 로컬 이미지가 링크처럼 보이거나 표시되지 않던 문제를 수정했습니다. 대화에서 이미지를 바로 보고 클릭해 확대할 수 있습니다.' },
+        { tag: '스크롤', name: '답변 중 글자 겹침과 떨림 개선', desc: 'AI가 답변하는 동안 위로 스크롤했다 돌아오면 글자가 겹치거나 빠르게 떨리던 현상을 개선했습니다.' },
+        { tag: '알림', name: '예전 완료 알림 반복 수정', desc: '내부 정리 작업이나 대화 복원, 반복된 상태 통지 때문에 지난 답변을 다시 알리던 문제를 수정했습니다. 중단·초기화도 완료로 알리지 않습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'FEATURE UPDATE',
+      lead: 'Inspect more tool activity and manage Codex resets and per-model context settings in the app. Also improves question cards, images, scrolling and completion alerts.',
+      notes: [
+        { tag: 'Tools', name: 'From web queries to MCP responses', desc: 'Expand Codex search queries and result links. Detail cards show full Bash commands, output and exit codes, plus MCP arguments, responses and errors. Web icons and expand arrows are easier to read.' },
+        { tag: 'Subagents', name: 'Open every tool in the activity list', desc: 'Click tools inside a subagent card to inspect requests, results and files. Close, Escape or a left mouse gesture returns to the previous card.' },
+        { tag: 'Resets', name: 'View and use Codex resets', desc: 'Open an OpenAI account under Settings › Account to see the balance, available details and use a reset manually. Unconfirmed requests reuse the same request on retry to prevent double spending. Availability depends on the account and Codex version.' },
+        { tag: 'Context', name: 'Per-model windows and compaction thresholds', desc: 'Settings › Engine lists the Codex models shown in chat with Default, Recommended and Custom presets. Default is selected initially; Recommended requires an explicit save. Context management has its own ON/OFF card. Both settings apply to new or reconnected chats.' },
+        { tag: 'Questions', name: 'Answer Codex questions in a card', desc: 'Questions sent while Codex is working now appear as cards. Send an answer without manually stopping the task. Failed sends preserve your input for retry.' },
+        { tag: 'Images', name: 'See attached images in the conversation', desc: 'Fixed local Markdown images appearing as links or not loading. Images display inline and open in the image viewer when clicked.' },
+        { tag: 'Scrolling', name: 'Steadier text during streaming', desc: 'Improved overlapping or rapidly jittering text when scrolling up and returning to an AI response that is still streaming.' },
+        { tag: 'Alerts', name: 'Stop repeated alerts for old replies', desc: 'Fixed internal cleanup, restored chats and repeated status events announcing a previous reply again. Stopping or clearing a chat no longer counts as completion.' }
+      ]
+    }
+  },
   '3.0.13': {
     ko: {
       eyebrow: 'UPDATE',

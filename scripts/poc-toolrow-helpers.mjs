@@ -94,5 +94,21 @@ check('mcpParts: 서버에 __ 있어도 뒤에서', p?.server === 'srv__dbl' && 
 check('mcpParts: 일반 도구는 null', m.mcpParts('Read') === null)
 check('mcpParts: agentmon status', JSON.stringify(m.mcpParts('mcp__agentmon__status')) === '{"server":"agentmon","tool":"status"}')
 
+// ── Codex 웹 검색: 완료 검색어 · 저장된 이전 로그 · 오류 ──────────────────────
+const web = { id: 'web1', kind: 'web', verb: 'Web', target: '검색 중…', status: 'running', args: '{"query":"검색 중…"}' }
+check('진행 중 검색 행은 그대로', m.webToolDetails(web) === web)
+let wd = m.webToolDetails({ ...web, status: 'done', target: 'rust jsonrpc', output: 'rust jsonrpc' })
+check('완료 검색어 표시, 상세 요청의 자리 문구 제거', wd.target === 'rust jsonrpc' && wd.args === undefined, wd)
+wd = m.webToolDetails({ ...web, status: 'done', output: 'rust jsonrpc · tauri web search' })
+check('이전 채팅도 저장된 output에서 검색어 복원', wd.target === 'rust jsonrpc · tauri web search', wd)
+wd = m.webToolDetails({ ...web, status: 'error', output: 'network failure' })
+check('오류 본문은 검색어가 되지 않는다', wd.target === '웹 검색' && wd.output === 'network failure', wd)
+wd = m.webToolDetails({ ...web, status: 'done' })
+check('검색어 없는 완료 행에 진행 중 문구가 남지 않는다', wd.target === '웹 검색', wd)
+const claudeWeb = { ...web, status: 'done', target: 'rust', args: '{"query":"rust","allowed_domains":["rust-lang.org"]}', output: 'Search results', links: [{ title: 'Rust', url: 'https://rust-lang.org' }] }
+check('기존 검색어·인자·링크 보존', m.webToolDetails(claudeWeb) === claudeWeb)
+const counted = m.parseSearchOutput('src/example.rs:145', 'count')
+check('Grep count 값은 이동할 줄 번호가 아니다', counted.hits[0].count === 145 && counted.hits[0].line === undefined, counted)
+
 console.log(fails ? `\n${fails} FAIL` : '\nALL PASS')
 process.exit(fails ? 1 : 0)

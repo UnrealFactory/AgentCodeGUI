@@ -54,6 +54,10 @@ pub struct Wire {
     said_working: bool,
     /// `AskUserQuestion` 카드의 `request_id` → 그 질문 목록(응답 문구 조립에 쓴다).
     pub questions: BTreeMap<String, Value>,
+    pub async_questions: BTreeMap<String, Value>,
+    pub async_answering: BTreeSet<String>,
+    pub async_answers: BTreeMap<String, Vec<Vec<String>>>,
+    async_seen: std::collections::VecDeque<String>,
     /// 이번 턴에 `result`를 이미 냈나. **스트림 급사(T22) 때 합성 종료를 낼지**를 가른다 —
     /// 이미 냈으면 두 번 내지 않는다(렌더러가 결과 카드를 두 벌 그린다).
     saw_result: bool,
@@ -1105,6 +1109,11 @@ impl Wire {
         tool.insert("kind".into(), json!(kind));
         tool.insert("target".into(), json!(target));
         tool.insert("status".into(), json!("running"));
+        if kind == "bash" {
+            if let Some(command) = input.get("command").and_then(Value::as_str) {
+                tool.insert("command".into(), json!(command));
+            }
+        }
         if !row.files.is_empty() {
             tool.insert("files".into(), json!(row.files.iter().map(|path| json!({"path":path})).collect::<Vec<_>>()));
         }
@@ -1220,8 +1229,15 @@ impl Wire {
         let is_file = matches!(kind, "read" | "write" | "edit");
         // 검색 출력은 줄 머리의 작업 폴더를 떼고 싣는다 — 카드 목록이 짧아지고 그대로 열린다
         let content = if kind == "search" && !is_err { strip_cwd_lines(&self.cwd, &content) } else { content };
-        let tail: String = if content.chars().count() > 4000 {
-            content.chars().skip(content.chars().count() - 4000).collect()
+        // Count/extract against the complete response, before limiting the detail preview.
+        let summary = result_token(kind, &name, &content);
+        let links = if name == "WebSearch" { extract_web_links(&content) } else { vec![] };
+        let output_lines = content.lines().count();
+        let output_truncated = content.chars().count() > 4000;
+        let tail: String = if output_truncated {
+            let tail: String = content.chars().skip(content.chars().count() - 4000).collect();
+            // A partial first path is not a search hit. Keep only complete lines.
+            if kind == "search" { tail.split_once('\n').map(|(_, rest)| rest.to_string()).unwrap_or_default() } else { tail }
         } else {
             content
         };
@@ -1230,6 +1246,19 @@ impl Wire {
         e.insert("runId".into(), json!(run));
         e.insert("id".into(), json!(id));
         e.insert("status".into(), json!(if is_err { "error" } else { "done" }));
+        if !is_file || is_err {
+            e.insert("outputTruncated".into(), json!(output_truncated));
+            e.insert("outputLines".into(), json!(output_lines));
+            e.insert("output".into(), json!(tail));
+        }
+        if let Some(code) = b.get("ccg_exit_code").and_then(Value::as_i64) {
+            e.insert("exitCode".into(), json!(code));
+        }
+        if name == "WebSearch" {
+            if let Some(target) = s(b, "ccg_web_target").filter(|t| !t.is_empty()) {
+                e.insert("target".into(), json!(target));
+            }
+        }
         // ★TOOLROW(2026-09-02 사용자 결정) — 행 오른쪽 끝에는 **짧은 요약 토큰만**
         // (`+N −N`·`N lines`·`N hits`·`done`), 결과 본문은 `output`으로 실어 클릭 카드가
         // 보여 준다. 예전엔 본문 앞 160자를 `result`에 실어 행 오른쪽에 그대로 찍혔다.
@@ -1266,7 +1295,6 @@ impl Wire {
             }
         } else {
             // ★R4(§R3.8-K) — 웹 검색이 찾은 페이지 목록. 실려야 그 행이 펼쳐진다.
-            let links = if name == "WebSearch" { extract_web_links(&tail) } else { vec![] };
             if !links.is_empty() {
                 // 2.6.2와 같은 요약 문구(토큰) — 링크가 있으면 본문 대신 개수를 쓴다.
                 e.insert("result".into(), json!(format!("{} results", links.len())));
@@ -1278,14 +1306,14 @@ impl Wire {
                 let short: String = one.chars().take(160).collect();
                 e.insert("result".into(), json!(if short.is_empty() { "done".to_string() } else { short }));
             } else {
-                e.insert("result".into(), json!(result_token(kind, &name, &tail)));
+                e.insert("result".into(), json!(summary));
             }
             // 본문: 파일 행은 클릭이 파일을 열므로 안 싣는다(Read 본문 4KB × 행 400 = 헛무게)
             if !is_file && !tail.is_empty() {
                 e.insert("output".into(), json!(tail));
             }
         }
-        if let Some(d) = dur {
+        if let Some(d) = b.get("ccg_duration_ms").and_then(Value::as_u64).or(dur) {
             e.insert("durationMs".into(), json!(d));
         }
         out.push(Value::Object(e));
@@ -1386,6 +1414,35 @@ impl Wire {
                     out.extend(self.tooling_event());
                 }
                 match f.get("kind").and_then(Value::as_str).unwrap_or("") {
+                    "async_question" => {
+                        let id = s(f, "requestId").unwrap_or_default();
+                        let questions = f["questions"].clone();
+                        if !id.is_empty() && questions.as_array().is_some_and(|a| !a.is_empty())
+                            && !self.async_seen.contains(&id) {
+                            self.async_seen.push_back(id.clone());
+                            while self.async_seen.len() > 64 { self.async_seen.pop_front(); }
+                            // The current question card replaces the previous unanswered one.
+                            self.async_questions.clear();
+                            self.async_questions.insert(id.clone(), questions.clone());
+                            out.push(json!({ "type": "question-request", "runId": run,
+                                "requestId": id, "questions": questions, "engine": "codex", "nonBlocking": true }));
+                        }
+                    }
+                    "async_answer_result" => {
+                        let id = s(f, "requestId").unwrap_or_default();
+                        self.async_answering.remove(&id);
+                        let answers = self.async_answers.remove(&id);
+                        if let Some(error) = f.get("error").and_then(Value::as_str) {
+                            if let Some(questions) = self.async_questions.get(&id) {
+                                out.push(json!({ "type": "question-request", "runId": run,
+                                    "requestId": id, "questions": questions, "engine": "codex", "nonBlocking": true }));
+                            }
+                            out.push(json!({ "type": "notice", "runId": run,
+                                "text": format!("질문 답변을 보내지 못했어요: {error}") }));
+                        } else if self.async_questions.remove(&id).is_some() {
+                            out.push(json!({ "type": "question-closed", "runId": run, "requestId": id, "answers": answers }));
+                        }
+                    }
                     // `turn/plan/updated` — Claude의 TodoWrite 자리.
                     "todos" => out.push(json!({ "type": "todos", "runId": run,
                                                 "todos": f.get("todos").cloned().unwrap_or(json!([])) })),
@@ -1944,14 +2001,36 @@ impl Wire {
 //
 // 남은 것:
 // - Codex(app-server) 엔진 · `btw:open` 포크 · `allow_always`의 `updatedPermissions`.
-// - `tool-end.target`(완료 때 확정되는 대상 — Codex webSearch 전용) — Claude 경로에는
-//   해당 프레임이 없다.
 //
 // ★ 등급을 함께 적는 것이 규약이다(크리틱 배선 R1 §6). 위는 전부
 //   **"그 UI만 비어 있다"**다 — 정지·증발 등급은 R2에서 셋 다 닫혔다.
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn async_question_replies_are_acknowledged_and_failed_replies_can_retry() {
+        let mut w = super::Wire::default();
+        w.begin_run("r1");
+        let question = serde_json::json!({ "type": "system", "subtype": "ccg_codex", "kind": "async_question",
+            "requestId": "aq1", "questions": [{ "question": "언제?", "options": [{ "label": "답변 중" }], "multiSelect": false }] });
+        let events = w.translate(&question);
+        assert_eq!(events[0]["nonBlocking"], true);
+        assert!(w.translate(&question).is_empty(), "duplicate completion must not reopen the card");
+        w.async_answering.insert("aq1".into());
+        w.async_answers.insert("aq1".into(), vec![vec!["답변 중".into()]]);
+        let failed = w.translate(&serde_json::json!({ "type": "system", "subtype": "ccg_codex",
+            "kind": "async_answer_result", "requestId": "aq1", "error": "try again" }));
+        assert_eq!(failed[0]["type"], "question-request");
+        assert!(!w.async_answering.contains("aq1"));
+        assert!(w.async_questions.contains_key("aq1"));
+        w.async_answers.insert("aq1".into(), vec![vec!["답변 중".into()]]);
+        let success = w.translate(&serde_json::json!({ "type": "system", "subtype": "ccg_codex",
+            "kind": "async_answer_result", "requestId": "aq1", "error": null }));
+        assert_eq!(success[0]["type"], "question-closed");
+        assert_eq!(success[0]["answers"][0][0], "답변 중");
+        assert!(w.async_questions.is_empty());
+        assert!(w.translate(&question).is_empty(), "answered question must stay closed on replay");
+    }
     use super::*;
 
     #[test]
@@ -2345,6 +2424,59 @@ mod tests {
     }
 
     #[test]
+    fn codex_web_search_completion_replaces_the_pending_target() {
+        let mut w = wire();
+        let start = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "web1", "name": "WebSearch", "input": { "query": "검색 중…" } }] } }));
+        assert_eq!(start.iter().find(|e| e["type"] == "tool-start").unwrap()["tool"]["target"], "검색 중…");
+        let query = "rust jsonrpc · tauri web search";
+        let evs = w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "web1", "content": query,
+              "ccg_web_target": query }] } }));
+        let end = evs.iter().find(|e| e["type"] == "tool-end").unwrap();
+        assert_eq!(end["target"], query);
+        assert_eq!(end["output"], query);
+        assert_eq!(end["status"], "done");
+        assert_eq!(end["result"], "done");
+        assert!(end.get("links").is_none(), "검색어를 결과 링크로 꾸미지 않는다");
+    }
+
+    #[test]
+    fn long_tool_results_count_and_extract_links_before_truncating() {
+        let mut w = wire();
+        for (id, name, input, body, summary) in [
+            ("read", "Read", json!({"file_path":"example.rs"}), format!("{}\n", "x".repeat(100)).repeat(120), "120 lines"),
+            ("grep", "Grep", json!({"pattern":"x"}), (1..=120).map(|i|format!("src/example.rs:{i}:{}\n", "x".repeat(100))).collect(), "120 hits"),
+            ("web", "WebSearch", json!({"query":"example"}), format!("Links: [{{\"title\":\"Example\",\"url\":\"https://example.com\"}}]\n{}", "detail ".repeat(800)), "1 results"),
+        ] {
+            w.translate(&json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":name,"input":input}]}}));
+            let events = w.translate(&json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":body}]}}));
+            let end = events.iter().find(|e|e["type"]=="tool-end").unwrap();
+            assert_eq!(end["result"], summary, "{id}");
+            if id != "read" { assert_eq!(end["outputTruncated"], true); }
+            if id == "grep" { assert!(end["output"].as_str().unwrap().starts_with("src/example.rs:")); }
+            if id == "web" { assert_eq!(end["links"][0]["url"], "https://example.com"); }
+        }
+    }
+
+    #[test]
+    fn bash_details_keep_original_command_and_final_metadata() {
+        let mut w = wire();
+        let command = format!("echo {}\nWrite-Output '명령 끝'", "x".repeat(220));
+        let events = w.translate(&json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"cmd","name":"Bash","input":{"command":command}}]}}));
+        let start = events.iter().find(|e|e["type"]=="tool-start").unwrap();
+        assert_eq!(start["tool"]["command"], command);
+        assert!(start["tool"]["target"].as_str().unwrap().chars().count() < command.chars().count());
+        let events = w.translate(&json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"cmd","content":"","is_error":true,"ccg_exit_code":2,"ccg_duration_ms":42}]}}));
+        let end = events.iter().find(|e|e["type"]=="tool-end").unwrap();
+        assert_eq!(end["exitCode"], 2);
+        assert_eq!(end["durationMs"], 42);
+        assert_eq!(end["outputLines"], 0);
+        assert_eq!(end["outputTruncated"], false);
+        assert_eq!(end["status"], "error");
+    }
+
+    #[test]
     fn a_web_search_row_carries_its_links() {
         let mut w = wire();
         w.translate(&json!({ "type": "system", "subtype": "init", "session_id": "S1", "cwd": "C:\\w" }));
@@ -2359,6 +2491,7 @@ mod tests {
         assert_eq!(links[0]["title"], "VecDeque");
         assert_eq!(links[1]["title"], "https://example.com/x", "제목이 없으면 url을 쓴다");
         assert_eq!(end["result"], "2 results", "토큰 — 렌더러가 「2개 결과」로 푼다");
+        assert!(end.get("target").is_none(), "Claude 결과 본문은 검색어를 덮지 않는다");
     }
 
     #[test]

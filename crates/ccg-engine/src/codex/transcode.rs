@@ -22,6 +22,11 @@ pub enum Egress {
     Tail { file: String, text: String },
 }
 
+fn async_answer_result(request_id: &str, error: Option<&str>) -> Egress {
+    Egress::Frame(json!({ "type": "system", "subtype": SYNTH, "kind": "async_answer_result",
+        "requestId": request_id, "error": error }))
+}
+
 /// 우리가 보낸 RPC 하나가 무엇을 기다리는가.
 #[derive(Debug, Clone, PartialEq)]
 enum Pending {
@@ -32,6 +37,7 @@ enum Pending {
     Skills,
     Mcp,
     Reload(String),
+    AsyncAnswer(String),
     /// 백그라운드 터미널 목록. `Some(rid)`면 **능동 프로브 ⑥**가 시킨 것 —
     /// 응답이 오면 그 `request_id`의 `control_response`와 REPLACE를 함께 낸다.
     BgList(Option<String>),
@@ -227,6 +233,55 @@ fn web_target(item: &Value) -> String {
     }
 }
 
+/// App-server 0.153.4: MCP results carry text/resource content and optional structured JSON.
+/// Keep binary payloads out of the text log, but identify their type instead of dropping them.
+fn mcp_output(item: &Value) -> String {
+    let result = &item["result"];
+    let mut parts = Vec::new();
+    if let Some(content) = result["content"].as_array() {
+        for block in content {
+            let text = match block["type"].as_str().unwrap_or("") {
+                "text" => s(block, "text").unwrap_or_default(),
+                "resource" => s(&block["resource"], "text")
+                    .or_else(|| s(&block["resource"], "uri")).unwrap_or_default(),
+                "resource_link" => format!("{}\n{}", s(block, "title").or_else(|| s(block, "name")).unwrap_or_default(), s(block, "uri").unwrap_or_default()),
+                "image" => "[image]".into(),
+                "audio" => "[audio]".into(),
+                _ => serde_json::to_string_pretty(block).unwrap_or_default(),
+            };
+            if !text.is_empty() { parts.push(text); }
+        }
+    }
+    if let Some(structured) = result.get("structuredContent").filter(|v| !v.is_null()) {
+        parts.push(serde_json::to_string_pretty(structured).unwrap_or_default());
+    }
+    if let Some(error) = item.get("error").filter(|v| !v.is_null()) {
+        parts.push(s(error, "message").or_else(|| error.as_str().map(str::to_string))
+            .unwrap_or_else(|| error.to_string()));
+    }
+    parts.join("\n\n")
+}
+
+fn command_failed(item: &Value) -> bool {
+    matches!(item["status"].as_str(), Some("failed" | "declined" | "cancelled" | "canceled"))
+        || item["exitCode"].as_i64().is_some_and(|code| code != 0)
+}
+
+fn command_result(id: &str, item: &Value, output: &str) -> Value {
+    let failed = command_failed(item);
+    let fallback = if item["status"] == "declined" { "Command declined".to_string() }
+        else if let Some(code) = item["exitCode"].as_i64() { format!("Command failed (exit {code})") }
+        else { "Command failed".to_string() };
+    let mut frame = tool_result(id, failed, if failed && output.is_empty() { &fallback } else { output });
+    if let Some(code) = item["exitCode"].as_i64() {
+        frame["message"]["content"][0]["ccg_exit_code"] = json!(code);
+    }
+    if let Some(ms) = item["durationMs"].as_u64() {
+        frame["message"]["content"][0]["ccg_duration_ms"] = json!(ms);
+    }
+    frame
+}
+
 impl Transcoder {
     pub fn new(plan: CodexPlan) -> Transcoder {
         Transcoder {
@@ -289,6 +344,17 @@ impl Transcoder {
                 let rid = s(line, "request_id").unwrap_or_default();
                 let req = &line["request"];
                 match req.get("subtype").and_then(Value::as_str).unwrap_or("") {
+                    "ccg_async_answer" => {
+                        let text = s(req, "text").unwrap_or_default();
+                        if let (Some(thread), Some(turn)) = (self.thread_id.clone(), self.turn_id.clone()) {
+                            out.push(self.req("turn/steer", json!({
+                                "threadId": thread, "expectedTurnId": turn,
+                                "input": [{ "type": "text", "text": text, "text_elements": [] }]
+                            }), Pending::AsyncAnswer(rid)));
+                        } else {
+                            out.push(async_answer_result(&rid, Some("답변을 보낼 턴이 끝났어요. 다시 보내면 새 턴으로 이어집니다.")));
+                        }
+                    }
                     // T1의 첫 봉투 · 능동 프로브 ⑥(`probe-N`)이 같은 subtype으로 온다.
                     "initialize" => {
                         if rid.starts_with("probe") {
@@ -554,6 +620,7 @@ impl Transcoder {
             .map(str::to_string);
         let res = msg.get("result").cloned().unwrap_or(Value::Null);
         match p {
+            Pending::AsyncAnswer(rid) => out.push(async_answer_result(&rid, err.as_deref())),
             Pending::Initialize => {
                 if let Some(e) = err {
                     out.push(Egress::Frame(self.fail_result(&e, now)));
@@ -1062,7 +1129,7 @@ impl Transcoder {
             "mcpToolCall" => {
                 let server = s(item, "server").unwrap_or_default();
                 let tool = s(item, "tool").unwrap_or_else(|| "MCP".into());
-                (format!("mcp__{server}__{tool}"), json!({ "description": server }))
+                (format!("mcp__{server}__{tool}"), item.get("arguments").cloned().unwrap_or(json!({})))
             }
             "webSearch" => {
                 let t = web_target(item);
@@ -1090,8 +1157,25 @@ impl Transcoder {
         match ty {
             "agentMessage" => {
                 self.open_msg = None;
-                vec![Egress::Frame(json!({ "type": "assistant", "message": { "content": [
-                    { "type": "text", "text": s(item, "text").unwrap_or_default() } ] }}))]
+                let mut out = vec![Egress::Frame(json!({ "type": "assistant", "message": { "content": [
+                    { "type": "text", "text": s(item, "text").unwrap_or_default() } ] }}))];
+                // request_user_input_async is an agentMessage with structured questions,
+                // not a blocking item/tool/requestUserInput server request.
+                let questions: Vec<Value> = item["questions"].as_array().into_iter().flatten()
+                    .filter_map(|q| {
+                        let title = q.get("title")?.as_str()?.trim();
+                        if title.is_empty() { return None; }
+                        let options: Vec<Value> = q["options"].as_array().into_iter().flatten()
+                            .filter_map(Value::as_str).filter(|s| !s.trim().is_empty())
+                            .map(|label| json!({ "label": label, "description": "" })).collect();
+                        Some(json!({ "question": title, "header": "", "multiSelect": false, "options": options }))
+                    }).collect();
+                if !questions.is_empty() && !id.is_empty() {
+                    out.push(Egress::Frame(json!({ "type": "system", "subtype": SYNTH,
+                        "kind": "async_question", "requestId": format!("cx-async-{}-{id}", self.thread_id.as_deref().unwrap_or("")),
+                        "questions": questions })));
+                }
+                out
             }
             "reasoning" => {
                 self.thinking.clear();
@@ -1110,22 +1194,14 @@ impl Transcoder {
                     //   완료 아이템이 전체 출력을 들고 오므로, '백그라운드로 전환'으로 일찍
                     //   닫힌 행에 최종 출력·성패를 정착시켜 로그를 클릭해 볼 수 있게 한다.
                     //   중지는 제외 — 그 사연은 칩이 표기하고 행은 전환 표시를 유지한다.
-                    if !bg.stopped && !output.is_empty() {
-                        let tail: String = {
-                            let n = output.chars().count();
-                            output.chars().skip(n.saturating_sub(8000)).collect()
-                        };
-                        out.push(Egress::Frame(tool_result(
-                            &id,
-                            exit.is_some_and(|e| e != 0),
-                            &tail,
-                        )));
+                    if !bg.stopped {
+                        out.push(Egress::Frame(command_result(&id, item, &output)));
                     }
                     out.extend(self.bg_replace());
                     let mut note = json!({ "type": "system", "subtype": "task_notification",
                         "task_id": bg.process_id,
                         "status": if bg.stopped { "stopped" }
-                                  else if exit == Some(0) { "completed" } else { "failed" },
+                                  else if command_failed(item) { "failed" } else { "completed" },
                         "output_file": bg.file });
                     if bg.stopped {
                         // 사유 없음 — 우리가 죽여서 난 `exit -1`을 사용자에게 보여 주지 않는다.
@@ -1141,7 +1217,7 @@ impl Transcoder {
                     return out;
                 }
                 let output = s(item, "aggregatedOutput").filter(|o| !o.is_empty()).unwrap_or(acc);
-                vec![Egress::Frame(tool_result(&id, exit.is_some_and(|e| e != 0), &output))]
+                vec![Egress::Frame(command_result(&id, item, &output))]
             }
             "fileChange" => {
                 let status = item.get("status").and_then(Value::as_str).unwrap_or("");
@@ -1163,14 +1239,31 @@ impl Transcoder {
                 )));
                 out
             }
-            "mcpToolCall" | "webSearch" => {
+            "mcpToolCall" => {
+                self.items.remove(&id);
+                let failed = item["status"] == "failed"
+                    || item.get("error").is_some_and(|v| !v.is_null())
+                    || item["result"]["isError"] == true;
+                let body = mcp_output(item);
+                let mut frame = tool_result(&id, failed, if failed && body.is_empty() { "MCP tool call failed" } else { &body });
+                if let Some(ms) = item["durationMs"].as_u64() {
+                    frame["message"]["content"][0]["ccg_duration_ms"] = json!(ms);
+                }
+                vec![Egress::Frame(frame)]
+            }
+            "webSearch" => {
                 let failed = item
                     .get("status")
                     .and_then(Value::as_str)
                     .is_some_and(|s| s.to_ascii_lowercase().contains("fail"));
                 self.items.remove(&id);
-                let body = if ty == "webSearch" { web_target(item) } else { String::new() };
-                vec![Egress::Frame(tool_result(&id, failed, &body))]
+                let body = web_target(item);
+                let mut frame = tool_result(&id, failed, &body);
+                if ty == "webSearch" && !body.is_empty() {
+                    // 검색어는 완료 때 확정된다. 본문과 별도로 실어 시작 행의 자리 문구를 갱신한다.
+                    frame["message"]["content"][0]["ccg_web_target"] = json!(body);
+                }
+                vec![Egress::Frame(frame)]
             }
             "collabAgentToolCall" => self.on_collab_completed(&id, item),
             "subAgentActivity" => self.on_subagent_activity(item),

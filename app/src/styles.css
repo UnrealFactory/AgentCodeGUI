@@ -843,6 +843,11 @@ button.hsec:hover{ color:var(--text-3); }
 
 /* overflow-x:hidden — .ma-p-thread와 같은 잠금(본채팅·추가 창 공용 스크롤러) */
 .chat-scroll{ flex:1; overflow-y:auto; overflow-x:hidden; min-height:0; }
+/* 반투명 패널도 별도 스크롤 레이어를 유지한다. WebView2가 본문을 부모 레이어에
+   합치면 확대된 글·도구 행이 스트리밍으로 이동할 때 이전 픽셀의 잔상이 남을 수 있다.
+   스크롤 영역에만 힌트를 준다 — 메시지마다 레이어를 만들거나 transform으로
+   fixed 팝오버의 좌표 기준을 바꾸지 않는다. 본채팅·멀티 패널·추가 창 공통. */
+.chat-scroll, .ma-p-thread{ will-change:scroll-position; }
 /* "맨 아래로" 점프 버튼 — 위로 스크롤해 바닥에서 멀어지면 뜬다. 스크롤 영역 안의
    0높이 sticky 래퍼라 컴포저/워크바 높이와 무관하게 항상 스크롤 뷰포트 바닥 위에 붙고,
    스크롤 흐름에 자리를 차지하지 않는다(레이아웃 이동 없음). */
@@ -898,6 +903,10 @@ button.hsec:hover{ color:var(--text-3); }
 /* messages get native virtualization; tool groups don't — their `contain:paint`
    would clip the "파일 열기" hover tooltip that floats above a row */
 .thread > .msg{ content-visibility:auto; contain-intrinsic-size:auto 120px; }
+/* 생성 중인 답변은 화면 밖에서도 실제 높이를 갱신한다. auto로 생략하면 위로
+   스크롤한 동안 늘어난 본문이 옛 높이에 갇혔다가 복귀 순간 한꺼번에 펼쳐져,
+   바닥 따라가기와 함께 글자가 튄다. 완료된 대화의 가상화는 그대로 유지한다. */
+.thread > .msg.msg-streaming{ content-visibility:visible; contain-intrinsic-size:none; }
 /* 꼬리 윈도잉의 맨 위 센티널 — 여기에 닿으면(200px 여유) 이전 메시지를 이어 렌더한다.
    확장이 즉시라 로딩 문구는 두지 않고, 잘린 데가 있다는 표시로 점 세 개만 흐리게 */
 .thread-older{ height:28px; display:flex; align-items:center; justify-content:center; }
@@ -1031,7 +1040,8 @@ button.hsec:hover{ color:var(--text-3); }
 .t-row:hover{ background:var(--hover); }
 button.t-row{ width:calc(100% + 14px); text-align:left; }
 button.t-row:disabled{ cursor:default; }
-.t-fold{ display:flex; flex:0 0 auto; color:var(--text-4); transform:rotate(-90deg); transition:transform .12s; }
+.t-fold{ display:flex; flex:0 0 auto; color:var(--blue); transform:rotate(-90deg); transition:transform .12s, color .12s; }
+.t-row:hover .t-fold, .t-row:focus-visible .t-fold, .t-row.expanded .t-fold{ color:#b3d5ff; }
 .t-row.expanded .t-fold{ transform:rotate(0); }
 .t-file-list{ margin:2px 0 5px 8px; padding-left:18px; border-left:1px solid var(--line); }
 .t-file{ display:flex; align-items:center; gap:9px; width:100%; min-width:0; padding:5px 7px; border-radius:7px; text-align:left; }
@@ -1060,7 +1070,7 @@ button.t-row:disabled{ cursor:default; }
 .t-row.openable:hover .t-target{ color:var(--accent-2); }
 .t-row.openable:hover .t-target .t-txt{ text-decoration:underline; text-underline-offset:2px; }
 /* Web 행에서 펼치는 "찾은 페이지" 목록 — 배시 출력 블록과 같은 --inset 카드 이디엄.
-   각 줄은 파비콘 · 제목(밑줄 없는 조용한 톤) · 도메인, 호버에서만 행이 밝아지고 제목이
+   각 줄은 웹 아이콘 · 제목(밑줄 없는 조용한 톤) · 도메인, 호버에서만 행이 밝아지고 제목이
    링크 톤으로. 클릭하면 OS 브라우저로 열린다. 들여쓰기 27px = 아이콘 칸 17px + 갭 10px. */
 .wl-list{ margin:1px 0 1px 27px; padding:5px; background:var(--inset); border:1px solid var(--line);
   border-radius:10px; display:flex; flex-direction:column; gap:1px; max-height:302px; overflow-y:auto;
@@ -1068,8 +1078,8 @@ button.t-row:disabled{ cursor:default; }
 .wl-item{ display:flex; align-items:center; gap:9px; min-width:0; padding:5px 8px; border-radius:7px;
   text-decoration:none; }
 .wl-item:hover{ background:var(--surface-2); }
-.wl-fav{ flex:0 0 auto; width:16px; height:16px; border-radius:4px; object-fit:contain; }
-.wl-fav-fb{ display:grid; place-items:center; background:var(--surface-3); color:var(--text-4); }
+.wl-icon{ display:grid; place-items:center; flex:0 0 auto; width:16px; height:16px; color:var(--text-2); }
+.wl-item:hover .wl-icon,.wl-item:focus-visible .wl-icon{ color:var(--accent-2); }
 .wl-title{ min-width:0; font-size:12.5px; line-height:1.5; color:var(--text-2);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wl-item:hover .wl-title{ color:var(--accent-2); }
@@ -1121,6 +1131,9 @@ button.t-row:disabled{ cursor:default; }
 /* 본문 카드 — 결과 텍스트·과정 타임라인·도구 목록을 담는 면 (PoC .mcard) */
 .dc-box{ background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); border-radius:12px; padding:15px 17px; }
 .dc-box.tools{ padding:6px 9px; }
+.dc-box.tools .t-row{ margin-left:0; margin-right:0; width:100%; }
+.sa-overlay.tool-detail-overlay{ z-index:71; }
+.fv-overlay.from-detail{ z-index:72; }
 .dc-md{ font-size:14.5px; line-height:1.65; }
 .dc-md > :first-child{ margin-top:0; }
 /* 과정 타임라인 (PoC .mlog) — 점 + 세로 연결선 */
@@ -1183,6 +1196,10 @@ button.t-row:disabled{ cursor:default; }
 .content em{ font-style:italic; }
 .content a{ color:var(--accent-2); text-decoration:underline; text-underline-offset:2px; word-break:break-all; }
 .content a:hover{ color:var(--accent); }
+.content .md-image{ display:block; max-width:100%; max-height:480px; width:auto; height:auto; object-fit:contain; border-radius:8px; margin:8px 0; }
+.content .md-image.openable{ cursor:zoom-in; }
+.content .md-image.openable:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+.content .md-image-error{ display:block; margin:8px 0; color:var(--text-3); font-size:13px; }
 .content .md-h{ font-weight:700; letter-spacing:-.01em; color:var(--text); line-height:1.4; }
 .content .md-h1{ font-size:18px; margin:16px 0 7px; }
 .content .md-h2{ font-size:16px; margin:15px 0 6px; }
@@ -3417,6 +3434,22 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    버튼과의 빈 공간을 없앤다(위 .limits 주석과 같은 사용자 결정). 버튼 수가 다르면 행마다
    게이지 x가 몇십 px 다를 수 있다 — 그게 이 트레이드오프다. */
 .sc2.acct .acts{ display:flex; gap:7px; flex:0 0 auto; justify-content:flex-end; }
+.cx-reset-trigger{ display:inline-flex; align-items:center; gap:5px; margin-top:6px; font-size:11px; color:var(--text-2); }
+.cx-reset-trigger:hover{ color:var(--accent-2); }
+.set-dialog.cx-reset-dialog{ position:relative; width:min(460px, 100%); max-height:85vh; overflow-y:auto; text-align:left; }
+.cx-reset-close{ position:absolute; top:16px; right:16px; }
+.cx-reset-heading{ display:flex; align-items:center; gap:9px; color:var(--text-2); padding-right:28px; }
+.cx-reset-heading h2{ margin:0; font-size:17px; color:var(--text); }
+.cx-reset-account{ margin-top:7px; font-size:12px; color:var(--text-3); overflow-wrap:anywhere; }
+.cx-reset-balance{ display:flex; align-items:center; gap:10px; padding:16px 0; margin-top:8px; border-bottom:1px solid var(--line); font-size:12px; color:var(--text-2); }
+.cx-reset-balance strong{ font-size:22px; font-variant-numeric:tabular-nums; color:var(--text); }
+.cx-reset-balance button{ margin-left:auto; display:flex; align-items:center; gap:5px; }
+.cx-reset-list{ max-height:230px; overflow-y:auto; }
+.cx-reset-credit{ padding:13px 0; border-bottom:1px solid var(--line); font-size:13px; color:var(--text-2); }
+.cx-reset-credit p{ margin:4px 0 8px; font-size:12px; color:var(--text-3); }
+.cx-reset-credit span{ display:block; margin-top:4px; font-size:11px; color:var(--text-3); }
+.cx-reset-help{ margin:13px 0 0; font-size:12px; line-height:1.6; color:var(--text-2); }
+.cx-reset-notice{ margin:14px 0 0; padding:10px 12px; background:var(--surface-2); border-radius:9px; font-size:12px; line-height:1.6; color:var(--text-2); }
 .set-addrow{
   display:flex; align-items:center; justify-content:center; gap:6px; width:100%; margin-top:8px;
   padding:11px; border-radius:14px; border:1.5px dashed rgba(255,255,255,.11);
@@ -3472,6 +3505,47 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sw2:disabled{ opacity:.55; pointer-events:none; }
 /* 로딩·빈 목록 — 카드 하나로 조용히 */
 .sc2.hint{ display:flex; align-items:center; justify-content:center; gap:8px; padding:22px; font-size:11px; color:var(--text-4); }
+.cx-context{ margin-top:10px; }
+.cx-context fieldset{ border:0; padding:0; margin:16px 0 0; min-width:0; }
+.cx-token-settings.sc2:hover{ background:rgba(255,255,255,.03); }
+.cx-token-heading{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cx-unit{ color:var(--text-3); font-size:10px; }
+.cx-settings-head{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; }
+.cx-settings-head .meta{ margin-top:6px; }
+.cx-context-presets{ display:flex; width:fit-content; max-width:100%; margin-left:auto; padding:3px; gap:3px; background:var(--inset); border-radius:8px; }
+.cx-preset{ min-width:0; padding:6px 15px; border:0; border-radius:5px; color:var(--text-3); font-size:11px; font-weight:500; white-space:nowrap; background:transparent; cursor:pointer; }
+.cx-preset:hover{ color:var(--text-2); }
+.cx-preset[aria-pressed=true]{ background:var(--surface-3); color:var(--text); box-shadow:0 1px 3px #0002; }
+.cx-preset-description{ margin-top:10px; text-align:right; color:var(--text-3); font-size:10.5px; line-height:1.5; }
+.cx-model-table{ width:100%; table-layout:fixed; border-collapse:collapse; margin-top:20px; }
+.cx-model-table thead th{ padding:0 10px 10px; font-size:10px; font-weight:400; color:var(--text-3); text-align:right; }
+.cx-model-table th:first-child{ width:34%; padding-left:0; text-align:left; }
+.cx-model-table tbody th{ font-weight:500; padding:10px 8px 10px 0; border-top:1px solid var(--line); }
+.cx-model-table td{ padding:7px 0 7px 10px; border-top:1px solid var(--line); }
+.cx-model-label{ display:flex; align-items:baseline; flex-wrap:wrap; gap:7px; }
+.cx-model-name{ color:var(--text); font-size:12px; overflow-wrap:anywhere; }
+.cx-model-version{ font-size:9px; color:var(--text-3); overflow-wrap:anywhere; font-weight:400; }
+.cx-management-switch{ display:flex; align-items:center; gap:10px; color:var(--text-2); font-size:11px; }
+.cx-token-input{ display:flex; align-items:center; margin-left:auto; width:132px; max-width:100%; box-sizing:border-box; padding:7px 9px; border-radius:5px; background:transparent; border:1px solid transparent; transition:background .12s,border-color .12s; }
+.cx-token-input:hover{ background:var(--hover); border-color:var(--line); }
+.cx-token-input:focus-within{ background:var(--inset); border-color:var(--accent-line); }
+.cx-token-settings[data-preset=custom] .cx-token-input{ background:var(--inset); border-color:var(--line-2); }
+.cx-token-settings[data-preset=custom] .cx-token-input:focus-within{ border-color:var(--accent-line); }
+.cx-token-input input{ box-sizing:border-box; width:100%; min-width:0; background:transparent; border:0; outline:none; color:var(--text-2); text-align:right; font-family:inherit; font-size:13px; font-weight:400; font-variant-numeric:tabular-nums; letter-spacing:.15px; }
+.cx-token-input.is-overridden input, .cx-token-input:focus-within input{ color:var(--text); }
+.cx-token-input input::placeholder{ color:var(--text-3); }
+.cx-token-input input[aria-invalid=true]{ color:var(--red); }
+.cx-context-footer{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; padding-top:13px; border-top:1px solid var(--line); }
+.cx-apply-note, .cx-management-note{ font-size:10px; color:var(--text-3); line-height:1.6; }
+.cx-save{ border:1px solid transparent; border-radius:7px; background:var(--accent); color:#171717; padding:7px 17px; font-size:11px; font-weight:600; cursor:pointer; }
+.cx-context .cx-save:disabled{ opacity:1; background:transparent; border-color:var(--line-2); color:var(--text-4); }
+.cx-management .em{ display:flex; align-items:center; gap:8px; }
+.cx-experimental{ color:var(--text-3); font-weight:400; font-size:10px; }
+.cx-management-note{ margin-top:12px; }
+.cx-context-error{ color:var(--red); font-size:11px; line-height:1.6; margin-top:10px; }
+.cx-context button:disabled{ cursor:default; opacity:.45; }
+.cx-context button:focus-visible{ outline:2px solid var(--text-2); outline-offset:2px; }
+@media(max-width:600px){ .cx-preset{ padding:6px 12px; } .cx-model-table th:first-child{ width:28%; } .cx-model-table thead th{ padding-right:5px; } .cx-model-table td{ padding-left:4px; } .cx-token-input{ padding-right:4px; } }
 /* 스코프·기간 필터 — 알약 칩 줄, 오른쪽 끝에 아이콘 버튼(새로고침) */
 .set-tabs{ display:flex; align-items:center; gap:6px; margin:0 1px 10px; }
 .set-tab{ display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--text-3); background:rgba(255,255,255,.04); padding:5.5px 12px; border-radius:99px; transition:background .1s, color .1s; }

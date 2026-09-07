@@ -3,7 +3,7 @@
 //
 //   npm run tauri:build                      (or tauri:build:unsigned)
 //   cargo build -p ccg-engine --features fakecli --bin ccg-fakecli --release
-//   node scripts/readme-screenshots.mjs [--exe=target/release/AgentCodeGUI3.exe] [--lang=ko,en] [--only=hero,multi,live,dialogs]
+//   node scripts/readme-screenshots.mjs [--exe=target/release/AgentCodeGUI3.exe] [--lang=ko,en] [--only=hero,multi,live,dialogs,details]
 //
 // Korean captures go to docs/images/*.png, English captures to docs/images/en/*.png.
 import fs from 'node:fs'
@@ -15,7 +15,7 @@ import { HELPERS_JS, makeCtx } from '../bench/screens.mjs'
 const arg = (k, d) => process.argv.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d
 const exe = path.resolve(arg('exe', 'target/release/AgentCodeGUI3.exe'))
 const langs = arg('lang', 'ko,en').split(',')
-const only = arg('only', 'hero,multi,live,dialogs').split(',')
+const only = arg('only', 'hero,multi,live,dialogs,details').split(',')
 const version = JSON.parse(fs.readFileSync(path.join(REPO, 'src-tauri/tauri.conf.json'))).version
 const fakeCli = ['target/release/ccg-fakecli.exe', 'target/debug/ccg-fakecli.exe']
   .map(p => path.join(REPO, p)).filter(fs.existsSync)
@@ -24,8 +24,10 @@ const root = fs.mkdtempSync(path.join(REPO, '.poc-home-readme-'))
 // The viewer and Git headers show the absolute project path, so the demo project lives at a
 // clean top-level path for the captures and is removed afterwards. Never touch a pre-existing one.
 const DEMO = 'C:\\Orbit'
-if (fs.existsSync(DEMO)) throw new Error(`${DEMO} already exists — remove it or change DEMO`)
-process.on('exit', () => fs.rmSync(DEMO, { recursive: true, force: true }))
+if (fs.existsSync(DEMO)) throw new Error(`${DEMO} already exists — choose an unused DEMO path`)
+const demoPath = path.resolve(DEMO)
+if (demoPath !== 'C:\\Orbit') throw new Error('Unexpected demo cleanup path')
+process.on('exit', () => fs.rmSync(demoPath, { recursive: true, force: true }))
 const write = (base, name, data) => {
   const file = path.join(base, name)
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -333,6 +335,9 @@ function apiTrap(lang) {
       skill: { list: async () => (${JSON.stringify(skills)}) },
       auth: { accountsUsage: async () => (${JSON.stringify(claude)}) },
       codexAuth: { accountsUsage: async () => (${JSON.stringify(codex)}) },
+      codexModels: async () => [],
+      codexContext: { get: async () => ({settings:{management:false,preset:'default',models:{},fallback:null},
+        defaults:Object.fromEntries(['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna'].map(id=>[id,{contextWindow:272000,compactTokenLimit:244800}]))}) },
       getUsage: async () => (${JSON.stringify(usageInfo())})
     }
     // Proxies read through to the live shim, so properties added after assignment stay visible.
@@ -723,7 +728,49 @@ async function sceneDialogs(lang) {
   } finally { a.close() }
 }
 
-const scenes = { hero: sceneHero, multi: sceneMulti, live: sceneLive, dialogs: sceneDialogs }
+async function sceneDetails(lang) {
+  const home = path.join(root, `details-${lang}`)
+  seedHome(home, lang, { count: 1, picker: heroPicker })
+  makeProject(DEMO, lang)
+  const boardPath = path.join(home, 'multi-agent/orbit.json')
+  const board = JSON.parse(fs.readFileSync(boardPath, 'utf8'))
+  board.panels[0].snapshot.subagents = [{
+    id:'review-details', name:'Explore', status:'done', model:'Sonnet 5', durationMs:42000, tokens:12480,
+    role:lang === 'ko' ? '대시보드 접근성 검토' : 'Dashboard accessibility review',
+    activity:lang === 'ko' ? '키보드 탐색과 빈 상태를 확인했습니다. 포커스 표시를 보강하고 테스트 12개를 통과했습니다.' : 'Reviewed keyboard navigation and empty states. Improved focus indicators and passed all 12 tests.',
+    tools:[
+      tool('review-read','Read','read','src/dashboard.ts',lang === 'ko' ? '48줄' : '48 lines'),
+      tool('review-web','Web','web','accessible dashboard keyboard navigation','2 results',{
+        args:JSON.stringify({queries:['accessible dashboard keyboard navigation']}),
+        links:[{title:'Keyboard accessibility — MDN',url:'https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Understanding_WCAG/Keyboard'},
+          {title:'Keyboard Interface — WAI',url:'https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html'}]
+      }),
+      tool('review-search','Search','search','focus-visible|aria-label','4 hits',{args:JSON.stringify({pattern:'focus-visible|aria-label',path:'src'}),output:'src/dashboard.css:22: .card:focus-visible { outline: 2px solid var(--accent); }\nindex.html:14: <nav aria-label="Projects">'}),
+      tool('review-test','Bash','bash','npm test','12 passed',{command:'npm test',output:'Test Files  2 passed (2)\nTests       12 passed (12)',outputLines:2,exitCode:0,durationMs:2100})
+    ]
+  }]
+  fs.writeFileSync(boardPath, JSON.stringify(board))
+  const a = await boot(home, lang, {width:1200,height:900})
+  try {
+    await a.ready()
+    await a.ctx.click('.workbar .wb-chip',1)
+    await a.ctx.waitFor('.wb-pop-list button',4000)
+    await a.ctx.click('.wb-pop-list button')
+    await a.ctx.waitFor('.sa-overlay',4000)
+    await a.ctx.click('[data-tool-id="review-web"]')
+    await a.hide(['.thread','.composer','.workbar'])
+    await a.shot('tool-history.png','.sa-overlay .dc-card',20)
+    await a.hide([])
+    await a.ctx.esc()
+    await a.ctx.openSettings('Engine')
+    await a.ctx.waitFor('.cx-context .cx-model-table',10000)
+    await a.cdp.eval(`document.querySelector('.cx-context').scrollIntoView({block:'center'})`)
+    await a.hide(['.thread','.composer','.workbar'])
+    await a.shot('codex-context.png','.cx-context',8)
+  } finally { a.close() }
+}
+
+const scenes = { hero: sceneHero, multi: sceneMulti, live: sceneLive, dialogs: sceneDialogs, details: sceneDetails }
 for (const lang of langs) {
   for (const name of only) {
     console.log(`── ${name} (${lang})`)

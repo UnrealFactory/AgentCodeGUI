@@ -58,7 +58,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// app-server가 두 왕복을 마칠 때까지의 상한. 2.6.2 `codexRpcOnce`의 12초와 같다.
@@ -82,6 +82,14 @@ fn cache() -> &'static Mutex<HashMap<String, (Instant, Value)>> {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// 조회가 초기화 이전 값을 나중에 덮어쓰지 않도록 계정별 왕복을 직렬화한다.
+fn account_gate(email: &str) -> Arc<Mutex<()>> {
+    static G: std::sync::OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = std::sync::OnceLock::new();
+    G.get_or_init(|| Mutex::new(HashMap::new()))
+        .lock().unwrap_or_else(|e| e.into_inner())
+        .entry(email.to_string()).or_default().clone()
+}
+
 /// 논블로킹 엿보기 — 허브 스레드의 문(`parity::usage::peek_usage`와 같은 규약).
 /// 돌려주는 것은 **창 목록**이다(판정이 읽는 것이 그것뿐이다 — `fold_codex`).
 pub fn peek(email: &str, ttl_ms: u64) -> Option<Value> {
@@ -101,7 +109,7 @@ fn is_fail(row: &Value) -> bool {
 }
 
 fn empty_row() -> Value {
-    json!({ "planType": Value::Null, "windows": [] })
+    json!({ "planType": Value::Null, "windows": [], "rateLimitResetCredits": Value::Null })
 }
 
 /// **물어볼 창구가 있는가** — 허브 스레드가 부르는 쪽. **읽기만 한다**(stat 1 + 작은 JSON 1).
@@ -153,6 +161,12 @@ pub fn account_for(codex_account: Option<&str>) -> Option<String> {
 /// 워커 한 바퀴 — 조회해서 캐시에 앉힌다. **실패해도 앉힌다**(빈 창 목록 = 「못 얻었다」):
 /// 안 앉히면 다음 엿보기가 또 차가워서 판정이 영원히 「스냅샷 없음」에 머문다.
 pub fn fill(email: &str) {
+    let gate = account_gate(email);
+    let _guard = gate.lock().unwrap_or_else(|e| e.into_inner());
+    fill_locked(email);
+}
+
+fn fill_locked(email: &str) -> Value {
     let row = instrument(email).and_then(|home| read_row(&home)).unwrap_or_else(empty_row);
     // 구독 변경(Free→Plus 등)을 스토어에 되싱크 — 2.6.2 `codexAccountsUsage`가 하던 일이고,
     // `rateLimits/read`의 `planType`이 id_token의 `plan`보다 신선하다(`ccg_auth` 주석).
@@ -163,7 +177,40 @@ pub fn fill(email: &str) {
     cache()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(email.to_string(), (Instant::now(), row));
+        .insert(email.to_string(), (Instant::now(), row.clone()));
+    row
+}
+
+fn usage_row(email: &str, row: &Value) -> Value {
+    json!({ "email": email, "planType": row.get("planType").cloned().unwrap_or(Value::Null),
+            "windows": windows_of(row), "rateLimitResetCredits": row.get("rateLimitResetCredits").cloned().unwrap_or(Value::Null) })
+}
+
+/// 사용자가 명시적으로 누른 1회 사용. 재시도 시 같은 키를 보내도록 IPC에서 키를 받는다.
+/// 자동 사용·자동 재시도는 하지 않는다. 서버 응답 이후 한도는 반드시 다시 조회한다.
+pub fn consume_reset_credit(email: &str, idempotency_key: &str) -> Value {
+    if email.trim().is_empty() || idempotency_key.trim().is_empty() || idempotency_key.len() > 128 {
+        return json!({ "outcome": "error", "error": "invalidRequest" });
+    }
+    if ccg_auth::net::disabled() {
+        return json!({ "outcome": "error", "error": "unavailable" });
+    }
+    let gate = account_gate(email);
+    let _guard = gate.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(home) = instrument(email) else {
+        return json!({ "outcome": "error", "error": "accountUnavailable" });
+    };
+    let result = rpc(&home, "account/rateLimitResetCredit/consume", json!({ "idempotencyKey": idempotency_key }));
+    let outcome = match result.as_ref().ok().and_then(|r| r.get("outcome")).and_then(Value::as_str) {
+        Some(o @ ("reset" | "alreadyRedeemed" | "nothingToReset" | "noCredit")) => o,
+        _ => {
+            // 응답을 못 받아도 서버에서 사용됐을 수 있다. 기존 잔량 캐시는 무효화한다.
+            cache().lock().unwrap_or_else(|e| e.into_inner()).remove(email);
+            return json!({ "outcome": "error", "error": result.err().unwrap_or("unavailable") });
+        }
+    };
+    let row = fill_locked(email);
+    json!({ "outcome": outcome, "usage": usage_row(email, &row) })
 }
 
 /// ★R28b RVERD — `codex-auth:accounts-usage()` → 계약면 `CodexAccountUsage[]`.
@@ -198,11 +245,15 @@ pub fn accounts_usage() -> Value {
                     .map(|(_, v)| v.clone())
                     .unwrap_or_else(empty_row)
             });
-            json!({ "email": email, "planType": row.get("planType").cloned().unwrap_or(Value::Null),
-                    "windows": windows_of(&row) })
+            usage_row(&email, &row)
         })
         .collect();
     Value::Array(rows)
+}
+
+pub fn refresh_accounts_usage() -> Value {
+    cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
+    accounts_usage()
 }
 
 /// 캐시가 아직 쓸 만한가 — 성공값과 실패값의 창이 다르다(위 두 상수).
@@ -218,9 +269,13 @@ fn fresh_row(email: &str) -> Option<Value> {
 /// 홈을 **인자로 받는 이유**: 계정 스토어(DPAPI 복호화)를 안 거치고도 테스트가 이 경로를
 /// 그대로 밟을 수 있어야 한다(가짜 app-server + 아무 폴더).
 pub fn read_row(home: &Path) -> Option<Value> {
+    rpc(home, "account/rateLimits/read", json!({})).ok().map(|r| parse(&r))
+}
+
+fn rpc(home: &Path, method: &str, params: Value) -> Result<Value, &'static str> {
     // 하네스·재생 주행의 킬 스위치. `parity::codex::query`와 **같은 스위치**를 본다.
     if ccg_auth::net::disabled() {
-        return None;
+        return Err("unavailable");
     }
     // ★R28c CPATH — 스폰 인자도 같은 해석을 지난다(`instrument`가 이미 `Some`을 봤다).
     let bin = crate::engine::codex_versions::spawn_bin();
@@ -232,11 +287,11 @@ pub fn read_row(home: &Path) -> Option<Value> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let mut child = cmd.spawn().ok()?;
+    let mut child = cmd.spawn().map_err(|_| "unavailable")?;
 
-    let out = (|| -> Option<Value> {
-        let mut stdin = child.stdin.take()?;
-        let stdout = child.stdout.take()?;
+    let out = (|| -> Result<Value, &'static str> {
+        let mut stdin = child.stdin.take().ok_or("unavailable")?;
+        let stdout = child.stdout.take().ok_or("unavailable")?;
         let init = json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {
@@ -244,10 +299,9 @@ pub fn read_row(home: &Path) -> Option<Value> {
                 "capabilities": { "experimentalApi": true }
             }
         });
-        let ask = json!({ "jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read", "params": {} });
-        writeln!(stdin, "{init}").ok()?;
-        writeln!(stdin, "{ask}").ok()?;
-        stdin.flush().ok()?;
+        let ask = json!({ "jsonrpc": "2.0", "id": 2, "method": method, "params": params });
+        writeln!(stdin, "{init}").map_err(|_| "unavailable")?;
+        stdin.flush().map_err(|_| "unavailable")?;
 
         let deadline = Instant::now() + DEADLINE;
         let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -259,17 +313,24 @@ pub fn read_row(home: &Path) -> Option<Value> {
             }
         });
         loop {
-            let left = deadline.checked_duration_since(Instant::now())?;
-            let line = rx.recv_timeout(left).ok()?;
+            let left = deadline.checked_duration_since(Instant::now()).ok_or("unavailable")?;
+            let line = rx.recv_timeout(left).map_err(|_| "unavailable")?;
             let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+            if v.get("id").and_then(Value::as_i64) == Some(1) {
+                if v.get("error").is_some() { return Err("unavailable"); }
+                writeln!(stdin, "{}", json!({ "method": "initialized" })).map_err(|_| "unavailable")?;
+                writeln!(stdin, "{ask}").map_err(|_| "unavailable")?;
+                stdin.flush().map_err(|_| "unavailable")?;
+                continue;
+            }
             if v.get("id").and_then(Value::as_i64) != Some(2) {
                 continue;
             }
             // 오류 응답은 「못 얻었다」다 — 빈 목록(=풀렸다)으로 접으면 안 된다.
-            if v.get("error").is_some() {
-                return None;
+            if let Some(error) = v.get("error") {
+                return Err(if error.get("code").and_then(Value::as_i64) == Some(-32601) { "unsupported" } else { "unavailable" });
             }
-            return Some(parse(v.get("result").unwrap_or(&Value::Null)));
+            return v.get("result").cloned().ok_or("unavailable");
         }
     })();
 
@@ -286,7 +347,7 @@ pub fn read_row(home: &Path) -> Option<Value> {
 /// 플랜별 창 구성이 다르다). 렌더러의 게이지·요약 줄이 읽는다(`Settings.tsx` `CodexLimits`·
 /// `Chat.tsx` `cxUsageLine`). 그래서 판정용 값과 표시용 값을 **한 번에** 만든다.
 pub fn parse(result: &Value) -> Value {
-    let Some(rl) = result.get("rateLimits") else { return empty_row() };
+    let rl = &result["rateLimits"];
     let mut out: Vec<Value> = vec![];
     for k in ["primary", "secondary"] {
         let Some(w) = rl.get(k).filter(|v| !v.is_null()) else { continue };
@@ -299,7 +360,23 @@ pub fn parse(result: &Value) -> Value {
             "resetsAt": w.get("resetsAt").and_then(Value::as_i64),
         }));
     }
-    json!({ "planType": rl.get("planType").and_then(Value::as_str), "windows": out })
+    json!({ "planType": rl.get("planType").and_then(Value::as_str), "windows": out,
+            "rateLimitResetCredits": parse_reset_credits(&result["rateLimitResetCredits"]) })
+}
+
+fn parse_reset_credits(value: &Value) -> Value {
+    let Some(count) = value.get("availableCount").and_then(Value::as_u64).filter(|n| *n <= 9_007_199_254_740_991) else {
+        return Value::Null;
+    };
+    let credits = value.get("credits").and_then(Value::as_array).map(|rows| rows.iter().filter_map(|r| {
+        let id = r.get("id").and_then(Value::as_str).filter(|id| !id.is_empty())?;
+        Some(json!({ "id": id, "resetType": r.get("resetType").and_then(Value::as_str).unwrap_or("unknown"),
+            "status": r.get("status").and_then(Value::as_str).unwrap_or("unknown"),
+            "grantedAt": r.get("grantedAt").and_then(Value::as_i64)?,
+            "expiresAt": r.get("expiresAt").and_then(Value::as_i64),
+            "title": r.get("title").and_then(Value::as_str), "description": r.get("description").and_then(Value::as_str) }))
+    }).collect::<Vec<_>>());
+    json!({ "availableCount": count, "credits": credits })
 }
 
 /// 창 길이(분) → 표시 라벨. 2.6.2 `windowLabel`(`codex/auth.ts:454`)의 규약 그대로다 —
@@ -370,6 +447,35 @@ mod tests {
             { "label": "5시간", "usedPct": 100, "resetsAt": 1_787_752_800i64 },
             { "label": "주간", "usedPct": 12, "resetsAt": Value::Null },
         ]));
+    }
+
+    #[test]
+    fn reset_balance_distinguishes_unknown_zero_and_partial_details() {
+        let _h = ccg_store::testhome::take("codex-reset-balance");
+        assert_eq!(parse(&json!({}))["rateLimitResetCredits"], Value::Null);
+        assert_eq!(parse_reset_credits(&json!({ "availableCount": -1 })), Value::Null);
+        assert_eq!(parse_reset_credits(&json!({ "availableCount": 0, "credits": [] })),
+            json!({ "availableCount": 0, "credits": [] }));
+        assert_eq!(parse_reset_credits(&json!({ "availableCount": 3 })),
+            json!({ "availableCount": 3, "credits": Value::Null }));
+        let details = json!({ "availableCount": 7, "credits": [{ "id": "reset-1", "resetType": "codexRateLimits",
+            "status": "available", "grantedAt": 1781654400i64, "expiresAt": 1784246400i64,
+            "title": "Referral reward", "description": "Usage reset" }] });
+        // 한도 창 자체가 없어도 보유량은 보존하고 IPC 행에 실어 보낸다.
+        let row = parse(&json!({ "rateLimitResetCredits": details }));
+        assert_eq!(row["rateLimitResetCredits"], details);
+        assert_eq!(usage_row("one@example.com", &row)["rateLimitResetCredits"]["availableCount"], 7);
+    }
+
+    #[test]
+    fn reset_requests_require_an_explicit_account_key_and_online_access() {
+        let h = ccg_store::testhome::take("codex-reset-guard");
+        let _b = no_codex_here();
+        assert_eq!(consume_reset_credit("", "test-key")["error"], "invalidRequest");
+        assert_eq!(consume_reset_credit("one@example.com", "  ")["error"], "invalidRequest");
+        let _offline = EnvGuard::set("CCG_NO_NET", "1");
+        assert_eq!(consume_reset_credit("one@example.com", "test-key")["error"], "unavailable");
+        assert!(!h.dir.join("codex/accounts").exists());
     }
 
     /// ★R28b RVERD — 라벨 규약. 렌더러(`Chat.tsx cxUsageLine`)는 **문자열 「주간」/「Weekly」**로

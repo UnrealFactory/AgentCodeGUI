@@ -573,20 +573,22 @@ export function SessionWindow(): React.ReactElement {
   // 툴 로그/WorkBar에서 연 파일 — 뷰어로
   // 끈적한 창 모드면 독립 뷰어 창으로(본채팅과 같은 규칙). 콜백은 안정적으로 두고(메모된 자식에
   // 내려간다) 그 순간의 cwd·diffs는 ref로 읽는다.
-  const viewerCtxRef = useRef({ cwd: '', diffs: state.diffs })
-  viewerCtxRef.current = { cwd: state.session?.cwd ?? cwd, diffs: state.diffs }
-  const openWorkFileRouted = useCallback((path: string): void => {
+  const viewerCtxRef = useRef({ cwd: '', diffs: state.diffs, backToParent: false })
+  viewerCtxRef.current = { cwd: state.session?.cwd ?? cwd, diffs: state.diffs, backToParent: !!openSubagentId }
+  const [openWorkLine, setOpenWorkLine] = useState<number | undefined>()
+  const openWorkFileRouted = useCallback((path: string, line?: number): void => {
+    setOpenWorkLine(line)
     setDocked(null)
     if (viewerWindowMode()) {
       const c = viewerCtxRef.current
-      void openInViewerWindow({ path, cwd: c.cwd, diffs: c.diffs, askable: true }).then((took) => {
+      void openInViewerWindow({ path, line, cwd: c.cwd, diffs: c.diffs, askable: true, backToParent: c.backToParent }).then((took) => {
         if (!took) setOpenWorkFile(path)
       })
       return
     }
     setOpenWorkFile(path)
   }, [])
-  const onOpenToolFile = useCallback((path: string): void => openWorkFileRouted(path), [openWorkFileRouted])
+  const onOpenToolFile = useCallback((path: string, line?: number): void => openWorkFileRouted(path, line), [openWorkFileRouted])
   const openChangedFile = useCallback((f: ChangedFile): void => openWorkFileRouted(f.path), [openWorkFileRouted])
   const openSubagentCard = useCallback((a: SubAgentInfo): void => setOpenSubagentId(a.id), [])
 
@@ -803,6 +805,8 @@ export function SessionWindow(): React.ReactElement {
     const src = docked
     void openInViewerWindow({
       path: p,
+      line: p === (src ? src.path : openWorkFile) ? (src ? src.line : openWorkLine) : undefined,
+      backToParent: !!openSubagentId || src?.backToParent,
       cwd: src ? src.cwd : (state.session?.cwd ?? cwd),
       diffs: src ? diffsOf(src) : state.diffs,
       override: src && p === src.path ? src.override : null,
@@ -902,6 +906,7 @@ export function SessionWindow(): React.ReactElement {
                 <MessageView
                   key={m.id}
                   item={m}
+                  cwd={state.session?.cwd ?? cwd}
                   live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
                   onOpenFile={onOpenToolFile}
@@ -1005,6 +1010,8 @@ export function SessionWindow(): React.ReactElement {
         <Suspense fallback={null}>
           <FileModal
             path={docked ? docked.path : openWorkFile}
+            line={docked ? docked.line : openWorkLine}
+            backToParent={!!openSubagentId || docked?.backToParent}
             cwd={docked ? docked.cwd : (state.session?.cwd ?? cwd)}
             diffs={docked ? diffsOf(docked) : state.diffs}
             override={docked ? docked.override : null}
@@ -1017,7 +1024,7 @@ export function SessionWindow(): React.ReactElement {
           />
         </Suspense>
       )}
-      <SubAgentModal agent={openSubagent} onClose={() => setOpenSubagentId(null)} />
+      <SubAgentModal agent={openSubagent} cwd={state.session?.cwd ?? cwd} onClose={() => setOpenSubagentId(null)} onOpenFile={onOpenToolFile} />
 
       {viewer && (
         <ImageViewer

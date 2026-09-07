@@ -88,9 +88,14 @@ const api: WindowApi = {
     setDefaultAccount: (email: string) => ipcRenderer.invoke(IPC.codexSetDefaultAccount, email),
     cancelLogin: () => ipcRenderer.invoke(IPC.codexLoginCancel),
     reorderAccounts: (emails: string[]) => ipcRenderer.invoke(IPC.codexReorderAccounts, emails),
-    accountsUsage: () => ipcRenderer.invoke(IPC.codexAccountsUsage)
+    accountsUsage: (fresh?: boolean) => ipcRenderer.invoke(IPC.codexAccountsUsage, fresh),
+    consumeResetCredit: (email: string, idempotencyKey: string) => ipcRenderer.invoke(IPC.codexResetCreditConsume, email, idempotencyKey)
   },
   engineAutoUpdate: (enabled?: boolean) => ipcRenderer.invoke(IPC.engineAutoUpdate, enabled),
+  codexContext: {
+    get: () => ipcRenderer.invoke(IPC.codexContextGet),
+    save: (settings) => ipcRenderer.invoke(IPC.codexContextSave, settings)
+  },
   engineUpdate: {
     status: () => ipcRenderer.invoke(IPC.engineUpdateStatus),
     onEvent: (cb: (s: EngineUpdateStatus) => void) => subscribe(IPC.engineUpdateEvent, cb)

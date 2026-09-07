@@ -2711,7 +2711,7 @@ function CodeView({
     return (
       <div className="fv-md scroll">
         <div className="content" style={{ zoom }}>
-          <Markdown text={content} />
+          <Markdown text={content} cwd={absPath(path, cwd).replace(/\\/g, '/').replace(/\/[^/]*$/, '')} />
         </div>
       </div>
     )
@@ -2865,10 +2865,12 @@ function CloseConfirmDialog({ onStay, onLeave }: { onStay: () => void; onLeave: 
 // is warm (TS/JS for now).
 export function FileModal({
   path,
+  line,
   cwd,
   diffs,
   override,
   onClose,
+  backToParent,
   onAskSelection,
   windowed,
   onPopout,
@@ -2876,6 +2878,7 @@ export function FileModal({
   onReady
 }: {
   path: string | null
+  line?: number
   cwd: string
   // 이 실행에서 에이전트가 바꾼 파일들의 누적 diff — 보고 있는 파일의 것이 있으면
   // 코드 위에 변경 마킹(추가 줄 틴트·삭제 헤어라인·오버뷰 룰러)을 얹는다
@@ -2889,6 +2892,8 @@ export function FileModal({
     label: string | null
   } | null
   onClose: () => void
+  // A detail card remains underneath: back from the first file returns to that card.
+  backToParent?: boolean
   // 드래그 선택 → 뷰어 안 질문 패널에서 작성한 질문을 선택 텍스트·파일·줄 범위와 함께 전송
   onAskSelection?: (p: { path: string; text: string; from: number | null; to: number | null; question: string }) => void
   // 독립 창 모드(ViewerWindow) — 오버레이 배경·카드 크기 조절·카드 최대화가 물러나고, 헤더가
@@ -2987,6 +2992,14 @@ export function FileModal({
     posMap.current.clear()
   }
   const effPath = vs.stack.length ? vs.stack[vs.stack.length - 1].path : path
+  // Search hits open source code at their 1-based line, using the same scroll/flash as definitions.
+  useEffect(() => {
+    if (!path || line == null || !Number.isInteger(line) || line < 1) return
+    setVs(v => ({ root: path, stack: [], fwd: [], jump: { line, tick: (v.jump?.tick ?? 0) + 1 } }))
+    setMdPreview(false)
+    setHtmlPreview(false)
+    setSvgCode(true)
+  }, [path, line])
   const isSvg = !!effPath && /\.svg$/i.test(effPath)
   const isImg = !!effPath && isImagePath(effPath) && !(isSvg && svgCode)
   // 정의 이동으로 다른 파일에 들어가면 override는 원래 파일의 것 — 적용하지 않는다
@@ -3038,7 +3051,7 @@ export function FileModal({
   const forcedDiff = !!ov?.diff
   const canToggleDiff = !!marks && !isMdFile && !forcedDiff
   // 마크다운(변경 파일)은 렌더↔소스(diff)를 Ctrl+D로 오간다 — 코드 파일의 diffView와 별개
-  const mdCanToggle = isMdFile && !!diff
+  const mdCanToggle = isMdFile && (!!diff || line != null)
   // diff가 실제로 그려지는 맥락에서만 버튼·단축키가 의미 있다: 비-CM 읽기 뷰어이거나, CM 코드
   // 파일을 읽기 모드로 보는 중일 때(편집 모드는 어차피 diff를 끄므로 토글이 무의미).
   const diffVisibleCtx = canToggleDiff && (!cmEligible || cmMode === 'read')
@@ -3489,6 +3502,10 @@ export function FileModal({
   }, [cwd])
   // 뒤로 = 스택 한 단계 빼서 앞으로(fwd) 스택에 쌓기 / 앞으로 = 그 반대. 둘 다 캐럿 복원용으로 저장.
   const goBack = useCallback((): void => {
+    if (!vs.stack.length && backToParent) {
+      requestClose()
+      return
+    }
     rememberCaret()
     setVs((v) =>
       v.stack.length
@@ -3500,7 +3517,7 @@ export function FileModal({
           }
         : v
     )
-  }, [rememberCaret])
+  }, [rememberCaret, vs.stack.length, backToParent, requestClose])
   const goForward = useCallback((): void => {
     rememberCaret()
     setVs((v) =>
@@ -3516,7 +3533,7 @@ export function FileModal({
   }, [rememberCaret])
 
   // 마우스 옆 버튼: 뒤로(X1=button 3) / 앞으로(X2=button 4) — 브라우저·IDE 관례. 더 갈 곳이
-  // 없으면 아무것도 안 한다(실수로 코드창 닫히는 게 싫다는 피드백 — 닫기는 Esc·X·Ctrl+W로만).
+  // 없으면 그대로 둔다. 상세 카드에서 연 파일은 그 카드가 마지막 돌아갈 곳이다.
   useEffect(() => {
     if (!path) return
     const onUp = (e: MouseEvent): void => {
@@ -3533,8 +3550,8 @@ export function FileModal({
   }, [path, goBack, goForward])
 
   // 우클릭 드래그 마우스 제스처 — ←/→는 정의 점프 트레일(옆버튼과 같은 동작), ↑/↓는 본문
-  // 스크롤, ↓→(L자)는 닫기. 갈 곳이 없으면 라벨로 정직하게 알리고 실행은 no-op(옆버튼과
-  // 같은 규칙 — 실수로 닫히는 게 싫다는 피드백). 본문 스크롤러는 모드마다 하나뿐이라
+  // 스크롤, ↓→(L자)는 닫기. 첫 파일에서는 원래 상세 카드로 돌아가고, 그 카드도 없으면
+  // 그대로 둔다. 본문 스크롤러는 모드마다 하나뿐이라
   // 셀렉터 한 줄로 찾는다(코드 .fv-code · 마크다운 .fv-md · 이미지 .fv-imgbody · CM .cm-scroller).
   const scrollBody = useCallback(
     (to: 'top' | 'bottom'): void => {
@@ -3556,7 +3573,7 @@ export function FileModal({
   const gestureActions: GestureAction[] = [
     {
       pattern: 'L',
-      label: vs.stack.length ? t('이전 파일', 'Previous file') : t('이전 파일 없음', 'No previous file'),
+      label: vs.stack.length ? t('이전 파일', 'Previous file') : backToParent ? t('도구 목록으로', 'Back to tools') : t('이전 파일 없음', 'No previous file'),
       run: goBack
     },
     {
@@ -3635,7 +3652,7 @@ export function FileModal({
 
   return (
     <div
-      className={'fv-overlay' + (windowed ? ' fv-win' : '')}
+      className={'fv-overlay' + (windowed ? ' fv-win' : '') + (backToParent ? ' from-detail' : '')}
       onMouseDown={(e) => {
         downOnOverlay.current = e.target === e.currentTarget
       }}
@@ -3683,12 +3700,12 @@ export function FileModal({
             setHeadCtx({ x: e.clientX, y: e.clientY })
           }}
         >
-          {vs.stack.length > 0 && (
+          {(vs.stack.length > 0 || backToParent) && (
             <button
               className="dclose htip fv-back"
               onClick={goBack}
               aria-label={t('뒤로', 'Back')}
-              data-tip={t('이전 파일로 (마우스 뒤로 버튼)', 'Previous file (mouse back button)')}
+              data-tip={vs.stack.length ? t('이전 파일로 (마우스 뒤로 버튼)', 'Previous file (mouse back button)') : t('도구 목록으로', 'Back to tools')}
             >
               <IconChevLeft size={15} />
             </button>
@@ -3768,8 +3785,8 @@ export function FileModal({
                   <button
                     className={'htip' + (!mdPreview ? ' on' : '')}
                     onClick={() => setMdPreview(false)}
-                    aria-label={t('변경 소스', 'Diff source')}
-                    data-tip={t('변경 마킹이 표시된 소스로 보기 (Ctrl+D)', 'View source with change marks (Ctrl+D)')}
+                    aria-label={diff ? t('변경 소스', 'Diff source') : t('소스 코드', 'Source code')}
+                    data-tip={diff ? t('변경 마킹이 표시된 소스로 보기 (Ctrl+D)', 'View source with change marks (Ctrl+D)') : t('소스 코드로 보기 (Ctrl+D)', 'View source code (Ctrl+D)')}
                   >
                     <IconCode size={14} />
                   </button>
@@ -3987,7 +4004,7 @@ export function FileModal({
               structOv={structOv}
               jump={vs.jump}
               marks={effMarks}
-              mdSource={isMdFile && !!diff && !mdPreview}
+              mdSource={isMdFile && !mdPreview}
               onNavigate={handleNavigate}
             />
           )}

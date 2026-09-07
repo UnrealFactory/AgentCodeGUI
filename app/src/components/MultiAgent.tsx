@@ -348,7 +348,7 @@ interface PanelViewProps {
   onAddRefDir: (slot: number) => void // 참조 폴더(--add-dir) 추가 — OS 픽커
   onAddRefDirPath: (slot: number, path: string) => void // 즐겨찾기/최근 행의 + — 경로 직접 추가
   onRemoveRefDir: (slot: number, path: string) => void
-  onOpenFile: (slot: number, rel: string) => void // WorkBar·툴 로그의 파일 → 뷰어
+  onOpenFile: (slot: number, rel: string, line?: number) => void // WorkBar·툴 로그의 파일 → 뷰어
   onOpenSubagent: (slot: number, id: string) => void // WorkBar 서브에이전트 행 → 상세 카드
   onOpenImage: (images: string[], index: number) => void // 스레드/컴포저 이미지 → 뷰어
   onBgTask: (slot: number, req: BgTaskRequest) => void // 백그라운드 셸 중지/Ctrl+B — 이 패널 엔진으로
@@ -549,7 +549,7 @@ export const PanelView = memo(function PanelView({
   const showWorking = !state.streaming && !state.pendingQuestion && !state.pendingCommand
   // 스트리밍 중 매 토큰 렌더에서 MessageView memo가 유지되도록 — 인라인 화살표를 넘기면
   // 매 렌더 새 함수 정체성이 완료된 메시지까지 전부 리렌더(마크다운 재파싱)시킨다
-  const openFile = useEvent((p: string) => onOpenFile(slot, p))
+  const openFile = useEvent((p: string, line?: number) => onOpenFile(slot, p, line))
   // ★3.0.5 — 알림 band 콜백도 같은 규칙. 인라인 화살표라 토큰마다 스레드의 MessageView 전부가
   // memo를 잃고 다시 그려졌다(감사 #4 — 바로 위 주석이 금지한 그 모양).
   const notify = useEvent((a: NotifyAction) => {
@@ -753,6 +753,7 @@ export const PanelView = memo(function PanelView({
                 <MessageView
                   key={m.id}
                   item={m}
+                  cwd={meta.cwd || state.session?.cwd || ''}
                   live={twin.start + i === liveIdx && m.kind === 'msg' && m.role === 'assistant' && !m.error}
                   running={busy}
                   onOpenFile={openFile}
@@ -1251,7 +1252,7 @@ function ActiveSession({
   // 여기서 한 번만 렌더해야 .fv-overlay(absolute)가 패널의 스태킹 컨텍스트에 갇혀
   // 그 패널 영역 안에서만 뜨는 사고가 없다)
   // rebound — 대상 패널이 접혀 다른 자리로 옮겨 붙었다는 표식(뷰어 헤더 한 줄 안내, §2.2-1b)
-  const [openFile, setOpenFile] = useState<{ slot: number; path: string; rebound?: boolean } | null>(null)
+  const [openFile, setOpenFile] = useState<{ slot: number; path: string; line?: number; rebound?: boolean } | null>(null)
   // WorkBar 서브에이전트 행에서 연 상세 카드 — 열려 있는 동안 그 패널의 라이브 상태를 따른다
   const [openSub, setOpenSub] = useState<{ slot: number; id: string } | null>(null)
   // 스레드/컴포저 이미지 → 라이트박스 (본채팅과 동일한 뷰어를 세션 레벨에서 한 번만)
@@ -1925,17 +1926,17 @@ function ActiveSession({
   })
   // 끈적한 창 모드면 그 패널의 cwd·diffs로 독립 뷰어 창에(본채팅과 같은 규칙). 되돌아오는
   // 「창 안으로」는 이 창의 루트(App)가 페이로드째 받는다 — 패널 자리와 무관하게 한 자리.
-  const openPanelFile = (slot: number, rel: string): void => {
+  const openPanelFile = (slot: number, rel: string, line?: number): void => {
     if (viewerWindowMode()) {
       const cwd = metas[slot].cwd || sessions[slot].state.session?.cwd || ''
-      void openInViewerWindow({ path: rel, cwd, diffs: sessions[slot].state.diffs }).then((took) => {
-        if (!took) setOpenFile({ slot, path: rel })
+      void openInViewerWindow({ path: rel, line, cwd, diffs: sessions[slot].state.diffs, backToParent: !!openSub }).then((took) => {
+        if (!took) setOpenFile({ slot, path: rel, line })
       })
       return
     }
-    setOpenFile({ slot, path: rel })
+    setOpenFile({ slot, path: rel, line })
   }
-  const onOpenPanelFile = useEvent((slot: number, rel: string) => openPanelFile(slot, rel))
+  const onOpenPanelFile = useEvent((slot: number, rel: string, line?: number) => openPanelFile(slot, rel, line))
   const onOpenPanelSub = useEvent((slot: number, id: string) => setOpenSub({ slot, id }))
   const onOpenImage = useEvent((imgs: string[], index: number) => setViewer({ images: imgs, index }))
   // 백그라운드 셸 컨트롤(중지/Ctrl+B) — 그 패널의 엔진으로 라우팅 (?.: 구 preload 가드)
@@ -2529,6 +2530,8 @@ function ActiveSession({
         <Suspense fallback={null}>
           <FileModal
             path={openFile.path}
+            line={openFile.line}
+            backToParent={!!openSub}
             cwd={metas[openFile.slot].cwd || sessions[openFile.slot].state.session?.cwd || ''}
             diffs={sessions[openFile.slot].state.diffs}
             onClose={() => setOpenFile(null)}
@@ -2538,6 +2541,8 @@ function ActiveSession({
               setViewerWindowMode(true)
               void openInViewerWindow({
                 path: p,
+                line: p === openFile.path ? openFile.line : undefined,
+                backToParent: !!openSub,
                 cwd: metas[slot].cwd || sessions[slot].state.session?.cwd || '',
                 diffs: sessions[slot].state.diffs
               }).then((took) => {
@@ -2574,7 +2579,9 @@ function ActiveSession({
       {/* WorkBar 서브에이전트 상세 카드 — 매 렌더 라이브 조회라 상태/도구 갱신이 흐른다 (본채팅과 동일) */}
       <SubAgentModal
         agent={openSub ? sessions[openSub.slot].state.subagents.find((a) => a.id === openSub.id) ?? null : null}
+        cwd={openSub ? panelCwd(openSub.slot) : undefined}
         onClose={() => setOpenSub(null)}
+        onOpenFile={openSub ? (path, line) => openPanelFile(openSub.slot, path, line) : undefined}
       />
 
       {viewer && (

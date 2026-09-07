@@ -135,6 +135,13 @@ fn plan(args: &Value) -> Result<CodexPlan, String> {
     })
 }
 
+/// Read the existing global config without injecting the app's context overrides.
+pub(crate) fn context_config() -> Option<Value> {
+    let p = plan(&json!({})).ok()?;
+    let mut c = Client::open(&p).ok()?;
+    c.call("config/read", json!({"includeLayers":false})).ok()?.get("config").cloned()
+}
+
 fn read(c: &mut Client, p: &CodexPlan) -> Value {
     let mut errors = Vec::new();
     let config = c

@@ -206,7 +206,7 @@ pub static FRAME_DIGEST: &[FrameSpec] = &[
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §3.6 명령 허용표 23×8 — **빈칸 없음**(D7 침묵 no-op 금지)
+// §3.6 명령 허용표 + 비동기 질문 응답, 24×8 — **빈칸 없음**(D7 침묵 no-op 금지)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +242,7 @@ pub static COMMANDS: &[CommandRow] = &[
     CommandRow { cmd: "queue.restore", cells: [Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-")] },
     CommandRow { cmd: "respond_permission", cells: [Reject("no_card"), Reject("no_card"), Reject("no_card"), Accept("T5"), Reject("no_card"), Reject("interrupting"), Reject("no_card"), Reject("ending")] },
     CommandRow { cmd: "respond_question", cells: [Reject("no_card"), Reject("no_card"), Reject("no_card"), Accept("T5"), Reject("no_card"), Reject("interrupting"), Reject("no_card"), Reject("ending")] },
+    CommandRow { cmd: "respond_async_question", cells: [Reject("no_active_turn"), Reject("starting"), Accept("-"), Accept("-"), Reject("no_active_turn"), Reject("interrupting"), Reject("no_active_turn"), Reject("ending")] },
     CommandRow { cmd: "respond_dialog", cells: [Reject("no_card"), Reject("no_card"), Reject("no_card"), Accept("T5"), Reject("no_card"), Reject("interrupting"), Reject("no_card"), Reject("ending")] },
     CommandRow { cmd: "bg_task.stop", cells: [Reject("no_stream"), Reject("no_stream"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Accept("-"), Reject("ending")] },
     CommandRow { cmd: "bg_task.background", cells: [Reject("no_stream"), Reject("no_stream"), Accept("-"), Accept("-"), Accept("-"), Reject("interrupting"), Reject("no_foreground_tool"), Reject("ending")] },
@@ -334,7 +335,7 @@ mod tests {
         assert_eq!(LIFECYCLE.len(), 38, "A 수명 전이 38행(§3.3)");
         assert_eq!(FRAME_DIGEST.len(), 22, "B 프레임 소화 22행(§3.3-B)");
         assert_eq!(all_transition_ids().len(), 60, "총 전이 60");
-        assert_eq!(COMMANDS.len(), 23, "명령표 23행(§3.6)");
+        assert_eq!(COMMANDS.len(), 24, "명령표 24행(비동기 질문 응답 포함)");
     }
 
     #[test]

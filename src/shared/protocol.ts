@@ -37,6 +37,10 @@ export interface ToolLogItem {
   status: 'running' | 'done' | 'error'
   result?: string // short result summary once finished
   output?: string // captured output tail (Bash) — 클릭 시 전체 로그 모달로 표시
+  command?: string // Original command for details/copy; target is only a short row label.
+  outputTruncated?: boolean
+  outputLines?: number // Count before truncating the preview.
+  exitCode?: number
   durationMs?: number // 실행 시간 (tool-start→end) — bash 행의 우측 요약·모달에 표시
   links?: WebLink[] // web rows — pages a WebSearch found; the chat row expands to clickable links
   files?: ToolFile[] // File paths stay separate, including names containing commas.
@@ -421,7 +425,7 @@ export type EngineEvent =
   | { type: 'tool-start'; runId: string; tool: ToolLogItem }
   // target: 시작 시점엔 몰랐던 대상이 완료 때 확정되면 행의 target을 덮는다
   // (Codex webSearch — 검색어가 item/completed에만 실린다, 실측 0.144.4)
-  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; durationMs?: number; links?: WebLink[]; files?: ToolFile[]; target?: string }
+  | { type: 'tool-end'; runId: string; id: string; status: 'done' | 'error'; result?: string; output?: string; outputTruncated?: boolean; outputLines?: number; exitCode?: number; durationMs?: number; links?: WebLink[]; files?: ToolFile[]; target?: string }
   | { type: 'todos'; runId: string; todos: Todo[] }
   // `whole` = a full-file Write (the diff supersedes any accumulated diff for this
   // path); false for incremental Edit/MultiEdit (merges onto the existing diff)
@@ -450,7 +454,8 @@ export type EngineEvent =
     }
   // the agent called AskUserQuestion → surface an interactive choice card.
   // engine: 카드 헤더 표기용('Claude의 질문'/'GPT의 질문') — 생략하면 claude
-  | { type: 'question-request'; runId: string; requestId: string; questions: AgentQuestion[]; engine?: EngineId }
+  | { type: 'question-request'; runId: string; requestId: string; questions: AgentQuestion[]; engine?: EngineId; nonBlocking?: boolean }
+  | { type: 'question-closed'; runId: string; requestId: string; answers?: string[][] | null }
   | {
       type: 'result'
       runId: string
@@ -689,6 +694,8 @@ export interface PanelPopStates {
  *  그 파일 하나에 필요한 것만 싣는다(세션 전체 diffs가 아니라 그 파일의 diff 하나). */
 export interface ViewerOpenPayload {
   path: string // 호출 창의 cwd 기준 상대 경로(또는 절대 경로) — 카드 뷰어의 path prop 그대로
+  line?: number // 1-based search/navigation destination.
+  backToParent?: boolean // Closing/back from the first file returns to its source detail card.
   cwd: string
   diff: FileDiff | null // 이 파일의 누적 diff(있으면 변경 마킹) — 카드 뷰어의 diffs[path]
   override: { content: string | null; diff: FileDiff | null; label: string | null } | null // Git 카드 스냅샷
@@ -812,7 +819,26 @@ export interface CodexAccountUsage {
   planType: string | null
   // resetsAt: 창 초기화 시각(unix 초, rateLimits primary/secondary의 resetsAt 실측) — 없으면 null
   windows: { label: string; usedPct: number; resetsAt?: number | null }[] // 예: [{label:'주간',usedPct:34,resetsAt:1784724661}]
+  /** null/미제공은 조회 불가. availableCount가 기준이며 상세 목록은 일부만 올 수 있다. */
+  rateLimitResetCredits?: {
+    availableCount: number
+    credits: CodexResetCredit[] | null
+  } | null
 }
+
+export interface CodexResetCredit {
+  id: string
+  resetType: string
+  status: string
+  grantedAt: number
+  expiresAt: number | null
+  title: string | null
+  description: string | null
+}
+
+export type CodexResetCreditResult =
+  | { outcome: 'reset' | 'alreadyRedeemed' | 'nothingToReset' | 'noCredit'; usage: CodexAccountUsage }
+  | { outcome: 'error'; error: 'unsupported' | 'unavailable' | 'invalidRequest' | 'accountUnavailable' }
 
 /**
  * 저장된 계정 1건의 한도 사용률 — 전환 없이 각 계정의 저장 토큰으로 usage API를 조회한 값.
@@ -1244,7 +1270,10 @@ export const IPC = {
   codexSetDefaultAccount: 'codex-auth:set-default-account', // (email) 기본 계정 지정 — 새 목록
   codexLoginCancel: 'codex-auth:login-cancel',
   codexAccountsUsage: 'codex-auth:accounts-usage', // 등록 계정별 한도(rateLimits) 일괄 조회
+  codexResetCreditConsume: 'codex-auth:reset-credit-consume',
   codexReorderAccounts: 'codex-auth:reorder-accounts', // (emails) 계정 표시 순서 변경(꾹-드래그) — 새 목록
+  codexContextGet: 'codex:context-get',
+  codexContextSave: 'codex:context-save',
   engineAutoUpdate: 'engine:auto-update', // (get: 인자 없음 / set: boolean) 두 엔진 CLI 자동 업데이트 토글
   engineUpdateStatus: 'engine:update-status', // 부팅 자동 업데이트 스냅샷 조회 — 카드가 마운트 때 따라잡는다
   apiConfigGet: 'api-config:get', // API 키/예산/누적 사용액 스냅샷 (키 원문 제외)
@@ -1524,6 +1553,19 @@ export type IdentityField =
 
 /** 축 8개 — 문구를 뭉칠 때만 쓴다(`'engine.model' → 'engine'`). */
 export type IdentityAxis = 'engine' | 'billing' | 'cwd' | 'addDirs' | 'mode' | 'systemPrompt' | 'outputStyle' | 'tools'
+
+export interface CodexContextTokens {
+  contextWindow: number
+  compactTokenLimit: number
+}
+export interface CodexContextSettings {
+  management: boolean
+  preset: 'default' | 'recommended' | 'custom'
+  models: Record<string, CodexContextTokens>
+  /** Preserves pre-model settings until a new preset is saved. */
+  fallback: CodexContextTokens | null
+}
+export type CodexContextResult = { settings: CodexContextSettings; defaults?: Record<string, CodexContextTokens>; error?: never } | { settings?: never; defaults?: never; error: string }
 
 // ── 채팅 · 보드 저장 스키마 (ux-chat-unify §1.2·§4.1) ────────
 /** 한도 소진 대기표 — 2.6.2는 훅 인스턴스마다 흩어져 있던 것이 채팅에 붙는다.
