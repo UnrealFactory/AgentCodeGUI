@@ -152,6 +152,26 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.1.3': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: 'Codex 대화에서도 /btw로 현재 맥락을 이어받은 질문 창을 열 수 있습니다. 대화를 연 뒤 추가하거나 삭제한 계정이 전송에 바로 반영됩니다.',
+      notes: [
+        { tag: 'Codex', name: '/btw 질문 창 지원', desc: 'Codex 대화에서 /btw 질문을 입력하면 현재 대화를 분기한 별도 창이 열리고 첫 질문이 바로 전송됩니다. 본 작업은 계속 진행되고, 질문과 후속 답변은 별도 창에서 이어집니다.' },
+        { tag: 'Codex', name: '원본 작업 목표를 이어받지 않음', desc: '분기된 질문 창은 원본 대화의 자동 진행 목표를 해제한 뒤 질문을 보냅니다. 분기가 실패하면 질문을 보내지 않고 오류로 표시하며, 다시 보내도 원본 대화에 이어쓰지 않고 새로 분기합니다.' },
+        { tag: '계정', name: '열린 대화에 계정 변경 반영', desc: '대화를 연 뒤 계정을 추가하거나 삭제해도 다음 전송부터 바로 반영됩니다. 선택한 계정이나 폴더를 적용할 수 없으면 이전 계정으로 보내지 않고 전송을 취소하며, 입력한 내용은 유지됩니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Codex chats can now open a /btw side window that inherits the current context. Accounts added or removed after a chat was opened apply to its next send.',
+      notes: [
+        { tag: 'Codex', name: '/btw side questions', desc: 'Typing a /btw question in a Codex chat opens a separate window forked from the current conversation and sends the question right away. The main task keeps running, and the question and follow-ups continue in the side window.' },
+        { tag: 'Codex', name: 'No inherited task goal', desc: 'The forked window clears the original conversation’s automatic goal before sending. If forking fails, the question is not sent and an error is shown; sending again forks anew instead of appending to the original conversation.' },
+        { tag: 'Accounts', name: 'Account changes apply to open chats', desc: 'Accounts added or removed after a chat was opened take effect on its next send. If the selected account or folder cannot be applied, the send is cancelled instead of going out under the previous account, and your input is kept.' }
+      ]
+    }
+  },
   '3.1.2': {
     ko: {
       eyebrow: 'BUG FIX',

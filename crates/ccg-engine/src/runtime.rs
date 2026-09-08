@@ -1383,7 +1383,30 @@ impl<D: CliDriver> ChatRuntime<D> {
 
     // ── 명령 ─────────────────────────────────────────────────────────────────
 
+    /// Refresh validation inputs after account/login settings change. The current
+    /// identity and running turn stay intact until a command applies a new identity.
+    pub fn refresh_defaults(&mut self, defaults: IdentityDefaults) {
+        self.defaults = defaults;
+    }
+
+    /// A Run's picker is a prerequisite for sending its prompt. Attribute a
+    /// rejection to Run so the renderer rolls back its optimistic send once.
+    pub fn prepare_run_identity(&mut self, patch: RawIdentityPatch) -> Verdict {
+        if patch.is_empty() {
+            return Verdict::Noop;
+        }
+        self.dispatch_with_rejection(Cmd::IdentitySet {
+            patch,
+            policy: ApplyPolicy::Now,
+            op: PendingOp::Merge,
+        }, Some("run"))
+    }
+
     pub fn dispatch(&mut self, cmd: Cmd) -> Verdict {
+        self.dispatch_with_rejection(cmd, None)
+    }
+
+    fn dispatch_with_rejection(&mut self, cmd: Cmd, reject_as: Option<&'static str>) -> Verdict {
         self.sync_now();
         let name = cmd.name();
         let state = self.state();
@@ -1397,7 +1420,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         };
         let verdict = self.execute(cmd, verdict);
         self.emit(Event::Verdict {
-            cmd: name,
+            cmd: if matches!(verdict, Verdict::Rejected(_)) { reject_as.unwrap_or(name) } else { name },
             verdict: verdict.clone(),
         });
         verdict
@@ -1966,7 +1989,7 @@ impl<D: CliDriver> ChatRuntime<D> {
             self.thread.want_fresh = false;
             self.thread.engine = None;
         }
-        // /btw 포크 = `--resume=<id> --fork-session`(resume이 있을 때만 fork가 유효하다).
+        // /btw 포크 = Claude --fork-session / Codex thread/fork.
         let fork = m.thread == ThreadIntent::Fresh
             && self.thread.want_fresh
             && self.thread.session_id.is_some();
@@ -2057,7 +2080,10 @@ impl<D: CliDriver> ChatRuntime<D> {
         if m.thread == ThreadIntent::Fresh {
             self.thread.session_id = None;
             self.thread.want_fresh = false;
-            self.thread.fork_consumed = true;
+            // 분기 응답 전에 실패하면 다음 전송도 포크해야 합니다. 원본 resume로
+            // 폴백하면 질문이 원본 대화에 들어갑니다. 새 session id 관측 후에만 소비합니다.
+            self.thread.forked_from = if fork { resume.clone() } else { None };
+            self.thread.fork_consumed = !fork;
         }
         // 관측 모델 기준선은 **스트림마다** 새로 잡는다(§6.2 미러는 프로세스 종속이다).
         self.observed_model = None;
@@ -2715,6 +2741,9 @@ impl<D: CliDriver> ChatRuntime<D> {
                     //      ("init 도착 = 새 세션" 판정 금지 · m3-poc §3 실측).
                     self.fire("F1");
                 } else {
+                    if self.thread.forked_from.as_deref().is_some_and(|source| source != session_id) {
+                        self.thread.fork_consumed = true;
+                    }
                     self.thread.session_id = Some(session_id);
                     // 이 세션을 발급한 엔진을 함께 적는다 — 스폰 시점의 정체성이 진실이다
                     // (지금 picker가 이미 다른 엔진으로 넘어가 있을 수 있다).

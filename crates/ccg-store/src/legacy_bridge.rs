@@ -339,6 +339,9 @@ pub fn session_chat_hydrate(id: &str) -> Value {
             out.entry("btwFork".to_string()).or_insert(json!(f));
             out.entry("btwForkCwd".to_string())
                 .or_insert(seed.get("cwd").cloned().unwrap_or(json!("")));
+            out.insert("btwForkEngine".into(), json!(
+                if seed.get("engine").and_then(Value::as_str) == Some("codex") { "codex" } else { "claude" }
+            ));
         }
     }
     if o.get("btwOf").is_some() || o.get("btwSeed").is_some() {

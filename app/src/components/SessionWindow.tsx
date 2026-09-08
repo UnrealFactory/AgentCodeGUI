@@ -43,7 +43,7 @@ import {
   type PickerState,
   type ScheduledMsg
 } from './Chat'
-import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork } from '../lib/btw'
+import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork, type BtwSeed } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
 import { useLimitResume } from '../lib/useLimitResume'
 import { listChatWindows, onChatIdentity, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
@@ -266,7 +266,7 @@ export function SessionWindow(): React.ReactElement {
   const [btwWin, setBtwWin] = useState(false)
   // 레코드 제목('BTW - 원본 제목') — 창 헤더·알림·재포크(원본 이름 전달)가 쓴다
   const [btwTitle, setBtwTitle] = useState('')
-  const btwSeedRef = useRef<{ fork: string; cwd: string } | null>(null)
+  const btwSeedRef = useRef<BtwSeed | null>(null)
   const [autoAsk, setAutoAsk] = useState<string | null>(null)
   // 마지막 활동(프롬프트 전송) 시각 — persist에 실어 사이드바 상대 시간이 된다
   const lastActiveRef = useRef<number | undefined>(undefined)
@@ -438,7 +438,11 @@ export function SessionWindow(): React.ReactElement {
         if (h.btw) setBtwWin(true)
         if (typeof h.btwTitle === 'string' && h.btwTitle) setBtwTitle(h.btwTitle)
         if (typeof h.btwFork === 'string' && h.btwFork)
-          btwSeedRef.current = { fork: h.btwFork, cwd: (typeof h.btwForkCwd === 'string' && h.btwForkCwd) || h.cwd || '' }
+          btwSeedRef.current = {
+            fork: h.btwFork,
+            cwd: (typeof h.btwForkCwd === 'string' && h.btwForkCwd) || h.cwd || '',
+            engine: h.btwForkEngine === 'codex' ? 'codex' : 'claude'
+          }
         if (typeof h.btwPrompt === 'string' && h.btwPrompt && snap.messages.length === 0) setAutoAsk(h.btwPrompt)
       }
       let dir = h?.cwd || ''
@@ -669,7 +673,7 @@ export function SessionWindow(): React.ReactElement {
     // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
     const extraDirs = refDirs.filter((p) => !sameCwd(p, cwd || state.session?.cwd || ''))
     // resume — 자기 세션이 생겼으면 그걸 잇고, /btw 창의 첫 실행이면 원본 세션을 포크한다
-    // (폴더를 바꿨거나 Codex로 바꿨으면 시드를 접고 새 대화 — lib/btw의 단일 판정)
+    // (원본과 폴더·엔진이 달라졌으면 새 대화 — lib/btw의 단일 판정)
     const rs = btwRunResume(state.session?.sessionId, btwSeedRef.current, cwd || '', pk.engine === 'codex' ? 'codex' : 'claude')
     // 포크를 쏘는 실행 = 원본 컨텍스트가 통째로 들어오는 순간 — 클로드 코드 /btw의
     // 곁다리 질문 리마인더를 엔진 전송분에만 앞세운다(스레드 표시는 원문 그대로).

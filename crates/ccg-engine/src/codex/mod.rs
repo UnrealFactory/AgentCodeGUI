@@ -97,6 +97,8 @@ pub struct CodexPlan {
     pub developer_instructions: Option<String>,
     /// 이어 갈 threadId(`thread/resume`) — 없으면 `thread/start`.
     pub resume: Option<String>,
+    /// 원본을 이어쓰지 않고 새 thread id로 분기합니다(/btw 첫 질문).
+    pub fork_session: bool,
     /// API 키 모드(과금 경로 표시용 — `result.viaApi`).
     pub api_mode: bool,
     /// ★O4 — 이 실행이 소비할 OpenAI 계정(정규화가 기본 계정으로 접어 준 값).
@@ -218,6 +220,7 @@ pub fn build_plan(id: &RunIdentity, resume: Option<&str>) -> CodexPlan {
         developer_instructions: developer_instructions(id.system_prompt(), &add_dirs),
         add_dirs,
         resume: resume.map(str::to_string),
+        fork_session: false,
         api_mode: matches!(id.billing(), crate::identity::BillingAxis::ApiKey { .. }),
         account: id.codex_account().map(str::to_string),
         service_tier: id.codex_tier().map(str::to_string),

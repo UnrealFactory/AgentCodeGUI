@@ -801,18 +801,21 @@ impl Hub {
             answer(Value::Null);
             return;
         };
+        // Existing chats must see accounts added or removed since their runtime
+        // was created. Refresh before commands which normalize a picker.
+        if matches!(&op, Op::Run(_) | Op::IdentitySet { .. } | Op::IdentityRevert(_) | Op::Enqueue(_)) {
+            slot.rt.refresh_defaults(ident::defaults());
+        }
 
         match op {
             Op::Run(req) => {
                 // ① 요청이 실어 온 picker → 정체성 패치. 저자는 여전히 하나(런타임)다.
                 let patch = ident::patch_from_run_request(&req);
-                if !patch.is_empty() {
-                    slot.rt.dispatch(Cmd::IdentitySet {
-                        patch,
-                        // 턴 중이면 상태기계가 알아서 예약(deferred)으로 접수한다(§4.2).
-                        policy: ApplyPolicy::Now,
-                        op: PendingOp::Merge,
-                    });
+                if matches!(slot.rt.prepare_run_identity(patch), Verdict::Rejected(_)) {
+                    // Do not send in the old account/folder after rejecting the
+                    // requested settings. The runtime emits one blocking Run verdict.
+                    answer(Value::Null);
+                    return;
                 }
                 // ★3.0.1 첫 주 보고 — 「/clear 했는데 지운 대화가 되살아난다 · Continue 루프」.
                 //    렌더러가 세션을 버리면(clear·폴더 변경 → 스냅샷 초기화) 다음 Run에

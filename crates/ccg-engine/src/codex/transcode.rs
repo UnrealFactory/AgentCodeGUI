@@ -32,6 +32,7 @@ fn async_answer_result(request_id: &str, error: Option<&str>) -> Egress {
 enum Pending {
     Initialize,
     Thread,
+    ForkReady(String),
     Turn,
     ToolConfig,
     Skills,
@@ -389,8 +390,9 @@ impl Transcoder {
                     }
                     // T13/T23 — 소프트 중단. 턴이 없으면 보낼 것이 없다.
                     "interrupt" => {
-                        if self.pending.values().any(|p| matches!(p, Pending::Reload(_))) {
-                            self.pending.retain(|_, p| !matches!(p, Pending::Reload(_)));
+                        if self.pending.values().any(|p| matches!(p, Pending::Initialize | Pending::Thread | Pending::ForkReady(_) | Pending::Reload(_))) {
+                            self.pending.retain(|_, p| !matches!(p, Pending::Initialize | Pending::Thread | Pending::ForkReady(_) | Pending::Reload(_)));
+                            self.queued_prompt = None;
                             let mut result = self.fail_result("Turn interrupted", now);
                             result["terminal_reason"] = json!("aborted_by_user");
                             out.push(Egress::Frame(result));
@@ -486,7 +488,13 @@ impl Transcoder {
             Some(id) => {
                 let mut p = params;
                 p["threadId"] = json!(id);
-                self.req("thread/resume", p, Pending::Thread)
+                if self.plan.fork_session {
+                    // 원본의 자동 목표 진행이 질문보다 먼저 시작되지 않도록 합니다.
+                    // 생성 후 child의 목표만 지우고 질문을 보냅니다.
+                    p["deferGoalContinuation"] = json!(true);
+                }
+                let method = if self.plan.fork_session { "thread/fork" } else { "thread/resume" };
+                self.req(method, p, Pending::Thread)
             }
             None => self.req("thread/start", params, Pending::Thread),
         };
@@ -646,36 +654,26 @@ impl Transcoder {
                 }
                 let tid = s(&res["thread"], "id")
                     .or_else(|| s(&res, "threadId"))
-                    .or_else(|| self.plan.resume.clone())
+                    .or_else(|| if self.plan.fork_session { None } else { self.plan.resume.clone() })
                     .unwrap_or_default();
-                if tid.is_empty() {
+                if tid.is_empty() || (self.plan.fork_session && self.plan.resume.as_deref() == Some(tid.as_str())) {
                     out.push(Egress::Frame(
-                        self.fail_result("thread/start가 스레드 id를 주지 않았어요", now),
+                        self.fail_result("Codex가 새 대화 ID를 반환하지 않았어요. 질문을 전송하지 않았습니다.", now),
                     ));
                     return out;
                 }
-                // 스레드가 갈렸으면 토큰 누계 베이스도 새로 잡는다(engine.ts:1643-1648).
-                if self.thread_id.as_deref() != Some(tid.as_str()) {
-                    self.usage_total = Usage::default();
-                    self.usage_base = Usage::default();
-                    self.usage_adopt = true;
+                if self.plan.fork_session {
+                    out.push(self.req("thread/goal/clear", json!({ "threadId": tid }), Pending::ForkReady(tid)));
+                } else {
+                    out.extend(self.ready_thread(tid));
                 }
-                self.thread_id = Some(tid.clone());
-                // T2의 나머지 — Codex의 threadId가 곧 우리 `session_id`다(resume 키).
-                out.push(Egress::Frame(json!({
-                    "type": "system", "subtype": "init",
-                    "engine": "codex",
-                    "session_id": tid,
-                    "model": self.plan.model,
-                    "cwd": self.plan.cwd,
-                    "tools": [],
-                    // `result.viaApi`의 진실(토글이 아니라 인증 경로 — wire.rs).
-                    "apiKeySource": if self.plan.api_mode { "apiKey" } else { "none" },
-                })));
-                if let Some(text) = self.queued_prompt.take() {
-                    out.push(self.turn_start(&text));
+            }
+            Pending::ForkReady(tid) => {
+                if let Some(e) = err {
+                    out.push(Egress::Frame(self.fail_result(&e, now)));
+                    return out;
                 }
-                out.extend(self.refresh_tooling());
+                out.extend(self.ready_thread(tid));
             }
             Pending::Reload(text) => {
                 // An older CLI may not support reload. It must not swallow the
@@ -767,6 +765,26 @@ impl Transcoder {
 
     /// 실패 한 건 → 턴을 정착시키는 `result`. **침묵 no-op 금지**(D7): 어떤 실패도
     /// 화면에 문장으로 나가야 한다.
+    /// 새 스레드가 질문을 받을 준비가 된 뒤에만 UI에 session id를 알려 줍니다.
+    fn ready_thread(&mut self, tid: String) -> Vec<Egress> {
+        if self.thread_id.as_deref() != Some(tid.as_str()) {
+            self.usage_total = Usage::default();
+            self.usage_base = Usage::default();
+            self.usage_adopt = true;
+        }
+        self.thread_id = Some(tid.clone());
+        let mut out = vec![Egress::Frame(json!({
+            "type": "system", "subtype": "init", "engine": "codex",
+            "session_id": tid, "model": self.plan.model, "cwd": self.plan.cwd,
+            "tools": [], "apiKeySource": if self.plan.api_mode { "apiKey" } else { "none" },
+        }))];
+        if let Some(text) = self.queued_prompt.take() {
+            out.push(self.turn_start(&text));
+        }
+        out.extend(self.refresh_tooling());
+        out
+    }
+
     fn fail_result(&mut self, message: &str, now: Millis) -> Value {
         if let Some(t) = self.turn_id.take() {
             // 뒤따라 올 `turn/completed{failed}`는 같은 사연의 **두 번째 통지**다.
@@ -1732,6 +1750,96 @@ mod tests {
         assert_eq!(f[0]["session_id"], "th-1", "threadId가 곧 session_id(resume 키)다");
         assert_eq!(r[0]["method"], "turn/start");
         assert_eq!(r[0]["params"]["input"][0]["text"], "안녕");
+    }
+
+    #[test]
+    fn btw_forks_once_and_sends_every_question_to_the_child() {
+        let mut p = plan();
+        p.resume = Some("parent".into());
+        p.fork_session = true;
+        let mut t = Transcoder::new(p);
+        t.initialized = true;
+        let fork = rpcs(t.on_outgoing(&crate::driver::user_message("side question"), 0))[0].clone();
+        assert_eq!(fork["method"], "thread/fork");
+        assert_eq!(fork["params"]["threadId"], "parent");
+        assert_eq!(fork["params"]["deferGoalContinuation"], true);
+        assert_eq!(fork["params"]["model"], t.plan.model);
+        let clear = rpcs(t.on_rpc(&json!({"id":fork["id"],"result":{"thread":{"id":"child","sessionId":"parent"}}}), 1))[0].clone();
+        assert_eq!(clear["method"], "thread/goal/clear");
+        assert_eq!(clear["params"]["threadId"], "child");
+        assert!(t.thread_id().is_none(), "Do not adopt a child with an inherited goal");
+        let reply = t.on_rpc(&json!({"id":clear["id"],"result":{"cleared":true}}), 1);
+        assert_eq!(frames(reply.clone())[0]["session_id"], "child");
+        let turn = rpcs(reply)[0].clone();
+        assert_eq!(turn["method"], "turn/start");
+        assert_eq!(turn["params"]["threadId"], "child");
+        assert_eq!(turn["params"]["input"][0]["text"], "side question");
+        let reload = rpcs(t.on_outgoing(&crate::driver::user_message("follow up"), 2))[0].clone();
+        let next = rpcs(t.on_rpc(&json!({"id":reload["id"],"result":{}}), 3))[0].clone();
+        assert_eq!(next["method"], "turn/start");
+        assert_eq!(next["params"]["threadId"], "child");
+    }
+
+    #[test]
+    fn btw_fork_errors_or_invalid_ids_never_send_to_the_parent() {
+        for response in [
+            json!({"error":{"message":"Method not found"}}),
+            json!({"result":{"thread":{}}}),
+            json!({"result":{"thread":{"id":"parent"}}}),
+        ] {
+            let mut p = plan();
+            p.resume = Some("parent".into());
+            p.fork_session = true;
+            let mut t = Transcoder::new(p);
+            t.initialized = true;
+            let request = rpcs(t.on_outgoing(&crate::driver::user_message("side question"), 0))[0].clone();
+            let mut response = response;
+            response["id"] = request["id"].clone();
+            let out = t.on_rpc(&response, 1);
+            assert!(rpcs(out.clone()).is_empty(), "Failed fork must not send a turn or resume");
+            assert!(t.thread_id().is_none());
+            assert_eq!(frames(out)[0]["is_error"], true);
+            let retry = rpcs(t.on_outgoing(&crate::driver::user_message("retry question"), 2))[0].clone();
+            assert_eq!(retry["method"], "thread/fork");
+        }
+    }
+
+    #[test]
+    fn btw_goal_clear_failure_never_starts_a_turn_and_retry_still_forks() {
+        let mut p = plan();
+        p.resume = Some("parent".into());
+        p.fork_session = true;
+        let mut t = Transcoder::new(p);
+        t.initialized = true;
+        let fork = rpcs(t.on_outgoing(&crate::driver::user_message("question"), 0))[0].clone();
+        let clear = rpcs(t.on_rpc(&json!({"id":fork["id"],"result":{"thread":{"id":"child"}}}), 1))[0].clone();
+        let out = t.on_rpc(&json!({"id":clear["id"],"error":{"message":"clear failed"}}), 2);
+        assert!(rpcs(out.clone()).is_empty());
+        assert_eq!(frames(out)[0]["is_error"], true);
+        assert!(t.thread_id().is_none());
+        assert_eq!(rpcs(t.on_outgoing(&crate::driver::user_message("retry"), 3))[0]["method"], "thread/fork");
+    }
+
+    #[test]
+    fn btw_cancel_during_fork_or_goal_clear_ignores_late_responses() {
+        for during_clear in [false, true] {
+            let mut p = plan();
+            p.resume = Some("parent".into());
+            p.fork_session = true;
+            let mut t = Transcoder::new(p);
+            t.initialized = true;
+            let fork = rpcs(t.on_outgoing(&crate::driver::user_message("question"), 0))[0].clone();
+            let mut response = json!({"id":fork["id"],"result":{"thread":{"id":"child"}}});
+            if during_clear {
+                let clear = rpcs(t.on_rpc(&response, 1))[0].clone();
+                response = json!({"id":clear["id"],"result":{"cleared":true}});
+            }
+            let cancelled = frames(t.on_outgoing(&json!({"type":"control_request","request":{"subtype":"interrupt"}}), 2));
+            assert_eq!(cancelled[0]["terminal_reason"], "aborted_by_user");
+            assert!(t.on_rpc(&response, 3).is_empty());
+            assert!(t.queued_prompt.is_none());
+            assert!(t.thread_id().is_none());
+        }
     }
 
     /// ★2026-09-05 — 속도 티어는 `thread/start`와 `turn/start` **둘 다**에 `serviceTier`로 실리고,

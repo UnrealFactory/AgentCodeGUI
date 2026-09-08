@@ -85,3 +85,6 @@ src-tauri/lsp-runtime/
 # 레포의 node_modules에서 매 빌드 새로 만든다(`scripts/tauri-build.mjs::stageLspModules`) —
 # 지워도 되고, 지우는 편이 안전하다(남은 사본을 재활용하면 뺀 파일이 되살아난다).
 src-tauri/lsp-modules/
+
+# AgentMonitoring 도구가 레포 안에 쓰는 작업 기록(bugs/worklogs/notes) — 코드가 아니다
+AgentMonitoring/

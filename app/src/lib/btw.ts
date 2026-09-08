@@ -5,9 +5,9 @@
  * 이 파일을 그대로 번들해 실 코드를 구동한다 — 판정이 복사본이 아니라 본체다.
  *  - parseBtw: 컴포저 텍스트가 /btw 명령인지 + 인라인 질문 분리
  *  - btwForkOf: 원본 채팅에서 "이어받을 수 있는" 포크 소스 판정
- *    (세션 없음·폴더 불일치·Codex(포크 미지원)는 null → 새 컨텍스트로 연다)
+ *    (세션 없음·폴더 불일치는 null → 새 컨텍스트로 연다)
  *  - btwRunResume: btw 창의 실행이 쓸 resume/forkSession 결정
- *    (자기 세션 > 시드 포크 > 새 대화 — 시드는 원본 폴더·claude에서만)
+ *    (자기 세션 > 시드 포크 > 새 대화 — 시드는 원본 폴더·엔진에서만)
  * ============================================================ */
 
 /** Whether two working-directory paths point at the same folder. Used to gate session
@@ -32,18 +32,22 @@ export function parseBtw(text: string): { prompt: string } | null {
   return { prompt: (m[1] ?? '').trim() }
 }
 
-/** 원본 채팅에서 포크할 수 있는 세션 — 가능할 때만 {fork, cwd}.
- *  세션이 아직 없거나(첫 응답 전), 폴더가 세션의 폴더와 다르거나(세션 id는 폴더 스코프),
- *  Codex 엔진이면(app-server엔 포크가 없다) null → 창은 새 컨텍스트로 열린다. */
+export interface BtwSeed {
+  fork: string
+  cwd: string
+  /** 기존 시드는 Claude 세션입니다. */
+  engine?: 'claude' | 'codex'
+}
+
+/** 원본 폴더에 있는 세션만 포크합니다. Codex는 app-server의 thread/fork를 사용합니다. */
 export function btwForkOf(
   session: { sessionId: string; cwd: string } | null | undefined,
   cwd: string,
   engine?: 'claude' | 'codex'
-): { fork: string; cwd: string } | null {
+): BtwSeed | null {
   if (!session || !session.sessionId) return null
-  if (engine === 'codex') return null
   if (!sameCwd(session.cwd, cwd)) return null
-  return { fork: session.sessionId, cwd: session.cwd }
+  return { fork: session.sessionId, cwd: session.cwd, ...(engine === 'codex' ? { engine } : {}) }
 }
 
 /** 포크 첫 실행의 질문에 앞세우는 곁다리 질문 리마인더 — 클로드 코드 /btw의 실물
@@ -80,14 +84,15 @@ export function wrapBtwFork(prompt: string): string {
 /** btw 창의 실행이 쓸 resume/forkSession.
  *  자기 세션(own)이 생겼으면 보통 resume(포크는 첫 실행 한 번이면 끝),
  *  아직이면 시드 포크 — 단 원본 폴더 그대로일 때만(바꿨으면 세션을 못 찾는다),
- *  그리고 claude일 때만(창 안에서 Codex로 바꿨으면 포크를 접는다). 둘 다 아니면 새 대화. */
+ *  그리고 원본 엔진일 때만(다른 엔진의 세션은 포크할 수 없다). 둘 다 아니면 새 대화. */
 export function btwRunResume(
   own: string | undefined,
-  seed: { fork: string; cwd: string } | null,
+  seed: BtwSeed | null,
   cwd: string,
   engine?: 'claude' | 'codex'
 ): { resume?: string; forkSession?: boolean } {
   if (own) return { resume: own }
-  if (seed && engine !== 'codex' && sameCwd(cwd, seed.cwd)) return { resume: seed.fork, forkSession: true }
+  if (seed && (engine ?? 'claude') === (seed.engine ?? 'claude') && sameCwd(cwd, seed.cwd))
+    return { resume: seed.fork, forkSession: true }
   return {}
 }

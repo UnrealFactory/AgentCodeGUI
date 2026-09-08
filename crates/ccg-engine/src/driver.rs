@@ -64,7 +64,11 @@ pub fn build_spawn_spec(
     // 하나도 없으므로(플래그가 아니라 JSON-RPC로 설정한다) 여기서 갈라 나간다.
     // Claude 경로는 이 줄 아래로 한 글자도 안 바뀐다.
     if matches!(id.engine(), EngineAxis::Codex { .. }) {
-        return build_codex_spawn_spec(id, resume);
+        let mut spec = build_codex_spawn_spec(id, resume);
+        if let Some(plan) = spec.codex.as_mut() {
+            plan.fork_session = fork && resume.is_some();
+        }
+        return spec;
     }
     let mut argv: Vec<String> = vec![
         "--output-format".into(),

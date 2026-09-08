@@ -126,7 +126,7 @@ Questions and permission requests from the agent arrive as cards. In plan mode y
 - **Permission cards** — allow once, allow for this session, or deny. Per chat, choose a permission mode: normal, plan, partial, auto, or allow all
 - **Decisions stay** — answers and plan approvals are recorded in the chat and survive reopening it
 - **Codex questions during a task** — answer in a card without manually stopping the work. Failed sends preserve your input for retry
-- **Side questions** — `/btw` opens a window that inherits this chat's context so you can ask without interrupting the main work
+- **Side questions** — In both Claude Code and Codex, `/btw question` opens a separate window with the current chat's context. The main task keeps running, and questions and replies stay in the side window.
 
 <br>
 

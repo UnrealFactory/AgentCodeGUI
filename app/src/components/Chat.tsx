@@ -2608,8 +2608,8 @@ export function BtwWelcome({ carried, onPick }: { carried: boolean; onPick: (tex
               'A btw window for side questions — nothing you ask here leaves a trace in the original chat, or uses up its context.'
             )
           : t(
-              '원본에 아직 대화가 없거나 Codex 엔진(포크 미지원)이에요 — 그래도 여기서의 문답은 원본 대화에 흔적을 남기지 않아요.',
-              'The original chat has no conversation yet, or runs on Codex (no forking) — questions here still leave no trace in it.'
+              '원본에 아직 대화가 없거나 작업 폴더가 달라졌어요 — 여기서의 문답은 원본 대화에 흔적을 남기지 않아요.',
+              'The original chat has no conversation yet, or the working folder changed — questions here still leave no trace in it.'
             )}
       </div>
       <div className="wc-grid">

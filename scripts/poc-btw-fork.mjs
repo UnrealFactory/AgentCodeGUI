@@ -6,11 +6,11 @@
  * (1) 포크가 아니라 '이어쓰기'로 붙어 원본 세션이 오염되거나(최악),
  * (2) 폴더/엔진이 안 맞는 세션을 resume해 "No conversation found"로 죽는다.
  *
- * 검증 (전부 실 모듈 src/renderer/src/lib/btw.ts 구동 — 복사본 없음):
+ * 검증 (전부 실 모듈 app/src/lib/btw.ts 구동 — 복사본 없음):
  *  A. parseBtw — '/btw'·'/btw 질문'(대소문자·개행·트림)은 hit, '/btwxyz'·중간 등장은 miss
  *  B. sameCwd — store/session에서 lib/btw로 이사한 함수의 회귀(구분자·트레일링·대소문자)
- *  C. btwForkOf — 세션 없음·폴더 불일치·Codex는 null(새 컨텍스트), 정상만 {fork, cwd}
- *  D. btwRunResume — 자기 세션 > 시드 포크(원본 폴더·claude 한정) > 새 대화,
+ *  C. btwForkOf — 세션 없음·폴더 불일치는 null, Claude와 Codex는 각각 시드를 생성
+ *  D. btwRunResume — 자기 세션 > 시드 포크(원본 폴더·엔진 한정) > 새 대화,
  *     자기 세션이 있으면 절대 forkSession을 켜지 않는다(매 턴 재포크 = 세션 분열)
  *  E. wrapBtwFork — 포크 실행의 곁다리 질문 리마인더(클로드 코드 실물 이식):
  *     리마인더가 질문 앞에 서고, 원문은 무손상, system-reminder 여닫음이 짝이 맞는다
@@ -27,7 +27,7 @@ const root = path.resolve(import.meta.dirname, '..')
 const bundle = path.join(root, '.poc-btw-fork.mjs')
 
 await esbuild.build({
-  entryPoints: [path.join(root, 'src/renderer/src/lib/btw.ts')],
+  entryPoints: [path.join(root, 'app/src/lib/btw.ts')],
   bundle: true,
   format: 'esm',
   platform: 'neutral',
@@ -75,7 +75,7 @@ eq('정상 — 세션 폴더 그대로', lib.btwForkOf(SES, 'c:/code/app'), { fo
 eq('세션 없음(첫 응답 전)', lib.btwForkOf(null, 'C:/Code/App'), null)
 eq('빈 세션 id', lib.btwForkOf({ sessionId: '', cwd: 'C:/Code/App' }, 'C:/Code/App'), null)
 eq('폴더 불일치(세션은 폴더 스코프)', lib.btwForkOf(SES, 'C:/Other'), null)
-eq('Codex는 포크 미지원', lib.btwForkOf(SES, 'C:/Code/App', 'codex'), null)
+eq('Codex는 엔진을 보존해 포크', lib.btwForkOf(SES, 'C:/Code/App', 'codex'), { fork: 'ses-123', cwd: 'C:\\Code\\App', engine: 'codex' })
 eq('claude 명시', lib.btwForkOf(SES, 'C:/Code/App', 'claude'), { fork: 'ses-123', cwd: 'C:\\Code\\App' })
 
 // ── D. btw 창의 실행 resume 결정 ─────────────────────────────────────
@@ -88,6 +88,11 @@ eq('폴더를 바꿨으면 시드 접기 → 새 대화', lib.btwRunResume(undef
 eq('Codex로 바꿨으면 시드 접기 → 새 대화', lib.btwRunResume(undefined, SEED, 'C:/Code/App', 'codex'), {})
 eq('시드 없음(일반 추가 채팅 첫 실행)', lib.btwRunResume(undefined, null, 'C:/Code/App'), {})
 eq('빈 cwd(바탕화면 폴백)는 시드와 불일치', lib.btwRunResume(undefined, SEED, ''), {})
+const CODEX_SEED = { ...SEED, engine: 'codex' }
+eq('Codex 첫 질문은 원본을 포크', lib.btwRunResume(undefined, CODEX_SEED, 'C:/Code/App', 'codex'), { resume: 'ses-123', forkSession: true })
+eq('Codex 후속 질문은 자기 대화를 재사용', lib.btwRunResume('own-codex', CODEX_SEED, 'C:/Code/App', 'codex'), { resume: 'own-codex' })
+eq('Codex 시드를 Claude에 보내지 않음', lib.btwRunResume(undefined, CODEX_SEED, 'C:/Code/App', 'claude'), {})
+eq('Codex도 작업 폴더가 다르면 새 대화', lib.btwRunResume(undefined, CODEX_SEED, 'C:/Other', 'codex'), {})
 
 // ── E. 포크 실행의 곁다리 질문 리마인더 래핑 ─────────────────────────
 console.log('E. wrapBtwFork')

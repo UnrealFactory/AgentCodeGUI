@@ -118,7 +118,8 @@ pub fn open(app: &AppHandle, window: &WebviewWindow, req: &Value) -> Value {
         // 시드의 `cwd`는 **그 세션이 만들어진 폴더**다(창에서 폴더를 바꾸면 포크를 접는
         // 가드의 기준). 안 실려 오면 요청의 cwd로 갈음한다 — 2.6.2와 같은 폴백.
         let seed_cwd = str_field(req, "forkCwd").unwrap_or(cwd.as_str());
-        payload.insert("btwSeed".into(), json!({ "fork": fork, "cwd": seed_cwd }));
+        let engine = if req["picker"]["engine"] == "codex" { "codex" } else { "claude" };
+        payload.insert("btwSeed".into(), json!({ "fork": fork, "cwd": seed_cwd, "engine": engine }));
     }
     if let Some(prompt) = str_field(req, "prompt") {
         payload.insert("btwPrompt".into(), json!(prompt));
@@ -173,6 +174,7 @@ mod tests {
         assert_eq!(h["btw"], json!(true), "btw 창 정체가 안 내려갔다 — 웰컴 화면이 일반 추가 채팅이 된다");
         assert_eq!(h["btwFork"], "ses-9", "포크 소스가 없다 = 첫 실행이 새 대화로 나간다");
         assert_eq!(h["btwForkCwd"], "C:\\Code\\App");
+        assert_eq!(h["btwForkEngine"], "claude", "기존 엔진 표식 없는 시드는 Claude입니다");
         assert_eq!(h["btwPrompt"], "이 함수 왜 이래?");
 
         // ★읽으면 소비 — 두 번째 hydrate에는 질문이 없다(있으면 /clear 후 재열람 때

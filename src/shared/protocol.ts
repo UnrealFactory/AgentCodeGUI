@@ -1020,14 +1020,14 @@ export interface SessionWindowInfo {
 }
 
 /** /btw — 현재 대화의 컨텍스트를 포크해 별도 질문 창(추가 채팅)으로 여는 요청.
- *  fork가 없으면(세션 없음·폴더 불일치·Codex) 컨텍스트 없이 새 대화로 연다. */
+ *  fork가 없으면(세션 없음·폴더 불일치) 컨텍스트 없이 새 대화로 연다. */
 export interface BtwOpenRequest {
   origin: string // 원본 채팅 id ('' = 메인이 sender로 보완 — 추가 채팅 창에서 부른 경우)
   originTitle?: string | null // 원본 채팅/패널의 제목 — btw 채팅 이름이 'BTW - <이 제목>'이 된다
   cwd: string
   refDirs?: string[]
   picker?: unknown // 원본 채팅의 모델·모드·계정 스냅샷 — 창이 sanitize해서 복원
-  fork?: string | null // 포크 소스 세션 id (claude 전용)
+  fork?: string | null // 포크 소스 세션 id (Claude session / Codex thread)
   forkCwd?: string | null // 그 세션의 폴더 — 창에서 폴더를 바꾸면 포크를 접는 가드
   prompt?: string | null // '/btw 질문' 꼴의 인라인 질문 — 창이 열리자마자 자동 전송
 }
@@ -1098,6 +1098,7 @@ export interface SessionHydrateData {
   btwTitle?: string
   btwFork?: string
   btwForkCwd?: string
+  btwForkEngine?: 'claude' | 'codex'
   btwPrompt?: string
 }
 
