@@ -1905,7 +1905,9 @@ export class ClaudeEngine {
           role: oneLine(desc, 40) || t('서브에이전트', 'Subagent'),
           status: 'running',
           activity: oneLine(desc, 200) || t('작업 중', 'Working'),
-          tools: []
+          tools: [],
+          model: typeof input.model === 'string' && input.model !== 'inherit' ? modelKey(input.model) || input.model : undefined,
+          effort: typeof input.effort === 'string' || typeof input.effort === 'number' ? String(input.effort) : undefined
         }
       })
       return

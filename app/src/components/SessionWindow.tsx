@@ -916,7 +916,7 @@ export function SessionWindow(): React.ReactElement {
                   onNotify={notify}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} connectionRetry={state.connectionRetry} />}
             </div>
           )}
           {follow.showJump && (

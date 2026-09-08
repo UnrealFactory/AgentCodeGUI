@@ -1526,7 +1526,7 @@ function MainApp({ user }: { user: AppUser }) {
                     onOpenImage={openViewer}
                   />
                 ))}
-                {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
+                {busy && showWorking && <WorkingIndicator elapsed={elapsed} connectionRetry={state.connectionRetry} />}
               </div>
             )}
             {follow.showJump && (

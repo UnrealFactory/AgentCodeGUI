@@ -18,6 +18,7 @@ import type {
 } from '@shared/protocol'
 import { t } from '../lib/i18n'
 import { classifyNotice, type NoticeCat } from '../lib/noticeCat'
+import { appendDiagnostic, classifyDiagnostic, clearRetryState, restoreDiagnostics, retryOutcome, settleDiagnostics, type ConnectionRetry, type DiagnosticLog } from '@shared/diagnostics'
 
 export type ThreadItem =
   | {
@@ -57,7 +58,7 @@ export type ThreadItem =
   // ★ 2026-09-04 — `cat`: 주제별 분류(lib/noticeCat.ts — 한도·계정·수명·종료·중지·예약·거절…).
   // 색·글리프·라벨은 이것으로 정한다. 없는 옛 항목은 뷰가 문장으로 다시 읽는다. `tone`은
   // 옛 스냅샷 호환으로만 남는다(더 쓰지 않는다).
-  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; cat?: NoticeCat; tone?: NotifyTone; action?: NotifyAct; revertTo?: number; reverted?: boolean }
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; cat?: NoticeCat; tone?: NotifyTone; action?: NotifyAct; revertTo?: number; reverted?: boolean; diagnostics?: DiagnosticLog }
   // ★ M-UI — 모델 자동 전환 배너(band · notice · action=revert). 2.6.2는 이걸 kind:'notice'로
   // 흘려 API 과금 안내와 같은 무게가 됐다(session.ts:821 · 병리 P3). 이제 M-LOGIC §6.2의
   // 재료를 그대로 든다: 주어(from)·목적어(to)·사유(cause)·되돌릴 지점(revertTo).
@@ -165,6 +166,7 @@ export interface SessionState {
   // 작업 인디케이터가 랜덤 문구 대신 이것을 적는다. 메인 경로가 다시 움직이면(사고·답변·도구·상태·
   // 종결) 걷힌다. 영속하지 않는다(스냅샷은 null — 재시작한 CLI는 그 대기를 잇지 않는다).
   apiRetry?: ApiRetryInfo | null
+  connectionRetry?: ConnectionRetry | null
   // ★ M-UI §5-4 — 이번 턴이 시작한 시각(epoch ms). 중단선이 "얼마나 하다 끊겼는지"를
   // 말하려면 이 값이 필요하다. 영속하지 않는다(복원 직후엔 없는 게 맞다 — 지어내지 않는다).
   //
@@ -213,11 +215,6 @@ const THINKING_ID = 'thinking'
 // begin 직후(엔진의 analyzing 이벤트가 아직)를 나타내는 curRunId 표식 — 이 창에 도착하는
 // 종결 이벤트는 전부 이전 실행의 잔재다. 실제 runId는 'run-N'/'cxrun-N'이라 충돌하지 않는다.
 const PENDING_RUN = 'pending'
-// ★3.0.8 — 이 이벤트들이 오면 API 재시도 대기(`apiRetry`)는 끝난 것이다(메인 경로의 진행·종결·카드).
-const API_RETRY_CLEARERS = new Set<string>([
-  'status', 'thinking', 'assistant-stream', 'assistant-done', 'tool-start', 'tool-end', 'result', 'error',
-  'permission-request', 'question-request', 'compact', 'model-fallback'
-])
 
 export function nowTime(): string {
   return new Date().toLocaleTimeString(t('ko-KR', 'en-US'), { hour: 'numeric', minute: '2-digit' })
@@ -285,7 +282,8 @@ export function snapshotForPersist(s: SessionState): SessionState {
     openGroupId: null,
     pendingCommand: null,
     // drop a command card still mid-run — it would restore as a forever-spinning card
-    messages: s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)),
+    messages: settleDiagnostics(s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)), 'history'),
+    connectionRetry: null,
     subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const })),
     // 백그라운드 작업은 CLI 프로세스와 함께 죽으므로 "실행 중"으로 복원되면 거짓말이 된다
     bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
@@ -354,6 +352,7 @@ export const initialSessionState: SessionState = {
   seq: 0,
   shownNotices: [],
   curRunId: null,
+  connectionRetry: null,
   apiRetry: null,
   turnAt: undefined,
   turnMark: null
@@ -547,7 +546,7 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
   return {
     ...initialSessionState,
     status,
-    messages: capThread(messages),
+    messages: capThread(restoreDiagnostics(messages)),
     todos: arr<Todo>(r.todos).filter((t) => !!t && typeof t === 'object'),
     files: arr<ChangedFile>(r.files).filter((f) => !!f && typeof f === 'object'),
     diffs,
@@ -626,6 +625,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   if (action.type === 'begin') {
+    state = clearRetryState(state, 'history')
     const seq = state.seq + 1
     const cmd = action.command
     const without = state.messages.filter((m) => m.id !== THINKING_ID)
@@ -696,6 +696,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
     // 정상이고 그걸 지우면 대화가 거짓이 된다.
     const tail = state.messages[state.messages.length - 1]
     if (tail && tail.kind === 'msg' && tail.role === 'user' && tail.text === action.text) return state
+    state = clearRetryState(state, 'history')
     const seq = state.seq + 1
     const prior = state.messages.filter((m) => m.id !== THINKING_ID)
     return {
@@ -794,6 +795,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   if (action.type === 'interrupt-turn') {
+    state = clearRetryState(state, 'history')
     // 취소 = 중단 — 이번 턴의 흔적(보낸 말풍선 + 반쯤 온 답 + 도구 로그)은 그대로 두고
     // '중단함' 마커만 붙인다(세션에 실제로 남는 내용과 화면을 일치시키는 게 핵심).
     // 명령(/compact 등) 턴은 돌던 카드를 '중단' 상태로 정착시킨다.
@@ -839,15 +841,18 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   const e = action.event
-  // ★3.0.8 — API 재시도 대기 표시는 **메인 경로가 다시 움직이는 순간** 걷는다(사고·답변·도구·상태·
-  // 종결·카드). 백그라운드 통지(bg-tasks·subagent·workflow·terminal)는 그 사이에도 오므로 안 걷는다 —
-  // 메인 요청은 여전히 대기 중이다.
-  if (state.apiRetry && API_RETRY_CLEARERS.has(e.type)) state = { ...state, apiRetry: null }
   // 실행 경계 가드 — 죽어가는 이전 실행의 늦은 종결 이벤트인지. begin 직후(pending)면
   // 현 실행의 analyzing 전이므로 전부 잔재고, runId 채택 후엔 다른 id를 거른다.
   // curRunId=null(복원 등 출처 불명)은 통과 — 잘못 거르면 busy가 영영 안 풀린다.
   const staleRun = (runId: string): boolean =>
     state.curRunId === PENDING_RUN || (!!state.curRunId && state.curRunId !== runId)
+  if (staleRun(e.runId) && retryOutcome(e) === 'resumed') return state
+  if (e.type === 'status' && e.status === 'analyzing' && e.runId !== state.curRunId)
+    state = clearRetryState(state, 'history')
+  else if (!staleRun(e.runId) && !state.interrupted) {
+    const outcome = retryOutcome(e)
+    if (outcome) state = clearRetryState(state, outcome)
+  }
   switch (e.type) {
     case 'status':
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
@@ -1081,6 +1086,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'terminal':
       return { ...state, terminal: capPush(state.terminal, e.line, MAX_TERMINAL_LINES) }
 
+    case 'subagent-metadata':
+      return {
+        ...state,
+        subagents: state.subagents.map((a) => a.id === e.id
+          ? { ...a, model: e.model || a.model, effort: e.effort || a.effort }
+          : a)
+      }
+
     case 'subagent': {
       const existing = state.subagents.find((a) => a.id === e.agent.id)
       if (existing) {
@@ -1101,6 +1114,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
             activity: act || a.activity,
             // 모델·소요는 부분 업데이트로 띄엄띄엄 온다 — 빈 값이 기존 값을 지우지 않게
             model: e.agent.model || a.model,
+            effort: e.agent.effort || a.effort,
             durationMs: e.agent.durationMs ?? a.durationMs,
             log
           }
@@ -1214,6 +1228,17 @@ export function reducer(state: SessionState, action: Action): SessionState {
 
     case 'notice': {
       const seq = state.seq + 1
+      const diagnostic = !e.once && !e.switch ? classifyDiagnostic(e.text) : null
+      if (diagnostic) {
+        if (staleRun(e.runId)) return state
+        const active = !state.interrupted && (state.status === 'analyzing' || state.status === 'working')
+        return {
+          ...state, seq,
+          ...(diagnostic.retry && active ? { connectionRetry: diagnostic.retry, apiRetry: null, thinkingText: null, streaming: false } : {}),
+          messages: capThread(appendDiagnostic<ThreadItem>(state.messages,
+            { kind: 'notice', id: `n${seq}`, text: e.text, time: nowTime() }, diagnostic.group, e.runId, !!diagnostic.retry && active))
+        }
+      }
       // ★M11 — `switch`가 붙어 오면 이건 **한도 소진 자동 계정 전환** 배너다. 문장은
       // 엔진이 완성해 보낸 그대로 쓰고(어느 계정으로 · 왜 그 계정인가 = 초기화 임박 꼬리),
       // 여기서 더하는 건 **되돌릴 재료** 하나다: `action:'revert'` + `revertTo`.
@@ -1261,7 +1286,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
       // 끊긴 재시도면 `streaming`을 내려 인디케이터가 되돌아온다. 다음 진행 프레임이 지운다(위 가드).
       if (staleRun(e.runId) || state.interrupted) return state
       return {
-        ...state,
+        ...clearRetryState(state, 'history'),
         thinkingText: null,
         streaming: false,
         apiRetry: { attempt: e.attempt, maxRetries: e.maxRetries, retryInMs: e.retryInMs, status: e.status, error: e.error, at: Date.now() }

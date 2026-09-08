@@ -638,7 +638,7 @@ export const PanelView = memo(function PanelView({
                   onOpenImage={onOpenImage}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} connectionRetry={state.connectionRetry} />}
             </div>
           )}
           {/* 따라가기를 풀고 위를 읽는 중 — 본채팅과 같은 "맨 아래로" 점프 버튼 */}

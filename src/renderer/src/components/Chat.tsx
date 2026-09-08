@@ -1,5 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { DiagnosticNotice } from './DiagnosticNotice'
+import type { ConnectionRetry } from '@shared/diagnostics'
 import type {
   ModelId,
   EffortId,
@@ -859,6 +861,7 @@ export const MessageView = memo(function MessageView({
     )
   }
   if (item.kind === 'notice') {
+    if (item.diagnostics) return <DiagnosticNotice log={item.diagnostics} />
     // 시스템 경고 줄 — 정책 거부로 모델이 자동 전환됐을 때, API 과금 안내 등.
     // 텍스트의 `백틱`으로 감싼 부분은 색을 넣어 강조한다(예: 하단 '과금' 토글).
     return (
@@ -1135,7 +1138,7 @@ function rollPhraseColor(): string {
 // Codex 영어 요약)는 여기 절대 넣지 않는다 — 두 엔진 모두 같은 브랜드 문구로 통일한다.
 // elapsed(초)는 useAgentSession 훅에서 내려온다 — 질문/승인 카드나 답변 스트리밍으로
 // 인디케이터가 잠시 언마운트돼도 훅이 계속 세고 있어 리셋되지 않는다
-export function WorkingIndicator({ elapsed }: { elapsed: number }) {
+export function WorkingIndicator({ elapsed, connectionRetry }: { elapsed: number; connectionRetry?: ConnectionRetry | null }) {
   useLang() // 언어 전환 재렌더 구독 — 회전 문구가 즉시 따라온다
   const [i, setI] = useState(() => Math.floor(Math.random() * workingPhrases().length))
   const [color, setColor] = useState(rollPhraseColor)
@@ -1161,6 +1164,19 @@ export function WorkingIndicator({ elapsed }: { elapsed: number }) {
     schedule()
     return () => clearTimeout(id)
   }, [])
+  if (connectionRetry) {
+    const label = connectionRetry.phase === 'fallback'
+      ? t('HTTPS 연결로 전환하는 중', 'Switching to HTTPS')
+      : t('연결 오류로 다시 시도 중', 'Retrying after a connection error')
+    const attempt = connectionRetry.maxAttempts ? `${connectionRetry.attempt}/${connectionRetry.maxAttempts} · ` : ''
+    return (
+      <div className="working-line" role="status">
+        <span className="working-spark"><IconMascotDraw size={25} /></span>
+        <span className="working-label retry">{label}</span>
+        <span className="working-time"><span className="dot">·</span>{attempt}{fmtElapsedKo(elapsed)}</span>
+      </div>
+    )
+  }
   const label = workingPhrases()[i]
   // 라이브 인디케이터 — 마스코트가 선부터 그려지는 루프(머리→귀→더듬이→점) + shimmer 문구.
   return (
@@ -3370,14 +3386,15 @@ export const WorkBar = memo(function WorkBar({
   const subTotal = subagents.length
   const totalAdd = files.reduce((n, f) => n + (f.add || 0), 0)
   const totalDel = files.reduce((n, f) => n + (f.del || 0), 0)
+  const engineName = engine === 'codex' ? 'Codex' : 'Claude'
 
   const chips: { key: WorkTab; ring?: number; icon?: ReactNode; label: string; value: string; detail: string; tip: string; align?: 'r' }[] = [
     // 빈 목록은 실행 중에도 "계획 수립 중"이라 추측하지 않는다 — 팝오버 문구와 같은 이유
-    { key: 'todo', icon: <IconList size={14} />, label: t('할 일', 'To-dos'), value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? t(`${todoPct}% 완료`, `${todoPct}% done`) : t('없음', 'None'), tip: t('Claude가 세운 작업 계획 — 누르면 할 일 목록', 'The task plan Claude made — click for the to-do list') },
-    { key: 'sub', icon: <IconBot size={14} />, label: t('서브에이전트', 'Subagents'), value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? t(`${runningSub}개 실행 중`, `${runningSub} running`) : subTotal ? t('모두 완료', 'All done') : t('없음', 'None'), tip: t('Claude가 띄운 보조 에이전트의 진행 상황 — 누르면 목록', 'Progress of the helper agents Claude spawned — click for the list') },
-    { key: 'sh', icon: <IconTerminal size={14} />, label: t('백그라운드 셸', 'Background shells'), value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? t(`${runningBg}개 실행 중`, `${runningBg} running`) : bgTasks.length ? t('모두 종료', 'All ended') : t('없음', 'None'), tip: t('Claude가 백그라운드로 돌리는 셸 — 누르면 목록·중지', 'Shells Claude runs in the background — click to view or stop') },
-    { key: 'file', icon: <IconFile size={14} />, label: t('변경된 파일', 'Changed files'), value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : t('없음', 'None'), tip: t('이번 작업에서 생성·수정된 파일 — 누르면 목록·diff', 'Files created or edited in this run — click for the list and diffs') },
-    { key: 'ctx', ring: ctxPct, label: t('컨텍스트', 'Context'), value: `${ctxPct}%`, detail: ctxDetail, tip: apiMode ? t('대화의 컨텍스트 사용량·API 비용 — 누르면 자세히', 'Context use and API cost for this chat — click for details') : t('대화의 컨텍스트 사용량·사용 한도 — 누르면 자세히', 'Context use and rate limits for this chat — click for details'), align: 'r' }
+    { key: 'todo', icon: <IconList size={14} />, label: t('할 일', 'To-dos'), value: `${todoDone}/${todoTotal || 0}`, detail: todoTotal ? t(`${todoPct}% 완료`, `${todoPct}% done`) : t('없음', 'None'), tip: t(`${engineName}가 세운 작업 계획`, `The task plan ${engineName} made`) },
+    { key: 'sub', icon: <IconBot size={14} />, label: t('서브에이전트', 'Subagents'), value: `${doneSub}/${subTotal || 0}`, detail: runningSub > 0 ? t(`${runningSub}개 실행 중`, `${runningSub} running`) : subTotal ? t('모두 완료', 'All done') : t('없음', 'None'), tip: t(`${engineName}가 띄운 보조 에이전트의 진행 상황`, `Progress of the helper agents ${engineName} spawned`) },
+    { key: 'sh', icon: <IconTerminal size={14} />, label: t('백그라운드 셸', 'Background shells'), value: `${endedBg}/${bgTasks.length || 0}`, detail: runningBg > 0 ? t(`${runningBg}개 실행 중`, `${runningBg} running`) : bgTasks.length ? t('모두 종료', 'All ended') : t('없음', 'None'), tip: t(`${engineName}가 백그라운드로 돌리는 셸`, `Shells ${engineName} runs in the background`) },
+    { key: 'file', icon: <IconFile size={14} />, label: t('변경된 파일', 'Changed files'), value: `${files.length}`, detail: files.length ? `+${totalAdd} −${totalDel}` : t('없음', 'None'), tip: t('이번 작업에서 생성·수정된 파일', 'Files created or edited in this run') },
+    { key: 'ctx', ring: ctxPct, label: t('컨텍스트', 'Context'), value: `${ctxPct}%`, detail: ctxDetail, tip: apiMode ? t('대화의 컨텍스트 사용량·API 비용', 'Context use and API cost for this chat') : t('대화의 컨텍스트 사용량·사용 한도', 'Context use and rate limits for this chat'), align: 'r' }
   ]
 
   const popBody = (key: WorkTab): ReactNode => {

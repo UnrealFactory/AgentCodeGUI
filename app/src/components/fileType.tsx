@@ -59,8 +59,8 @@ const EXT: Record<string, FileType> = {
   vb: { icon: 'visualstudio', label: 'VB', color: 'oklch(0.50 0.12 270)', lang: 'vbnet' },
   xaml: { icon: 'xml', label: 'XAML', color: 'oklch(0.58 0.12 240)', lang: 'xml' },
   axaml: { icon: 'xml', label: 'XAML', color: 'oklch(0.58 0.12 240)', lang: 'xml' },
-  razor: { icon: 'razor', label: 'RAZ', color: 'oklch(0.55 0.13 290)', lang: 'xml' },
-  cshtml: { icon: 'razor', label: 'CSH', color: 'oklch(0.55 0.13 290)', lang: 'xml' },
+  razor: { icon: 'razor', label: 'RAZ', color: 'oklch(0.55 0.13 290)', lang: 'razor' },
+  cshtml: { icon: 'razor', label: 'CSH', color: 'oklch(0.55 0.13 290)', lang: 'razor' },
   gradle: { icon: 'gradle', label: 'GRDL', color: 'oklch(0.48 0.10 200)', lang: '' },
   // JS / TS
   js: { icon: 'javascript', label: 'JS', color: 'oklch(0.63 0.14 85)', lang: 'javascript' },
@@ -198,6 +198,7 @@ const CS_LANGS = new Set(['csharp', 'cs', 'c#'])
 const CPP_LANGS = new Set(['cpp', 'c++', 'cc', 'cxx', 'c', 'h', 'hpp'])
 export function paletteClassFor(lang: string): string {
   const l = lang.toLowerCase()
+  if (l === 'razor' || l === 'cshtml' || l === 'aspnetcorerazor') return ' pal-rider pal-cs pal-razor'
   if (!RIDER_LANGS.has(l)) return ''
   if (CS_LANGS.has(l)) return ' pal-rider pal-cs'
   if (CPP_LANGS.has(l)) return ' pal-rider pal-cpp'

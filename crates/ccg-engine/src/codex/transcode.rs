@@ -41,6 +41,8 @@ enum Pending {
     /// 백그라운드 터미널 목록. `Some(rid)`면 **능동 프로브 ⑥**가 시킨 것 —
     /// 응답이 오면 그 `request_id`의 `control_response`와 REPLACE를 함께 낸다.
     BgList(Option<String>),
+    /// Read this child thread's settings without hydrating its conversation.
+    AgentInfo { thread_id: String, tool_id: String },
     /// 답을 안 쓰는 호출(interrupt · terminate).
     Fire,
 }
@@ -730,6 +732,19 @@ impl Transcoder {
                     out.extend(self.reconcile_bg(&res));
                 }
             }
+            Pending::AgentInfo { tool_id, .. } => {
+                if err.is_none() {
+                    let thread = &res["thread"];
+                    let model = s(thread, "model").filter(|s| !s.is_empty());
+                    let effort = s(thread, "reasoningEffort").filter(|s| !s.is_empty());
+                    if model.is_some() || effort.is_some() {
+                        out.push(Egress::Frame(json!({
+                            "type": "system", "subtype": SYNTH, "kind": "subagent_metadata",
+                            "id": tool_id, "model": model, "effort": effort
+                        })));
+                    }
+                }
+            }
             Pending::Fire => {}
         }
         out
@@ -1276,6 +1291,18 @@ impl Transcoder {
 
     // ── 서브에이전트 ─────────────────────────────────────────────────────────
 
+    fn read_agent_info(&mut self, thread_id: &str, tool_id: &str) -> Vec<Egress> {
+        if self.pending.values().any(|p| matches!(p,
+            Pending::AgentInfo { thread_id: id, .. } if id == thread_id)) {
+            return vec![];
+        }
+        vec![self.req(
+            "thread/read",
+            json!({ "threadId": thread_id, "includeTurns": false }),
+            Pending::AgentInfo { thread_id: thread_id.into(), tool_id: tool_id.into() },
+        )]
+    }
+
     fn on_collab_started(&mut self, id: &str, item: &Value) -> Vec<Egress> {
         let tool = s(item, "tool").unwrap_or_default();
         let receivers: Vec<String> = item["receiverThreadIds"]
@@ -1288,16 +1315,19 @@ impl Transcoder {
         let Some(aid) = receivers.first().cloned() else { return vec![] };
         let prompt = s(item, "prompt").unwrap_or_default();
         let input = json!({ "subagent_type": "Agent", "description": one_line(&prompt, 200),
-                            "prompt": prompt });
+                            "prompt": prompt, "model": item.get("model"),
+                            "effort": item.get("reasoningEffort") });
         self.agents.insert(
-            aid,
+            aid.clone(),
             Agent { tool_id: id.to_string(), input: input.clone(), done: false },
         );
         self.items.insert(
             id.to_string(),
             Item { name: "Task".into(), out: String::new() },
         );
-        vec![Egress::Frame(agent_card(id, &input))]
+        let mut out = vec![Egress::Frame(agent_card(id, &input))];
+        out.extend(self.read_agent_info(&aid, id));
+        out
     }
 
     fn on_collab_completed(&mut self, id: &str, item: &Value) -> Vec<Egress> {
@@ -1343,14 +1373,16 @@ impl Transcoder {
                 .unwrap_or_else(|| "Agent".into());
             let input = json!({ "subagent_type": name, "description": "서브에이전트" });
             self.agents.insert(
-                aid,
+                aid.clone(),
                 Agent { tool_id: tool_id.clone(), input: input.clone(), done: false },
             );
             self.items.insert(
                 tool_id.clone(),
                 Item { name: "Task".into(), out: String::new() },
             );
-            return vec![Egress::Frame(agent_card(&tool_id, &input))];
+            let mut out = vec![Egress::Frame(agent_card(&tool_id, &input))];
+            out.extend(self.read_agent_info(&aid, &tool_id));
+            return out;
         }
         let closing = ["clos", "end", "stop", "shutdown", "interrupt"]
             .iter()
@@ -1401,7 +1433,9 @@ impl Transcoder {
                 self.items
                     .entry(agent.tool_id.clone())
                     .or_insert_with(|| Item { name: "Task".into(), out: String::new() });
-                vec![Egress::Frame(agent_card(&agent.tool_id, &agent.input))]
+                let mut out = vec![Egress::Frame(agent_card(&agent.tool_id, &agent.input))];
+                out.extend(self.read_agent_info(aid, &agent.tool_id));
+                out
             }
             // ★ **주 종결 경로** — "턴 완료가 곧 작업 완료"(2.6.2 `engine.ts:806-823`).
             //   이게 없으면 남은 종결 경로 둘(`subAgentActivity{clos*}` ·

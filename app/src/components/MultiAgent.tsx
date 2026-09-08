@@ -766,7 +766,7 @@ export const PanelView = memo(function PanelView({
                   onNotify={notify}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} connectionRetry={state.connectionRetry} />}
             </div>
           )}
           {/* 따라가기를 풀고 위를 읽는 중 — 본채팅과 같은 "맨 아래로" 점프 버튼 */}

@@ -1023,7 +1023,14 @@ impl Wire {
                     "role": if role.is_empty() { "서브에이전트".to_string() } else { role },
                     "status": "running",
                     "activity": if act.is_empty() { "작업 중".to_string() } else { act },
-                    "tools": []
+                    "tools": [],
+                    "model": input.get("model").and_then(Value::as_str)
+                        .filter(|m| !m.is_empty() && *m != "inherit").map(model_display),
+                    "effort": input.get("effort").and_then(|e| match e {
+                        Value::String(s) if !s.is_empty() => Some(s.clone()),
+                        Value::Number(n) => Some(n.to_string()),
+                        _ => None,
+                    })
                 }
             }));
             return out;
@@ -1414,6 +1421,12 @@ impl Wire {
                     out.extend(self.tooling_event());
                 }
                 match f.get("kind").and_then(Value::as_str).unwrap_or("") {
+                    "subagent_metadata" => {
+                        if let Some(id) = s(f, "id").filter(|id| !id.is_empty()) {
+                            out.push(json!({ "type": "subagent-metadata", "runId": run,
+                                "id": id, "model": f.get("model"), "effort": f.get("effort") }));
+                        }
+                    }
                     "async_question" => {
                         let id = s(f, "requestId").unwrap_or_default();
                         let questions = f["questions"].clone();
@@ -2312,6 +2325,28 @@ mod tests {
             !evs.iter().any(|e| e["type"] == "context" || e["type"] == "assistant-done"),
             "게이지·말풍선 오염 금지"
         );
+    }
+
+    #[test]
+    fn subagent_settings_reach_the_card_without_reopening_finished_work() {
+        let mut w = wire();
+        let spawn = w.translate(&json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "task-settings", "name": "Agent",
+              "input": { "subagent_type": "Review", "model": "gpt-5.6-luna", "effort": "high" } }] } }));
+        let agent = &spawn.iter().find(|e| e["type"] == "subagent").unwrap()["agent"];
+        assert_eq!(agent["model"], "gpt-5.6-luna");
+        assert_eq!(agent["effort"], "high");
+        w.translate(&json!({ "type": "user", "message": { "content": [
+            { "type": "tool_result", "tool_use_id": "task-settings", "content": "done" }] } }));
+        assert!(!w.subagents.contains("task-settings"));
+        let update = w.translate(&json!({ "type": "system", "subtype": "ccg_codex",
+            "kind": "subagent_metadata", "id": "task-settings",
+            "model": "gpt-6-astra", "effort": "xhigh" }));
+        assert_eq!(types(&update), vec!["subagent-metadata"]);
+        assert_eq!(update[0]["id"], "task-settings");
+        assert_eq!(update[0]["model"], "gpt-6-astra");
+        assert_eq!(update[0]["effort"], "xhigh");
+        assert!(!w.subagents.contains("task-settings"));
     }
 
     #[test]

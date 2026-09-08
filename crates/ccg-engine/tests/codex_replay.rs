@@ -755,9 +755,12 @@ fn subagents_become_a_task_card_and_their_frames_are_sidechained() {
     r.clear();
     r.rpc(json!({ "method": "item/started", "params": { "threadId": "th-1", "item": {
         "id": "c1", "type": "collabAgentToolCall", "tool": "spawnAgent",
-        "prompt": "레포를 조사해 줘", "receiverThreadIds": ["th-b"] } } }));
+        "prompt": "레포를 조사해 줘", "receiverThreadIds": ["th-b"],
+        "model": "gpt-5.6-luna", "reasoningEffort": "high" } } }));
     cover("item/*{collabAgentToolCall}");
     assert_eq!(r.frames[0]["message"]["content"][0]["name"], "Task");
+    assert_eq!(r.frames[0]["message"]["content"][0]["input"]["model"], "gpt-5.6-luna");
+    assert_eq!(r.frames[0]["message"]["content"][0]["input"]["effort"], "high");
     r.clear();
     r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1", "item": {
         "id": "c2", "type": "collabAgentToolCall", "tool": "closeAgent",
@@ -775,6 +778,54 @@ fn frames_from_an_unknown_thread_are_dropped_not_mixed_in() {
     r.rpc(json!({ "method": "item/agentMessage/delta",
                   "params": { "threadId": "th-other", "itemId": "x", "delta": "남의 대화" } }));
     assert!(r.frames.is_empty(), "한 프로세스에 여러 스레드가 산다(engine.ts:480-486)");
+}
+
+#[test]
+fn subagent_settings_are_read_from_the_child_even_if_it_finishes_first() {
+    let mut r = started();
+    r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1", "item": {
+        "id": "spawn", "type": "subAgentActivity", "kind": "started",
+        "agentThreadId": "child", "agentPath": "/agents/review" } } }));
+    let read = r.sent("thread/read").expect("read child settings").clone();
+    assert_eq!(read["params"], json!({ "threadId": "child", "includeTurns": false }));
+    let card = r.frames[0]["message"]["content"][0]["id"].clone();
+    assert!(r.frames[0]["message"]["content"][0]["input"].get("model").is_none(),
+        "parent settings are not child settings");
+
+    r.clear();
+    r.rpc(json!({ "method": "turn/started", "params": { "threadId": "child", "turn": { "id": "ct1" } } }));
+    assert!(r.sent("thread/read").is_none(), "coalesce pending metadata requests");
+    r.rpc(json!({ "method": "turn/completed", "params": { "threadId": "child", "turn": { "status": "completed" } } }));
+    r.clear();
+    r.rpc(json!({ "id": read["id"], "result": { "thread": {
+        "id": "child", "model": "gpt-5.6-luna", "reasoningEffort": "high" } } }));
+    assert_eq!(r.frames, vec![json!({
+        "type": "system", "subtype": "ccg_codex", "kind": "subagent_metadata",
+        "id": card, "model": "gpt-5.6-luna", "effort": "high"
+    })], "late settings must not reopen a task or affect the main conversation");
+
+    r.clear();
+    r.rpc(json!({ "method": "turn/started", "params": { "threadId": "child", "turn": { "id": "ct2" } } }));
+    assert!(r.sent("thread/read").is_some(), "refresh settings when a child resumes");
+}
+
+#[test]
+fn unavailable_subagent_settings_do_not_invent_defaults_or_fail_the_run() {
+    for response in [
+        json!({ "result": { "thread": { "model": null, "reasoningEffort": null } } }),
+        json!({ "error": { "code": -32601, "message": "unsupported" } }),
+    ] {
+        let mut r = started();
+        r.rpc(json!({ "method": "item/completed", "params": { "threadId": "th-1", "item": {
+            "id": "spawn", "type": "subAgentActivity", "kind": "started",
+            "agentThreadId": "child", "agentPath": "/agents/review" } } }));
+        let id = r.sent("thread/read").unwrap()["id"].clone();
+        r.clear();
+        let mut response = response;
+        response["id"] = id;
+        r.rpc(response);
+        assert!(r.frames.is_empty());
+    }
 }
 
 fn raw_codex(model: &str, account: Option<&str>) -> RawIdentity {

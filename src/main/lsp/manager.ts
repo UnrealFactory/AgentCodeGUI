@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { StdioRpc } from './jsonrpc'
+import { extendSemanticLegend } from '@shared/lspSemantic'
 import { DOWNLOADS, install, installState, installedBin, uninstall, killHolders } from './install'
 import { ensureUeClangDb, ueDbDir, ueRoot } from './ue'
 import {
@@ -536,7 +537,7 @@ const VERSE_WS_RECHECK = 4_000
 const PRIME_REDO_GAP = 3_000
 // C# 디스크 워처(watchCsDir)가 반응할 확장자 — 소스와 프로젝트/솔루션 파일(멤버십·참조
 // 변화도 재프라임 사유)
-const CS_WATCH_EXTS = new Set(['cs', 'csx', 'csproj', 'sln', 'slnx', 'props', 'targets'])
+const CS_WATCH_EXTS = new Set(['cs', 'csx', 'razor', 'cshtml', 'csproj', 'sln', 'slnx', 'props', 'targets'])
 
 interface DocState {
   version: number
@@ -883,10 +884,10 @@ const SERVERS: ServerDef[] = [
   {
     id: 'cs',
     label: 'C#',
-    langs: 'C#',
+    langs: 'C# · Razor / Blazor',
     kind: 'download',
     requires: () => t('.NET SDK 10+ 필요', 'Requires .NET SDK 10+'),
-    exts: { cs: 'csharp', csx: 'csharp' },
+    exts: { cs: 'csharp', csx: 'csharp', razor: 'aspnetcorerazor', cshtml: 'aspnetcorerazor' },
     // Roslyn LSP: self-contained apphost launched over stdio. Needs the .NET 10 runtime
     // (+ SDK for MSBuild project loads) — a given on modern C# dev machines.
     command: () => {
@@ -1585,11 +1586,12 @@ class LspManager {
       .request<{ data?: number[] } | null>('textDocument/semanticTokens/full', { textDocument: { uri: ctx.uri } }, 30000)
       .catch(() => null)
     const raw = r?.data
+    const legend = ctx.s.semLegend ?? ctx.semLegend
     if (!Array.isArray(raw) || raw.length === 0) {
       // 빈 토큰 = "지원하지만 아직 없음"(서버가 인덱싱/프로젝트 로드 중). null은
       // "이 서버는 시맨틱 토큰 자체가 없음"에만 쓴다 — 그래야 렌더러가 폴링을 멈춘다.
       // Roslyn은 projectInitializationComplete 전까지 비어 올 수 있고, 그 폴링이 메운다.
-      return { data: [], types: ctx.semLegend.types, mods: ctx.semLegend.mods }
+      return { data: [], types: legend.types, mods: legend.mods }
     }
     const data: number[] = []
     let line = 0
@@ -1600,7 +1602,7 @@ class LspManager {
       char = dLine === 0 ? char + raw[i + 1] : raw[i + 1]
       data.push(line, char, raw[i + 2], raw[i + 3], raw[i + 4])
     }
-    const out = { data, types: ctx.semLegend.types, mods: ctx.semLegend.mods }
+    const out = { data, types: legend.types, mods: legend.mods }
     // 디스크 캐시에 떨궈 다음 실행 때 서버를 안 기다리고 즉시 색칠할 수 있게 한다. 내용은
     // 디스크 재읽기 대신 서버에 동기화된 문서 텍스트(openDoc이 방금 맞춰 둔 그 본문) —
     // 토큰이 실제로 설명하는 내용이라 키 정합이 정확하고(재읽기는 didOpen 뒤 파일이 바뀌면
@@ -2390,7 +2392,7 @@ class LspManager {
         const e = path.extname(p).slice(1).toLowerCase()
         exts.add(e)
         // 프로젝트/솔루션 파일 변화도 .cs 뷰어가 다시 칠할 사유다(멤버십/참조 변화)
-        if (e === 'cs' || e === 'csx' || CS_EXTRA.has(e)) {
+        if (e === 'cs' || e === 'csx' || e === 'razor' || e === 'cshtml' || CS_EXTRA.has(e)) {
           exts.add('cs')
           exts.add('csx')
         }
@@ -2473,6 +2475,10 @@ class LspManager {
 
     const rpc = new StdioRpc(child)
     rpc.onRequest = (method, params) => {
+      if (method === 'client/registerCapability') {
+        handle.semLegend = extendSemanticLegend(handle.semLegend, params)
+        return null
+      }
       // answer the handful of server→client requests tsserver-ls actually sends;
       // an unanswered request can stall the server's queue
       if (method === 'workspace/configuration') {
@@ -2557,6 +2563,7 @@ class LspManager {
               },
               synchronization: { dynamicRegistration: false },
               semanticTokens: {
+                dynamicRegistration: true,
                 requests: { full: true },
                 tokenTypes: [
                   'namespace', 'type', 'class', 'enum', 'interface', 'struct', 'typeParameter', 'parameter',

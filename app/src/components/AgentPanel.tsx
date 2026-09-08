@@ -92,6 +92,20 @@ function fmtSaDur(ms: number): string {
   return r ? t(`${m}분 ${r}초`, `${m}m ${r}s`) : t(`${m}분`, `${m}m`)
 }
 
+function saEffort(effort?: string): string {
+  const labels: Record<string, string> = {
+    none: t('없음', 'None'),
+    minimal: t('최소', 'Minimal'),
+    low: t('낮음', 'Low'),
+    medium: t('보통', 'Medium'),
+    high: t('높음', 'High'),
+    xhigh: t('매우 높음', 'Very high'),
+    max: t('최대', 'Max'),
+    ultra: t('울트라', 'Ultra')
+  }
+  return effort ? labels[effort] ?? effort : t('정보 없음', 'Unavailable')
+}
+
 // 팝오버 한 줄 — PoC .prow: 상태 아이콘(✓/스피너/점) + 이름/역할. 상세는 클릭해 여는
 // 카드에 있으므로 행은 조용하게 유지한다.
 export function SubAgent({ a, onOpen }: { a: SubAgentInfo; onOpen: (a: SubAgentInfo) => void }) {
@@ -103,7 +117,7 @@ export function SubAgent({ a, onOpen }: { a: SubAgentInfo; onOpen: (a: SubAgentI
   // PoC 행 서브: '역할 · 42초' — 완료돼 소요가 잡히면 뒤에 붙인다
   const sub = why
     ? `${why.label} — ${why.sub}`
-    : [a.role, a.durationMs != null ? fmtSaDur(a.durationMs) : ''].filter(Boolean).join(' · ')
+    : [a.role, a.model, a.effort ? t('추론 ', 'Effort ') + saEffort(a.effort) : '', a.durationMs != null ? fmtSaDur(a.durationMs) : ''].filter(Boolean).join(' · ')
   return (
     <button className={'wb-prow act' + (a.status === 'done' && !why ? ' done' : '')} onClick={() => onOpen(a)}>
       <span className="ic">
@@ -186,11 +200,17 @@ export function SubAgentModal({ agent, cwd, onClose, onOpenFile }: { agent: SubA
           <div className="dc-tile">{saIcon(agent.name, 19)}</div>
           <div className="dc-tt">
             <span className="dc-title">{agent.name}</span>
-            {/* PoC msub: '서브에이전트 · Opus 5 · 읽기 전용 탐색' — 모델은 사이드체인 실측 */}
             <div className="dc-sub">
               {t('서브에이전트', 'Subagent')}
-              {agent.model ? ` · ${agent.model}` : ''}
-              {agent.role ? ` · ${agent.role}` : ''}
+              {agent.role && !['서브에이전트', 'Subagent'].includes(agent.role) ? ` · ${agent.role}` : ''}
+            </div>
+            <div className="dc-sa-meta">
+              <span className="dc-stat">
+                {t('모델', 'Model')} <b>{agent.model || t('정보 없음', 'Unavailable')}</b>
+              </span>
+              <span className="dc-stat">
+                {t('추론 노력', 'Reasoning effort')} <b>{saEffort(agent.effort)}</b>
+              </span>
             </div>
           </div>
           {saBadge(agent.status, why)}
@@ -247,11 +267,6 @@ export function SubAgentModal({ agent, cwd, onClose, onOpenFile }: { agent: SubA
           )}
         </div>
         <div className="dc-foot">
-          {agent.model && (
-            <span className="dc-stat">
-              {t('모델', 'Model')} <b>{agent.model}</b>
-            </span>
-          )}
           {agent.durationMs != null && (
             <span className="dc-stat">
               {t('소요', 'Duration')} <b>{fmtSaDur(agent.durationMs)}</b>

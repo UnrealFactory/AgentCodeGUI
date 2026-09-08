@@ -77,6 +77,27 @@ struct Caps {
     sync_kind: i64,
 }
 
+impl Caps {
+    /// A cohost may append token kinds. Preserve every existing index so its
+    /// registration cannot change the meaning of the host language's tokens.
+    fn extend_semantic_legend(&mut self, params: &Value) {
+        if self.sem_types.is_empty() { return; }
+        let Some(registrations) = params["registrations"].as_array() else { return };
+        for reg in registrations {
+            if reg["method"] != "textDocument/semanticTokens" { continue; }
+            let legend = &reg["registerOptions"]["legend"];
+            let strings = |v: &Value| -> Option<Vec<String>> {
+                v.as_array()?.iter().map(|s| s.as_str().map(str::to_string)).collect()
+            };
+            let (Some(types), Some(mods)) = (strings(&legend["tokenTypes"]), strings(&legend["tokenModifiers"])) else { continue };
+            if types.starts_with(&self.sem_types) && mods.starts_with(&self.sem_mods) {
+                self.sem_types = types;
+                self.sem_mods = mods;
+            }
+        }
+    }
+}
+
 struct State {
     status: Status,
     caps: Caps,
@@ -346,6 +367,9 @@ impl Server {
 
     fn on_notify(&self, method: &str, params: &Value) {
         match method {
+            "client/registerCapability" => {
+                self.state.lock().unwrap().caps.extend_semantic_legend(params);
+            }
             "workspace/projectInitializationComplete" => {
                 // ★LSPIDLE R2 — 프로젝트 로드가 끝났다 = 일한 증거다(멎음 시계를 되감는다)
                 self.saw_work();
@@ -410,6 +434,7 @@ impl Server {
                     },
                     "synchronization": { "dynamicRegistration": false },
                     "semanticTokens": {
+                        "dynamicRegistration": true,
                         "requests": { "full": true },
                         "tokenTypes": [
                             "namespace","type","class","enum","interface","struct","typeParameter","parameter",
@@ -943,11 +968,7 @@ impl Server {
     // ── 기능 ────────────────────────────────────────────────────────────────
 
     pub fn semantic_tokens(&self, abs: &Path) -> Option<SemanticTokens> {
-        let (types, mods, has) = {
-            let st = self.state.lock().unwrap();
-            (st.caps.sem_types.clone(), st.caps.sem_mods.clone(), st.caps.has_semantic)
-        };
-        if !has {
+        if !self.state.lock().unwrap().caps.has_semantic {
             return None; // 이 서버는 시맨틱 토큰 자체가 없다 → 렌더러가 폴링을 멈춘다
         }
         let uri = self.open_doc(abs).ok()?;
@@ -960,6 +981,11 @@ impl Server {
                 Duration::from_secs(30),
             )
             .ok();
+        // Registrations may arrive while the first document is being loaded.
+        let (types, mods) = {
+            let st = self.state.lock().unwrap();
+            (st.caps.sem_types.clone(), st.caps.sem_mods.clone())
+        };
         let raw = r
             .as_ref()
             .and_then(|v| v.get("data"))
@@ -1409,6 +1435,33 @@ mod tests {
         assert_eq!(hover_markdown(&json!({ "language": "ts", "value": "x: number" })), "```ts\nx: number\n```");
         assert_eq!(hover_markdown(&json!(["a", { "value": "b" }])), "a\n\nb");
         assert_eq!(hover_markdown(&Value::Null), "");
+    }
+
+    #[test]
+    fn cohost_registration_extends_but_never_reinterprets_the_host_legend() {
+        let s = inert("cs", Status::Ready);
+        {
+            let mut state = s.state.lock().unwrap();
+            state.caps.sem_types = vec!["class".into(), "property".into()];
+            state.caps.sem_mods = vec!["static".into()];
+        }
+        s.on_notify("client/registerCapability", &json!({ "registrations": [{
+            "id": "razor", "method": "textDocument/semanticTokens",
+            "registerOptions": {
+                "documentSelector": [{ "language": "aspnetcorerazor", "pattern": "**/*.{razor,cshtml}" }],
+                "legend": { "tokenTypes": ["class", "property", "razorComponentElement"],
+                            "tokenModifiers": ["static", "razorCode"] }
+            }
+        }] }));
+        let types = vec!["class".to_string(), "property".into(), "razorComponentElement".into()];
+        assert_eq!(s.state.lock().unwrap().caps.sem_types, types);
+        s.on_notify("client/registerCapability", &json!({ "registrations": [{
+            "method": "textDocument/semanticTokens",
+            "registerOptions": { "legend": {
+                "tokenTypes": ["property", "class"], "tokenModifiers": ["static"] } }
+        }] }));
+        assert_eq!(s.state.lock().unwrap().caps.sem_types, types);
+        assert_eq!(s.state.lock().unwrap().caps.sem_mods, vec!["static", "razorCode"]);
     }
 
     #[test]

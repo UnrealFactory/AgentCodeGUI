@@ -62,6 +62,8 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     case 'moduleName':
     case 'module': // Roslyn
     case 'recordClass': // Roslyn: record(class) — 클래스와 동일 보라
+    case 'razorComponentElement':
+    case 'razorTagHelperElement':
       return 'sem-type'
     case 'struct':
     case 'enum':
@@ -90,6 +92,9 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
     case 'property':
     case 'field':
     case 'fieldName':
+    case 'markupAttribute':
+    case 'razorComponentAttribute':
+    case 'razorTagHelperAttribute':
       return 'sem-member'
     case 'variable': // C++ static 멤버는 'variable'+classScope로 온다 → 필드 색
       return cpp && has('classScope') ? 'sem-member' : 'sem-plain'
@@ -99,7 +104,31 @@ export function riderSemClass(type: string, modBits: number, modNames: string[],
       return 'sem-event'
     case 'macro':
     case 'preprocessorKeyword': // OmniSharp: #region·#if 같은 C# 지시문 — Rider는 키워드 파랑
+    case 'keyword':
+    case 'controlKeyword':
+    case 'markupElement':
+    case 'razorDirective':
+    case 'razorDirectiveAttribute':
+    case 'razorDirectiveColon':
+    case 'razorTransition':
       return 'sem-kw'
+    case 'markupAttributeQuote':
+    case 'markupAttributeValue':
+    case 'string':
+    case 'stringVerbatim':
+      return 'sem-string'
+    case 'number':
+      return 'sem-number'
+    case 'markupComment':
+    case 'markupCommentPunctuation':
+    case 'razorComment':
+    case 'razorCommentStar':
+    case 'razorCommentTransition':
+      return 'sem-comment'
+    case 'markupOperator':
+    case 'markupTagDelimiter':
+    case 'markupTextLiteral':
+      return 'sem-plain'
     case 'concept': // Rider는 concept을 기본 식별자 색으로 둔다 (Default Identifier fallback)
       return 'sem-plain'
     case 'stringEscapeCharacter':
@@ -168,7 +197,7 @@ export function semByLine(
   if (!sem.data.length) return null
   const rider = !!paletteClassFor(lang)
   const cpp = lang === 'cpp' || lang === 'c'
-  const cs = lang === 'csharp'
+  const cs = lang === 'csharp' || lang === 'razor'
   const srcLines = text && (structOv || cs) ? text.split('\n') : null
   const m = new Map<number, SemSpan[]>()
   for (let i = 0; i < sem.data.length; i += 5) {
@@ -208,7 +237,7 @@ export function buildSemDict(
   if (!sem.data.length) return null
   const rider = !!paletteClassFor(lang)
   const cpp = lang === 'cpp' || lang === 'c'
-  const cs = lang === 'csharp'
+  const cs = lang === 'csharp' || lang === 'razor'
   const srcLines = text.split('\n')
   const counts = new Map<string, Map<string, number>>()
   for (let i = 0; i < sem.data.length; i += 5) {

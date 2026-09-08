@@ -250,7 +250,7 @@ export class CodexEngine {
   /** Codex 서브에이전트 — agentThreadId → { 시작 시각, 완료 여부 }. 실측(0.144): 스폰은
    *  spawnAgent 콜이 아니라 메인 스레드의 subAgentActivity{kind:'started'}로 통지되고,
    *  자식 스레드의 턴·아이템이 같은 연결에 다른 threadId로 스트리밍된다. */
-  private cxAgents = new Map<string, { startedAt: number; done?: boolean }>()
+  private cxAgents = new Map<string, { startedAt: number; done?: boolean; metadataPending?: boolean }>()
   /** collab 제어 호출(item id) → { tool, 대상 agentThreadIds } — 완료 시 agentsStates 반영 */
   private cxCollabCalls = new Map<string, { tool: string; agents: string[] }>()
   /** 진행 중 reasoning 요약 누적 — thinking 한 줄로 보여준다 */
@@ -680,9 +680,11 @@ export class CodexEngine {
               status: 'running',
               activity: oneLine(prompt, 200) || t('작업 중', 'Working'),
               tools: [],
-              model: item.model ? String(item.model) : undefined
+              model: typeof item.model === 'string' ? item.model : undefined,
+              effort: typeof item.reasoningEffort === 'string' ? item.reasoningEffort : undefined
             }
           })
+          void this.refreshSubagentMetadata(runId, aid)
         } else {
           this.cxCollabCalls.set(id, { tool, agents: receivers })
         }
@@ -697,9 +699,27 @@ export class CodexEngine {
     }
   }
 
-  // subAgentActivity{kind, agentThreadId, agentPath} — item/started·completed 양쪽에서
-  // 올 수 있어(실측: completed로만 온다) 공용 처리. started=카드 생성(이름은 agentPath
-  // 마지막 조각), 종결 계열 kind면 완료 처리.
+  // The child thread reports its own settings; never substitute the parent's picker.
+  private async refreshSubagentMetadata(runId: string, aid: string): Promise<void> {
+    const meta = this.cxAgents.get(aid)
+    if (!meta || meta.metadataPending) return
+    meta.metadataPending = true
+    try {
+      const result = await this.request<{ thread?: { model?: unknown; reasoningEffort?: unknown } }>(
+        'thread/read', { threadId: aid, includeTurns: false }
+      )
+      if (this.activeRunId !== runId || this.cxAgents.get(aid) !== meta) return
+      const model = typeof result.thread?.model === 'string' ? result.thread.model : undefined
+      const effort = typeof result.thread?.reasoningEffort === 'string' ? result.thread.reasoningEffort : undefined
+      if (model || effort) this.emit({ type: 'subagent-metadata', runId, id: aid, model, effort })
+    } catch {
+      // Older servers may not expose child thread settings.
+    } finally {
+      meta.metadataPending = false
+    }
+  }
+
+  // subAgentActivity can arrive on either item/started or item/completed.
   private handleSubAgentActivity(runId: string, item: Record<string, unknown>): void {
     const aid = String((item as { agentThreadId?: string }).agentThreadId ?? '')
     if (!aid) return
@@ -720,6 +740,7 @@ export class CodexEngine {
           tools: []
         }
       })
+      void this.refreshSubagentMetadata(runId, aid)
       return
     }
     if (/clos|end|stop|shutdown|interrupt/i.test(kind)) {
@@ -748,6 +769,7 @@ export class CodexEngine {
           runId,
           agent: { id: aid, name: '', role: '', status: 'running', activity: '', tools: [] }
         })
+        void this.refreshSubagentMetadata(runId, aid)
         return
       }
       case 'item/started': {

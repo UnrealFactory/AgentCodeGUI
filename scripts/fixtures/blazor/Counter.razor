@@ -1,0 +1,11 @@
+@page "/counter"
+
+<h1>@Title</h1>
+<Greeting Message="@Title" />
+<p>Current count: @Count</p>
+<button @onclick="Increment">Increment</button>
+
+@code {
+    private string Caption => $"{Title}: {Count}";
+    private string Braces => "not a block }";
+}

@@ -785,7 +785,7 @@ export function SessionWindow(): React.ReactElement {
                   onOpenImage={openViewer}
                 />
               ))}
-              {busy && showWorking && <WorkingIndicator elapsed={elapsed} />}
+              {busy && showWorking && <WorkingIndicator elapsed={elapsed} connectionRetry={state.connectionRetry} />}
             </div>
           )}
           {follow.showJump && (

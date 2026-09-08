@@ -268,6 +268,9 @@ fn dispatch(msg: &Value, shared: &Arc<Shared>, rpc: &std::sync::Weak<Rpc>, on_no
         // 서버 → 클라이언트 요청
         if let Some(rpc) = rpc.upgrade() {
             let params = msg.get("params").unwrap_or(&Value::Null);
+            if m == "client/registerCapability" {
+                on_notify(m, params);
+            }
             let result = answer_server_request(m, params, &rpc.config);
             let _ = rpc.write(&json!({ "jsonrpc": "2.0", "id": id, "result": result }));
         }

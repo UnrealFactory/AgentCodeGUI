@@ -1,4 +1,5 @@
 import hljs from 'highlight.js/lib/common'
+import { razor } from '@shared/razorLanguage'
 import { verse } from './verseLang'
 import { verseScopes, recolorVerse } from './verseMembers'
 import { UE_SPECIFIERS } from '@shared/langGlossary'
@@ -6,6 +7,7 @@ import { UE_SPECIFIERS } from '@shared/langGlossary'
 // Epic's Verse (.verse) isn't part of the hljs common bundle — register our corpus-based
 // grammar once so highlightCode('verse') colours it like any built-in language.
 hljs.registerLanguage('verse', verse)
+hljs.registerLanguage('razor', razor)
 
 // ── UE C++ 매크로 지정자 recolor ─────────────────────────────────────────────
 // UPROPERTY(EditAnywhere…) 괄호 안의 지정자는 언리얼 헤더 툴(UHT) 전용 토큰이라 hljs도

@@ -16,6 +16,7 @@ import type {
   WorkflowState
 } from '@shared/protocol'
 import { t } from '../lib/i18n'
+import { appendDiagnostic, classifyDiagnostic, clearRetryState, restoreDiagnostics, retryOutcome, settleDiagnostics, type ConnectionRetry, type DiagnosticLog } from '@shared/diagnostics'
 
 export type ThreadItem =
   | { kind: 'msg'; id: string; role: 'user' | 'assistant'; text: string; animate: boolean; error?: boolean; time: string; images?: string[] }
@@ -38,7 +39,7 @@ export type ThreadItem =
   // 시스템 경고를 스레드에 인라인으로 보여주는 줄 (예: 정책 거부 → 모델 자동 전환, API 과금 안내)
   // silent: '이번 턴이 응답 없이 끝났어요' 무음 턴 안내 표식 — 같은 실행이 이어서 내용을
   // 내면(밀린 통지 소화 턴 뒤 진짜 턴) 오탐이었던 것이므로 stripSilentTail이 걷어낸다
-  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean }
+  | { kind: 'notice'; id: string; text: string; time: string; silent?: boolean; diagnostics?: DiagnosticLog }
   // 턴 마무리 줄 (PoC .worked) — 'N초 동안 작업함'. result의 durationMs로 답변 앞에 끼운다
   | { kind: 'worked'; id: string; ms: number }
   // 중단 마커 — Esc/중지로 턴을 끊은 자리 (클로드 코드의 'Interrupted' 문법).
@@ -105,6 +106,7 @@ export interface SessionState {
   // 새 실행이 밀어낼 때의 잔재)가 새 실행의 busy·결과를 덮지 못하게 한다.
   // null = 출처 불명(복원 직후 등) — 잘못 거르면 busy가 영영 안 풀리므로 가드 없이 통과.
   curRunId: string | null
+  connectionRetry?: ConnectionRetry | null
 }
 
 type Action =
@@ -191,7 +193,8 @@ export function snapshotForPersist(s: SessionState): SessionState {
     openGroupId: null,
     pendingCommand: null,
     // drop a command card still mid-run — it would restore as a forever-spinning card
-    messages: s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)),
+    messages: settleDiagnostics(s.messages.filter((m) => !(m.kind === 'cmdresult' && m.running)), 'history'),
+    connectionRetry: null,
     subagents: s.subagents.map((a) => (a.status === 'done' ? a : { ...a, status: 'done' as const })),
     // 백그라운드 작업은 CLI 프로세스와 함께 죽으므로 "실행 중"으로 복원되면 거짓말이 된다
     bgTasks: s.bgTasks.map((t) => (t.status === 'running' ? { ...t, status: 'stopped' as const, teardown: true } : t)),
@@ -242,7 +245,8 @@ export const initialSessionState: SessionState = {
   openGroupId: null,
   seq: 0,
   shownNotices: [],
-  curRunId: null
+  curRunId: null,
+  connectionRetry: null
 }
 
 // ── growth caps ──────────────────────────────────────────────
@@ -371,7 +375,7 @@ export function sanitizeSnapshot(raw: unknown): SessionState {
   return {
     ...initialSessionState,
     status,
-    messages: capThread(messages),
+    messages: capThread(restoreDiagnostics(messages)),
     todos: arr<Todo>(r.todos).filter((t) => !!t && typeof t === 'object'),
     files: arr<ChangedFile>(r.files).filter((f) => !!f && typeof f === 'object'),
     diffs,
@@ -429,6 +433,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   if (action.type === 'begin') {
+    state = clearRetryState(state, 'history')
     const seq = state.seq + 1
     const cmd = action.command
     const without = state.messages.filter((m) => m.id !== THINKING_ID)
@@ -486,6 +491,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
 
   if (action.type === 'interrupt-turn') {
+    state = clearRetryState(state, 'history')
     // 취소 = 중단 — 이번 턴의 흔적(보낸 말풍선 + 반쯤 온 답 + 도구 로그)은 그대로 두고
     // '중단함' 마커만 붙인다(세션에 실제로 남는 내용과 화면을 일치시키는 게 핵심).
     // 명령(/compact 등) 턴은 돌던 카드를 '중단' 상태로 정착시킨다.
@@ -536,6 +542,13 @@ export function reducer(state: SessionState, action: Action): SessionState {
   // curRunId=null(복원 등 출처 불명)은 통과 — 잘못 거르면 busy가 영영 안 풀린다.
   const staleRun = (runId: string): boolean =>
     state.curRunId === PENDING_RUN || (!!state.curRunId && state.curRunId !== runId)
+  if (staleRun(e.runId) && retryOutcome(e) === 'resumed') return state
+  if (e.type === 'status' && e.status === 'analyzing' && e.runId !== state.curRunId)
+    state = clearRetryState(state, 'history')
+  else if (!staleRun(e.runId) && !state.interrupted) {
+    const outcome = retryOutcome(e)
+    if (outcome) state = clearRetryState(state, outcome)
+  }
   switch (e.type) {
     case 'status':
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
@@ -728,6 +741,14 @@ export function reducer(state: SessionState, action: Action): SessionState {
     case 'terminal':
       return { ...state, terminal: capPush(state.terminal, e.line, MAX_TERMINAL_LINES) }
 
+    case 'subagent-metadata':
+      return {
+        ...state,
+        subagents: state.subagents.map((a) => a.id === e.id
+          ? { ...a, model: e.model || a.model, effort: e.effort || a.effort }
+          : a)
+      }
+
     case 'subagent': {
       const existing = state.subagents.find((a) => a.id === e.agent.id)
       if (existing) {
@@ -748,6 +769,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
             activity: act || a.activity,
             // 모델·소요는 부분 업데이트로 띄엄띄엄 온다 — 빈 값이 기존 값을 지우지 않게
             model: e.agent.model || a.model,
+            effort: e.agent.effort || a.effort,
             durationMs: e.agent.durationMs ?? a.durationMs,
             log
           }
@@ -833,6 +855,17 @@ export function reducer(state: SessionState, action: Action): SessionState {
 
     case 'notice': {
       const seq = state.seq + 1
+      const diagnostic = !e.once ? classifyDiagnostic(e.text) : null
+      if (diagnostic) {
+        if (staleRun(e.runId)) return state
+        const active = !state.interrupted && (state.status === 'analyzing' || state.status === 'working')
+        return {
+          ...state, seq,
+          ...(diagnostic.retry && active ? { connectionRetry: diagnostic.retry, thinkingText: null, streaming: false } : {}),
+          messages: capThread(appendDiagnostic<ThreadItem>(state.messages,
+            { kind: 'notice', id: `n${seq}`, text: e.text, time: nowTime() }, diagnostic.group, e.runId, !!diagnostic.retry && active))
+        }
+      }
       const item = { kind: 'notice' as const, id: `n${seq}`, text: e.text, time: nowTime() }
       // once 안내(예: API 과금)는 이 대화에서 그 key당 딱 한 번만, 방금 보낸 사용자 메시지
       // 바로 위에 끼워 넣는다 — 'API로 과금 중'을 자기 메시지 바로 위에서 한 번 알아채게.

@@ -835,11 +835,11 @@ ServerSpec {
 ServerSpec {
     id: "cs",
     label: "C#",
-    langs: "C#",
-    exts_display: ".cs .csx",
+    langs: "C# · Razor / Blazor",
+    exts_display: ".cs .csx .razor .cshtml",
     kind: Provision::Download,
     requires: Some((".NET SDK 10+ 필요", ".NET SDK 10+ required")),
-    exts: &[("cs", "csharp"), ("csx", "csharp")],
+    exts: &[("cs", "csharp"), ("csx", "csharp"), ("razor", "aspnetcorerazor"), ("cshtml", "aspnetcorerazor")],
     detect_markers: &["*.sln", "*.slnx", "*.csproj"],
     launch: Launch::Exe {
         bin: "Microsoft.CodeAnalysis.LanguageServer.exe",
@@ -872,7 +872,7 @@ ServerSpec {
     reprime: Reprime::WorkspaceSymbol { quiet_gap_ms: 3_000 },
     membership_files: cs_membership_files,
     reload_project: Some(cs_reload_project),
-    watch_exts: &["cs", "csx", "csproj", "sln", "slnx", "props", "targets"],
+    watch_exts: &["cs", "csx", "razor", "cshtml", "csproj", "sln", "slnx", "props", "targets"],
     // 솔루션 인덱싱이 비싼 서버 — 회수를 길게(2.6.2 IDLE_TTL_HEAVY).
     idle_ttl_ms: 30 * 60_000,
     // ★네 스펙 중 **가장 위험한 자리**(크리틱 R2 §3-3). `awaits_project_init: true`라서

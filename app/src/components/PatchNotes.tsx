@@ -152,6 +152,32 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.1.1': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: 'Blazor 코드 보기와 관련 파일 정리를 개선했습니다. 서브에이전트의 모델·추론 강도를 확인하고, 지난 연결 오류와 현재 재시도 상태를 구분할 수 있습니다.',
+      notes: [
+        { tag: 'Blazor', name: 'Razor 구문 색상과 코드 분석', desc: 'Razor의 마크업과 C# 구문을 구분해 표시합니다. C# 코드 분석을 설정한 프로젝트에서는 컴포넌트와 코드비하인드의 호버·정의 이동·의미 기반 색상을 지원합니다.' },
+        { tag: '탐색기', name: '관련 파일을 Razor 파일 아래로', desc: '같은 폴더의 .razor·.cshtml 파일 아래에 .cs·.css·.js·.ts 동반 파일을 묶습니다. 펼침 상태를 기억하며, 원본 파일이 없는 동반 파일은 개별 항목으로 표시합니다.' },
+        { tag: '에이전트', name: '서브에이전트 모델과 추론 강도', desc: '서브에이전트 목록과 상세 카드에 엔진이 제공하는 모델·추론 강도를 표시합니다. 늦게 도착한 정보도 완료된 작업을 다시 실행 중으로 바꾸지 않고 갱신합니다.' },
+        { tag: '진단', name: '반복 오류를 접힌 기록으로', desc: 'stderr와 재연결 알림을 실행별 기록으로 모으고, 연속으로 반복된 출력은 횟수로 표시합니다. 기록을 펼치면 원문을 볼 수 있으며, 기존 대화에 쌓인 알림도 정리합니다.' },
+        { tag: '상태', name: '현재 재시도와 지난 오류 구분', desc: '하단에는 최신 재시도 단계만 표시하고, 답변이나 도구 실행이 재개되면 기록을 ‘작업 재개됨’으로 바꿉니다. 이전 실행이나 백그라운드 작업의 통지가 현재 재시도 상태를 덮지 않도록 수정했습니다.' },
+        { tag: '표시', name: '작업 표시 문구 정리', desc: 'Codex 대화의 작업 도구 설명에 Claude 이름이 나오던 오류를 수정하고, 작업 표시줄의 반복적인 클릭 안내 문구를 정리했습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Improves Blazor code viewing and companion file organization. See subagent models and reasoning effort, and distinguish past connection errors from the current retry.',
+      notes: [
+        { tag: 'Blazor', name: 'Razor syntax and code analysis', desc: 'Razor markup and C# syntax have distinct colors. Projects with C# code analysis configured support hover, go to definition and semantic colors across components and code-behind files.' },
+        { tag: 'Explorer', name: 'Group Razor companion files', desc: 'Groups .cs, .css, .js and .ts companions beneath their .razor or .cshtml file in the same folder. Expansion is remembered, and companions without a parent remain visible as individual files.' },
+        { tag: 'Subagents', name: 'Show model and reasoning effort', desc: 'Subagent lists and detail cards show model and reasoning effort when supplied by the engine. Late metadata updates no longer turn completed work back into a running task.' },
+        { tag: 'Diagnostics', name: 'Fold repeated output into logs', desc: 'Groups stderr and reconnection notices by run, with counts for consecutive repeated lines. Expand a log to read the original output. Previously accumulated notices are grouped when restoring a conversation.' },
+        { tag: 'Status', name: 'Separate current retries from past errors', desc: 'The working indicator shows the latest retry phase. When responses or tools resume, the log changes to “Work resumed.” Events from old runs and background tasks no longer overwrite the current retry state.' },
+        { tag: 'Display', name: 'Clearer activity labels', desc: 'Fixed Claude appearing in tool descriptions for Codex chats, and removed repetitive click instructions from activity indicators.' }
+      ]
+    }
+  },
   '3.1.0': {
     ko: {
       eyebrow: 'FEATURE UPDATE',

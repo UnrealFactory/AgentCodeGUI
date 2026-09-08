@@ -2,6 +2,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { createPortal } from 'react-dom'
 import type { AppUser, ChangedFile, DirEntry, GitRepoInfo, GitStatus } from '@shared/protocol'
 import { FileBadge } from './fileType'
+import { nestFileRows, razorParentName } from '@shared/fileNesting'
 import { getPref, setPref, delPref, prefKeys } from '../lib/prefs'
 import { addGitExtra, discoverGitRepos, isGitExtra, removeGitExtra } from '../lib/gitTrack'
 import {
@@ -48,6 +49,10 @@ function expandedKey(cwd: string): string {
   return 'explorer.expanded:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
 }
 
+function nestedKey(cwd: string): string {
+  return 'explorer.nested:' + cwd.replace(/\\/g, '/').toLowerCase()
+}
+
 // "Verse API" 묶음 펼침 여부의 저장 키 — 프로젝트별로 기억(기본 접힘)
 function verseOpenKey(cwd: string): string {
   return 'explorer.verseOpen:' + cwd.replace(/[\\/]+/g, '/').toLowerCase()
@@ -67,7 +72,7 @@ function viewKey(cwd: string): string {
 // 폴더 스코프 키(위 4종)의 LRU — 폴더별 키는 지워지는 일이 없어 열어 본 폴더 수만큼
 // ui-prefs 블롭이 무한히 자랐다(저장은 블롭 통째라 키가 늘수록 매 저장이 무거워진다).
 // 최근 24개 폴더만 유지하고, 밀려난 폴더의 키는 쓰기 시점에 함께 지운다.
-const FOLDER_KEY_RE = /^explorer\.(?:expanded|verseOpen|verseFilter|view):(.+)$/
+const FOLDER_KEY_RE = /^explorer\.(?:expanded|nested|verseOpen|verseFilter|view):(.+)$/
 const FOLDER_ROOTS_CAP = 24
 function setFolderPref(key: string, value: unknown): void {
   setPref(key, value)
@@ -190,6 +195,7 @@ export const Explorer = memo(function Explorer({
   // rel path('' = root) → that folder's entries; only loaded (visited) folders exist here
   const [entries, setEntries] = useState<Map<string, DirEntry[]>>(new Map())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [nestedExpanded, setNestedExpanded] = useState<Set<string>>(new Set())
   // 우클릭 컨텍스트 메뉴 + 파일 작업 카드(이름 변경·새 파일/폴더·삭제). root=true면 빈 영역
   // 우클릭(프로젝트 루트에 만들기)이다.
   const [ctx, setCtx] = useState<{
@@ -358,6 +364,7 @@ export const Explorer = memo(function Explorer({
     setDropRel(null)
     const saved = root ? new Set(getPref<string[]>(expandedKey(root), [])) : new Set<string>()
     setExpanded(saved)
+    setNestedExpanded(new Set(root ? getPref<string[]>(nestedKey(root), []) : []))
     if (root) {
       loadDir('')
       saved.forEach((rel) => loadDir(rel))
@@ -428,8 +435,26 @@ export const Explorer = memo(function Explorer({
     if (root) setFolderPref(expandedKey(root), Array.from(next).slice(0, 300))
   }
 
+  const toggleNested = (rel: string): void => {
+    setNestedExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(rel)) next.delete(rel)
+      else next.add(rel)
+      if (root) setFolderPref(nestedKey(root), Array.from(next).slice(0, 300))
+      return next
+    })
+  }
+
   const openFile = (rel: string): void => {
     setSel(rel)
+    const parent = razorParentName(rel)
+    if (parent) {
+      setNestedExpanded((prev) => {
+        const next = new Set(prev).add(parent)
+        if (root) setFolderPref(nestedKey(root), Array.from(next).slice(0, 300))
+        return next
+      })
+    }
     // digest 파일은 메인 cwd 밖이라 rel로 열 수 없다 → 절대 경로(포워드 슬래시)로
     onOpenFile(viewing ? viewing.replace(/\\/g, '/') + '/' + rel : rel)
   }
@@ -710,8 +735,10 @@ export const Explorer = memo(function Explorer({
       )
     }
     // 생성물 폴더 등 수만 개 항목을 한 번에 DOM으로 만들면 렌더러가 멈춘다 — 상한 후 생략 행
-    const shown = list.length > MAX_DIR_ROWS ? list.slice(0, MAX_DIR_ROWS) : list
-    const rows = shown.map((e) => {
+    const openGroups = new Set(list.filter((e) => nestedExpanded.has(base ? base + '/' + e.name : e.name)).map((e) => e.name))
+    const nested = nestFileRows(list, openGroups)
+    const shown = nested.slice(0, MAX_DIR_ROWS)
+    const rows = shown.map(({ entry: e, parent, children }) => {
       const rel = base ? base + '/' + e.name : e.name
       // 숨긴 항목 보기 중이면 숨김 목록 매치 항목을 흐리게 (PoC .hid)
       const hid = showHidden && (e.dir ? dimDirSet.has(e.name.toLowerCase()) : !!dimFileMatch && dimFileMatch(e.name.toLowerCase()))
@@ -749,31 +776,42 @@ export const Explorer = memo(function Explorer({
         )
       }
       const tag = chg.files.get(rel)
+      const isGroupOpen = children.length > 0 && nestedExpanded.has(rel)
+      const childChanged = children.some((child) => chg.files.has(base ? base + '/' + child.name : child.name))
       return (
-        <button
+        <div
           key={rel}
-          className={'fxr' + (sel === rel ? ' on' : '') + (hid ? ' hid' : '') + (dragRel === rel ? ' dragging' : '')}
-          style={dstyle(depth)}
-          onClick={() => openFile(rel)}
+          className={'fxr fx-file-row' + (isGroupOpen ? ' open' : '') + (sel === rel ? ' on' : '') + (hid ? ' hid' : '') + (dragRel === rel ? ' dragging' : '')}
+          style={dstyle(depth + (parent ? 1 : 0))}
           onContextMenu={(ev) => openCtx(ev, rel, e.name, false)}
           draggable
           onDragStart={(ev) => onDragStartRow(ev, rel)}
           onDragEnd={onDragEndRow}
           onDragOver={onDragOverFile}
         >
-          <span className="tw" />
-          <span className="fic">
-            <FileBadge path={e.name} size={14} />
-          </span>
-          <span className="n">{e.name}</span>
-          {tag && <span className={'gs ' + (tag === 'new' ? 'a' : 'm')}>{tag === 'new' ? 'A' : 'M'}</span>}
-        </button>
+          {children.length > 0 ? (
+            <button
+              className="tw fx-nest-toggle"
+              aria-expanded={isGroupOpen}
+              aria-label={t(e.name + ' 관련 파일 ' + (isGroupOpen ? '접기' : '펼치기'), (isGroupOpen ? 'Collapse ' : 'Expand ') + e.name + ' related files')}
+              onClick={() => toggleNested(rel)}
+            >
+              <IconChevRight size={9} />
+            </button>
+          ) : <span className="tw" />}
+          <button className="fx-file-open" onClick={() => openFile(rel)}>
+            <span className="fic"><FileBadge path={e.name} size={14} /></span>
+            <span className="n">{e.name}</span>
+            {tag && <span className={'gs ' + (tag === 'new' ? 'a' : 'm')}>{tag === 'new' ? 'A' : 'M'}</span>}
+            {!tag && childChanged && <span className="fx-dot edit" />}
+          </button>
+        </div>
       )
     })
-    if (list.length > shown.length) {
+    if (nested.length > shown.length) {
       rows.push(
         <div className="fx-empty" style={dstyle(depth)} key={base + '/…'}>
-          {t(`외 ${list.length - shown.length}개 항목 생략`, `${list.length - shown.length} more items omitted`)}
+          {t(`외 ${nested.length - shown.length}개 항목 생략`, `${nested.length - shown.length} more items omitted`)}
         </div>
       )
     }

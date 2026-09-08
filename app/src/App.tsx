@@ -2485,7 +2485,7 @@ function MainApp({ user }: { user: AppUser }) {
                     canRevert
                   />
                 ))}
-                {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} />}
+                {busy && showWorking && <WorkingIndicator elapsed={elapsed} retry={state.apiRetry ?? null} connectionRetry={state.connectionRetry} />}
               </div>
             )}
             {follow.showJump && (

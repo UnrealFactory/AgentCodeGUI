@@ -332,8 +332,10 @@ export interface SubAgentInfo {
   // 실행 중 내레이션의 누적 로그 — activity는 최신 한 줄로 덮이므로, 과정을 나중에
   // 볼 수 있게 렌더러(reducer)가 변화를 여기 쌓는다 (엔진은 채우지 않는다)
   log?: string[]
-  // 사이드체인 프레임이 보고한 실행 모델 표시명 (예: 'Opus 5') — 카드 서브 줄·푸터 칩
+  // 서브에이전트 프레임 또는 스레드 조회가 보고한 모델 (예: 'Opus 5', 'gpt-6-astra')
   model?: string
+  // 서브에이전트가 보고한 추론 설정. 없는 값은 부모 설정으로 추정하지 않는다.
+  effort?: string
   // Task 도구 시작→완료 소요 — 완료 emit에만 실린다 (실행 중엔 없음)
   durationMs?: number
 }
@@ -432,6 +434,8 @@ export type EngineEvent =
   | { type: 'file-change'; runId: string; file: ChangedFile; diff: FileDiff; whole: boolean }
   | { type: 'terminal'; runId: string; line: TermLine }
   | { type: 'subagent'; runId: string; agent: SubAgentInfo }
+  // 설정 조회는 늦게 도착할 수 있다. 상태·도구 목록을 바꾸지 않는 부분 업데이트.
+  | { type: 'subagent-metadata'; runId: string; id: string; model?: string; effort?: string }
   // 살아있는 백그라운드 작업 전체 목록 (SDK background_tasks_changed 미러 — REPLACE 의미:
   // 렌더러는 이 목록에 없는 실행 중 작업을 종료로 간주하고, 종료 상세는 bg-task-end가 채운다)
   | { type: 'bg-tasks'; runId: string; tasks: Array<{ id: string; kind: string; description: string; outputFile?: string }> }
