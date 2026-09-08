@@ -1,21 +1,15 @@
 /* ============================================================
  * 보드 자리 배치의 순수 규칙 — 자리 수(다이얼 1‥6)와 표시 순서(`panelOrder`)의 관계.
  *
- * ★3.0.8 — 「2·3·4·5를 오가다 보면 1번이던 패널이 5번에 가 있다」(2026-09-04 제보).
+ * 2‥6분할은 원래 표시 순서의 앞 N개를 보여 준다. 포커스된 자리를 자동으로 끼우면
+ * 5→4에서 5번 빈 패널이 기존 4번 대화를 접어 버린다(2026-09-08 제보).
  *
- * 왜 그랬나: 자리 수를 **줄일** 때 포커스된 자리가 접히게 되면 그 자리를 보이는 마지막
- * 자리로 끌어올린다(「현재 대화는 안 접힌다」 — 2026-09-02 결정). 그런데 그 승격이
- * `panelOrder` 자체를 **영구히** 바꿨고, 늘릴 때는 순서를 안 건드렸다. 그래서 5→1(포커스
- * 5번) → 5를 반복하면 매번 원래 1‥4번이 한 칸씩 오른쪽으로 밀렸다 — 패널 아무 데나
- * 클릭해도 포커스가 잡히니 사용자에겐 「순서가 저절로 뒤틀린다」로 보였다.
- *
- * 규칙: 승격은 **임시 오버레이**다. 줄일 때 승격하면서 승격 전 순서(`base`)를 기억하고,
- * 늘릴 때 그 순서로 되돌린다(승격 자리가 그래도 안 보이면 되돌린 순서 위에 다시 얹는다).
- * 사용자가 손으로 순서를 바꾸면(헤더 드래그 · 접힌 자리 ↥ 올리기) 그 순간의 순서가 새
- * 진실이 되고 오버레이는 사라진다.
+ * 1분할 집중 보기만 현재 대화를 임시로 맨 앞에 올리고 원래 순서(`base`)를 기억한다.
+ * 다시 여러 자리로 돌아가면 원래 순서를 복원한다. 직접 순서를 바꾸면(헤더 드래그 ·
+ * 접힌 자리 ↥ 올리기) 그 순서가 기준이 되고 임시 승격은 해제된다.
  * ============================================================ */
 
-/** 자리 수를 줄이며 끌어올린 자리 하나와, 끌어올리기 전의 순서. */
+/** 집중 보기로 끌어올린 자리 하나와, 끌어올리기 전의 순서. 예전 다중 자리 승격도 읽는다. */
 export interface LayoutPromo {
   slot: number
   base: number[]
@@ -43,35 +37,24 @@ export function sanitizePromo(v: unknown, n: number): LayoutPromo | null {
   return { slot: p.slot, base: [...p.base] }
 }
 
-/** `slot`을 빼서 `at` 자리에 끼운 순서. */
-function promote(order: number[], slot: number, at: number): number[] {
-  const rest = order.filter((s) => s !== slot)
-  rest.splice(Math.max(0, Math.min(at, rest.length)), 0, slot)
-  return rest
-}
-
 /**
  * 자리 수를 `next`로 바꿀 때의 순서와 오버레이.
- * `keep` = 안 접혀야 하는 자리(포커스). 순서에 없으면 첫 자리를 쓴다.
+ * `keep` = 1분할에서 볼 자리(포커스). 순서에 없으면 첫 자리를 쓴다.
  *
- * - 줄이기: `keep`이 이미 보이면 순서 그대로. 접히게 되면 보이는 마지막 자리(`next-1`)로
- *   끌어올리고 `base`(오버레이가 없었으면 지금 순서, 있었으면 그 오버레이의 `base`)를 기억한다.
- * - 늘리기: 오버레이가 있으면 `base`로 되돌린다. 되돌린 순서에서도 그 자리가 안 보이면
- *   `base` 위에 다시 얹는다(오버레이 유지). 오버레이가 없으면 순서 그대로.
+ * - 1분할: `keep`을 맨 앞에 임시로 올리고 `base`를 기억한다.
+ * - 2‥6분할: `base`가 있으면 복원하고 승격을 해제한다. 없으면 순서 그대로.
+ *   이전 버전에서 여러 자리에 적용한 승격도 이 경로로 복원된다.
  * - 같은 수: 아무것도 안 바꾼다.
  */
 export function resizeLayout(cur: Layout, next: number, keep: number): { order: number[]; promo: LayoutPromo | null } {
   const { order, count, promo } = cur
-  const keepSlot = order.includes(keep) ? keep : order[0]
-  if (next < count) {
-    if (order.indexOf(keepSlot) < next) return { order, promo }
-    const base = promo?.base ?? order
-    return { order: promote(order, keepSlot, next - 1), promo: { slot: keepSlot, base: [...base] } }
+  if (next === count) return { order, promo }
+  const base = promo?.base ?? order
+  if (next === 1) {
+    const keepSlot = order.includes(keep) ? keep : order[0]
+    if (keepSlot !== base[0]) {
+      return { order: [keepSlot, ...base.filter((s) => s !== keepSlot)], promo: { slot: keepSlot, base: [...base] } }
+    }
   }
-  if (next > count && promo) {
-    const idx = promo.base.indexOf(promo.slot)
-    if (idx < next) return { order: [...promo.base], promo: null }
-    return { order: promote(promo.base, promo.slot, next - 1), promo }
-  }
-  return { order, promo }
+  return { order: base, promo: null }
 }

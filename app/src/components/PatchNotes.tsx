@@ -152,6 +152,24 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.1.2': {
+    ko: {
+      eyebrow: 'BUG FIX',
+      lead: '분할 수를 줄일 때 기존 대화가 빈 패널로 바뀌어 보이던 문제를 수정했습니다.',
+      notes: [
+        { tag: '배치', name: '분할을 줄여도 기존 대화 유지', desc: '5번 패널을 선택한 상태에서 5→4분할로 줄여도 기존 1~4번 대화가 유지되고 5번만 접힙니다. 2~6분할 전환은 표시 순서를 유지하며, 다시 늘리면 접힌 대화와 작성 중인 초안이 그대로 돌아옵니다.' },
+        { tag: '배치', name: '1분할에서 원래 순서로 복귀', desc: '1분할에서는 선택한 대화를 보여 주고, 다시 여러 분할로 돌아가면 원래 순서를 복원합니다. 선택했던 대화가 앞쪽 패널을 밀어내지 않도록 수정했습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'BUG FIX',
+      lead: 'Fixed existing conversations appearing to be replaced by a blank panel when reducing the panel count.',
+      notes: [
+        { tag: 'Layout', name: 'Keep existing conversations when reducing panels', desc: 'Switching from five panels to four keeps conversations 1–4 in place and folds only panel 5, even when it is selected. Changes between two and six panels preserve display order; expanding again restores folded conversations and unsent drafts.' },
+        { tag: 'Layout', name: 'Restore the original order after single-panel view', desc: 'Single-panel view shows the selected conversation. Returning to multiple panels restores the original order, so that conversation no longer displaces an earlier panel.' }
+      ]
+    }
+  },
   '3.1.1': {
     ko: {
       eyebrow: 'UPDATE',

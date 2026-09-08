@@ -40,9 +40,13 @@ check('→5: 원래 순서로 돌아온다(오버레이 해제)', eq(l.order, ID
 l = press({ order: ID, count: 5 }, [[1, 4], [5, 4], [1, 3], [5, 3], [1, 2], [5, 2], [1, 1], [5, 1]])
 check('1↔5 반복(포커스 매번 다름)에도 드리프트 없음', eq(l.order, ID) && l.promo === null, l)
 
-// 5→2(포커스 5번): 보이는 마지막 자리(2번)로 온다 — 1번은 그대로
+// 2026-09-08 보고: 5번 빈 패널에 포커스한 채 5→4에서 기존 4번 대화가 접혔다.
+l = press({ order: ID, count: 5 }, [[4, 4]])
+check('5→4(포커스 5번): 기존 1~4번 유지 · 5번만 접힘', eq(l.order.slice(0, 4), [0, 1, 2, 3]) && l.promo === null, l)
+
+// 여러 패널을 남기는 축소에서는 포커스 때문에 남는 자리가 교체되면 안 된다.
 l = press({ order: ID, count: 5 }, [[2, 4]])
-check('5→2: [0,4 | …] — 1번 자리는 그대로, 포커스는 2번 자리', eq(l.order.slice(0, 2), [0, 4]), l)
+check('5→2: 기존 1·2번 유지', eq(l.order.slice(0, 2), [0, 1]) && l.promo === null, l)
 l = press({ order: ID, count: 5 }, [[2, 4], [5, 4]])
 check('2→5: 복원', eq(l.order, ID) && l.promo === null, l)
 
@@ -54,9 +58,9 @@ check('5→3(포커스 2번): 순서 그대로 · 오버레이 없음', eq(l.ord
 l = press({ order: ID, count: 6 }, [[4, 5], [1, 3], [6, 3]])
 check('6→4(포커스 6번)→1(포커스 4번)→6: 완전 복원', eq(l.order, ID) && l.promo === null, l)
 
-// 부분 복원: 5→1(포커스 5번) → 3 — 원래 5번 자리는 3에서 안 보이므로 3번 자리에 얹힌 채(오버레이 유지)
+// 한 자리 집중 보기에서 여러 자리로 돌아올 때도 원래 앞쪽 패널을 유지한다.
 l = press({ order: ID, count: 5 }, [[1, 4], [3, 4]])
-check('1→3: 승격 자리가 아직 안 보이면 3번 자리에 얹힌다', eq(l.order.slice(0, 3), [0, 1, 4]) && l.promo?.slot === 4, l)
+check('1→3: 기존 1~3번 복원 · 임시 승격 해제', eq(l.order, ID) && l.promo === null, l)
 l = press({ order: ID, count: 5 }, [[1, 4], [3, 4], [5, 4]])
 check('→5: 그다음 완전 복원', eq(l.order, ID) && l.promo === null, l)
 
@@ -67,6 +71,39 @@ check('오버레이 없이 늘리기: 순서 그대로', eq(l.order, [4, 0, 1, 2
 // 같은 수 다시 누름: 무동작
 l = press({ order: ID, count: 5 }, [[1, 4], [1, 4]])
 check('같은 수 반복: 무동작', eq(l.order.slice(0, 1), [4]) && l.promo?.slot === 4 && eq(l.promo.base, ID), l)
+
+// 예전 버전에서 5→4하며 저장한 승격도 다이얼을 바꾸면 원래 순서로 복원한다.
+const legacy = { order: [0, 1, 2, 4, 3, 5], count: 4, promo: { slot: 4, base: ID } }
+for (const next of [2, 3, 5, 6]) {
+  l = press(JSON.parse(JSON.stringify(legacy)), [[next, 4]])
+  check(`이전 저장본 4→${next}: 기존 순서 복원`, eq(l.order, ID) && l.promo === null, l)
+}
+
+// 드래그/직접 올리기로 만든 임의 순서도 슬롯 번호가 아니라 표시 순서대로 접는다.
+function* permutations(items) {
+  if (!items.length) { yield []; return }
+  for (const item of items) {
+    for (const rest of permutations(items.filter(v => v !== item))) yield [item, ...rest]
+  }
+}
+let cases = 0
+let mismatch = null
+for (const order of permutations(ID)) {
+  for (let count = 2; count <= 6; count++) {
+    for (let next = 2; next <= 6; next++) {
+      for (const keep of [...order.slice(0, count), -1]) {
+        const before = { order: [...order], count, promo: null }
+        const saved = JSON.stringify(before)
+        const result = m.resizeLayout(before, next, keep)
+        cases++
+        if ((!eq(result.order, order) || result.promo !== null || JSON.stringify(before) !== saved) && !mismatch) {
+          mismatch = { before, next, keep, result }
+        }
+      }
+    }
+  }
+}
+check(`2~6분할 모든 순열·포커스 조합 ${cases}건: 순서 보존 · 입력 불변`, !mismatch, mismatch)
 
 // 위생
 check('sanitizePromo: 정상', eq(m.sanitizePromo({ slot: 2, base: ID }, 6), { slot: 2, base: ID }))

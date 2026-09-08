@@ -1159,7 +1159,7 @@ function ActiveSession({
   // 그리고, 슬롯 정체성(엔진·대화·컬러 태그)은 패널을 따라간다. 세션에 영속.
   // 번호 칩은 자리 기준(1‥N) — 옮기면 그 자리의 번호를 새로 받는다.
   const [panelOrder, setPanelOrder] = useState<number[]>(() => sanitizePanelOrder(initial.panelOrder))
-  // ★3.0.8 — 다이얼을 줄이며 끌어올린 자리의 오버레이(`lib/panelLayout.ts`). 늘리면 `base`로 되돌아간다.
+  // 1분할에서 현재 대화를 보여 주는 임시 승격(`lib/panelLayout.ts`). 2‥6분할로 돌아가면 `base`로 복원한다.
   // 손으로 순서를 바꾸면(드래그·↥ 올리기) 그 순서가 새 진실이라 걷는다. 세션에 영속.
   const [promo, setPromo] = useState<LayoutPromo | null>(() => sanitizePromo(initial.promo, SLOT_COUNT))
   // 지금 보이는 슬롯들, 자리 순서대로 — 번호(인덱스+1)·그리드 렌더의 단일 소스.
@@ -1306,20 +1306,9 @@ function ActiveSession({
     if (n === 1) setFocusedSlot(nextOrder[0])
     reconcileChatRefs(nextOrder.slice(0, n))
   })
-  // 다이얼 — 줄일 때 **포커스된 자리를 order 맨 앞으로** 올린다(§2.2-1 "현재 대화 = 1번 자리").
-  // 나머지 상대 순서는 보존된다.
-  //
-  // ★2026-09-02 — 접히게 된 포커스 자리는 맨 앞이 아니라 **보이는 마지막 자리(next번)**로
-  // 온다. 맨 앞에 끼우면 1‥next-1번이 전부 한 칸씩 밀린다: 4→2에서 3번 패널에 포커스가
-  // 있으면 [3,1 | 2,4]가 되고 다시 4로 늘리면 [3,1,2,4] — 사용자에겐 "1번·2번 순서가
-  // 뒤틀렸다"로 보였다(패널 아무 데나 클릭해도 포커스가 잡히니 언제 그러는지 알 수 없었다).
-  // 마지막 자리로 오면 1‥next-1번은 그대로고 밀리는 건 포커스 자리와 접히는 자리 사이뿐이다.
-  // next=1이면 맨 앞이라 "현재 대화 = 1번 자리"(IDE 크롬)는 그대로 성립한다. 늘릴 때는
-  // 어느 판에서도 순서를 안 건드린다.
-  //
-  // ★3.0.8 — 그 승격이 `panelOrder`를 **영구히** 바꿔 5→1(포커스 5번)→5를 되풀이할 때마다 원래
-  // 1‥4번이 한 칸씩 밀렸다(「1번이던 패널이 5번에 가 있다」 — 2026-09-04 제보). 이제 승격은
-  // 오버레이(`promo`)이고 늘릴 때 승격 전 순서로 되돌린다 — 규칙은 `lib/panelLayout.ts` 한 곳.
+  // 다이얼 — 2‥6분할은 원래 순서의 앞 N개를 유지한다. 접히는 포커스는 setVisible에서
+  // 재바인드한다. 1분할만 현재 대화를 임시로 올리고, 여러 자리로 돌아가면 원래 순서를 복원한다.
+  // 포커스를 마지막 자리에 끼우던 규칙은 5→4에서 빈 5번이 기존 4번을 밀어냈다(2026-09-08).
   const applyCount = useEvent((n: number) => {
     const next = clampCount(n)
     const cur = panelOrder
