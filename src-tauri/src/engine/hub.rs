@@ -68,6 +68,7 @@ const TICK_SLEEP: Duration = Duration::from_millis(2000);
 // ── 잡 ───────────────────────────────────────────────────────────────────────
 
 pub enum Op {
+    ArchiveError(String),
     /// 옛 `claude:run` / `ma:run` / `session:run` — 정체성 패치 + 전송.
     Run(Value),
     Cmd(Cmd),
@@ -142,6 +143,7 @@ pub struct Job {
 }
 
 static TX: OnceLock<Mutex<Option<Sender<Job>>>> = OnceLock::new();
+static HUB_THREAD: OnceLock<Mutex<Option<std::thread::JoinHandle<()>>>>=OnceLock::new();
 
 fn tx_slot() -> &'static Mutex<Option<Sender<Job>>> {
     TX.get_or_init(|| Mutex::new(None))
@@ -378,15 +380,21 @@ impl Hub {
             // 「띄울 수 있다」고 판정할 때 본 것과 **같은 해석**이어야 한다: R28b까지
             // 이 줄은 맨 이름 `codex`를 그대로 넘겨 PATH에서 잘 떴는데, 한도 쪽만
             // `is_file()`로 「실행본 없음」이라 판정하고 눈감고 발사했다.
+            let archive_chat = chat.to_string();
+            let observer: ccg_engine::driver::ProtocolObserver = Arc::new(move |source, value| {
+                ccg_store::archive::record(&archive_chat, source, value);
+            });
             let codex = ccg_engine::codex::CodexDriver::new(
                 super::codex_versions::spawn_bin(),
                 self.job.clone(),
                 dump.clone(),
             )
             .with_home_resolver(super::codex_versions::resolver())
-            .with_context_resolver(super::codex_context::resolver());
-            let any = super::any::AnyDriver::new(ClaudeDriver::new(self.job.clone(), dump), codex);
+            .with_context_resolver(super::codex_context::resolver())
+            .with_observer(observer.clone());
+            let any = super::any::AnyDriver::new(ClaudeDriver::new(self.job.clone(), dump).with_observer(observer), codex);
             let (tap_drv, tapped) = super::tap::TapDriver::new(any);
+            let tap_drv = tap_drv.with_archive(chat);
             let rt = match ChatRuntime::new(
                 chat.to_string(),
                 raw,
@@ -538,6 +546,7 @@ impl Hub {
     /// 창 라우팅(§6.1 "창 라우팅은 `chatId → label` 역인덱스"): 본채팅은 메인 창,
     /// 추가 채팅은 그 창, 멀티 패널은 `panelId` 봉투. 어느 것도 아니면 봉투만 나간다.
     fn fanout(&mut self, chat: &str, ev: Value) {
+        ccg_store::archive::record(chat, "ui", &ev);
         // ★3.0.3 — 봉투는 참조로 직렬화한다. 토큰마다 `ev.clone()` 셋(봉투 둘 + 창별 하나)이
         // 허브 스레드 할당의 대부분이었다. Tauri의 emit은 직렬화만 하고 값을 붙들지 않는다.
         let _ = self.app.emit(crate::ipc::ch::CHAT_EVENT, ChatEnvelope { chat_id: chat, event: &ev });
@@ -594,6 +603,7 @@ impl Hub {
     /// 남았다(2026-09-03 보고: 재시작하면 AI 것은 다 있는데 내 것만 날아간다 — 실측
     /// `chats-v3/ma-…-2.json`: worked 33 · assistant 36 · user 6).
     fn fanout_except(&mut self, chat: &str, ev: Value, except: &str) {
+        ccg_store::archive::record(chat, "ui", &ev);
         let keep = |t: &EventTarget| {
             !matches!(
                 t,
@@ -647,12 +657,28 @@ impl Hub {
         // 사용자 조작은 같은 순간에 온다) — 라우팅 캐시를 여기서 버린다(무효화 규약 2).
         self.route.clear();
         let Job { chat, op, reply } = job;
+        match &op {
+            Op::Run(req) => ccg_store::archive::record(&chat, "request", req),
+            Op::Respond { kind, request_id, accept, payload, answer_text, always, answers } => {
+                ccg_store::archive::record(&chat,"response",&json!({"type":"user-response","kind":format!("{kind:?}"),"requestId":request_id,"accept":accept,"payload":payload,"answerText":answer_text,"always":always,"answers":answers}));
+            }
+            Op::Cmd(cmd) => ccg_store::archive::record(&chat,"command",&json!({"type":cmd.name(),"command":format!("{cmd:?}")})),
+            Op::Enqueue(input) if ccg_store::archive::enabled(&chat) => ccg_store::archive::record(&chat,"queue",&json!({"type":"enqueue","input":format!("{input:?}")})),
+            Op::QueueMutate(value)=>ccg_store::archive::record(&chat,"queue",value),
+            _ => {}
+        }
         let answer = |v: Value| {
             if let Some(tx) = &reply {
                 let _ = tx.send(v);
             }
         };
         match op {
+            Op::ArchiveError(error)=>{
+                let run=self.slots.get(&chat).map(|s|s.wire.run_id.clone()).unwrap_or_default();
+                self.fanout(&chat,json!({"type":"error","runId":run,"message":ccg_fs::t(&format!("대화 기록을 준비하지 못했습니다: {error}"), &format!("Could not prepare conversation recording: {error}"))}));
+                self.fanout(&chat,json!({"type":"status","runId":run,"status":"error"}));
+                answer(Value::Null);return;
+            }
             Op::Debug => {
                 let rows: Vec<Value> = self
                     .slots
@@ -795,7 +821,7 @@ impl Hub {
             Op::BgStop(_) => Some("bg_task.stop"),
             Op::ResumeNow => Some("resume"),
             // 조회·재장전·진단은 사유를 말할 자리가 아니다 — 전송이 그 요청의 폴더로 정확히 말한다.
-            Op::IdentityGet | Op::Reload { .. } | Op::ToolingGet | Op::SeatsChanged | Op::Dispose | Op::Debug => None,
+            Op::IdentityGet | Op::Reload { .. } | Op::ToolingGet | Op::SeatsChanged | Op::Dispose | Op::Debug | Op::ArchiveError(_) => None,
         };
         let Some(slot) = self.ensure_for(&chat, seed.as_ref(), cmd) else {
             answer(Value::Null);
@@ -817,6 +843,7 @@ impl Hub {
                     answer(Value::Null);
                     return;
                 }
+                ccg_store::archive::record(&chat,"identity",&ident::identity_wire(slot.rt.identity()));
                 // ★3.0.1 첫 주 보고 — 「/clear 했는데 지운 대화가 되살아난다 · Continue 루프」.
                 //    렌더러가 세션을 버리면(clear·폴더 변경 → 스냅샷 초기화) 다음 Run에
                 //    `resume`를 안 싣는다. 그런데 엔진은 옛 `thread.session_id`를 그대로 쥐고
@@ -865,7 +892,15 @@ impl Hub {
                 //    전송 1회에 `send:accepted` 2건(크리틱 배선 R1 F6). 저자를 하나로 줄인다.
                 let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
                 let verdict = slot.rt.dispatch(Cmd::Send { text: prompt });
+                let waiting_for_limit = slot.rt.hold().is_some()
+                    && matches!(slot.rt.state(), StateTag::Idle | StateTag::Resident | StateTag::Terminating | StateTag::Ended);
                 let (run_id, first) = match verdict {
+                    Verdict::Accepted | Verdict::Queued if waiting_for_limit => {
+                        // A held message has no running turn. Clear the sender's
+                        // optimistic spinner without reserving a future run id.
+                        let run_id = slot.wire.run_id.clone();
+                        (run_id.clone(), Some(json!({"type":"status","runId":run_id,"status":"idle","queued":true})))
+                    }
                     Verdict::Accepted => {
                         // runId 발급 — 렌더러가 이벤트를 자기 실행에 붙이는 키. 뒤따르는 엔진 RunId
                         // 하나는 이 런의 것이다 — 그걸 "엔진이 스스로 시작한 턴"으로 오인하면
@@ -1121,7 +1156,7 @@ impl Hub {
                 let v = slot.rt.resume_now();
                 answer(verdict_wire("hold.resume", &v));
             }
-            Op::Debug | Op::Dispose | Op::ToolingGet | Op::SeatsChanged => {
+            Op::Debug | Op::Dispose | Op::ToolingGet | Op::SeatsChanged | Op::ArchiveError(_) => {
                 unreachable!("위에서 처리")
             }
         }
@@ -1180,6 +1215,7 @@ impl Hub {
                 // stderr 한 줄도 상태기계의 프레임 최신성 근거가 아니다(F20) — 진단만.
                 let errs = slot.rt.driver().drain_stderr();
                 for l in errs {
+                    ccg_store::archive::record(&chat, "stderr", &json!({"type":"stderr","text":l}));
                     slot.rt.on_stderr(&l);
                 }
                 let frames: Vec<Value> = slot.tap.borrow_mut().drain(..).collect();
@@ -1237,6 +1273,7 @@ impl Hub {
     }
 
     fn on_engine_event(&mut self, chat: &str, e: Event) {
+        if ccg_store::archive::enabled(chat){ccg_store::archive::record(chat,"runtime",&json!({"type":"runtime-event","text":format!("{e:?}")}));}
         match e {
             Event::RunState {
                 state,
@@ -1317,6 +1354,7 @@ impl Hub {
                     .get(chat)
                     .map(|s| ident::identity_wire(s.rt.identity()))
                     .unwrap_or(Value::Null);
+                ccg_store::archive::record(chat,"identity",&identity);
                 self.emit_all(
                     crate::ipc::ch::CHAT_IDENTITY,
                     json!({
@@ -1360,6 +1398,9 @@ impl Hub {
                 );
             }
             Event::Status { status, .. } => {
+                let archive_run=self.slots.get(chat).map(|s|s.wire.run_id.clone()).unwrap_or_default();
+                ccg_store::archive::record(chat,"lifecycle",&json!({"type":match status {TerminalStatus::Done=>"completed",TerminalStatus::Error=>"error",TerminalStatus::Aborted=>"aborted"},"runId":archive_run}));
+                ccg_store::archive::checkpoint(chat);
                 // 2.6.2 렌더러의 상태 칩. runId는 와이어가 들고 있는 문자열을 쓴다.
                 // `Aborted`는 2.6.2 어휘에 없다 — 와이어로는 `done`(중단 마커는 렌더러의
                 // 로컬 리듀서가 이미 붙였다), **영속값은 `Terminal::Aborted`**로 가른다.
@@ -1787,7 +1828,7 @@ pub fn start(app: AppHandle) {
     *g = Some(tx);
     drop(g);
 
-    std::thread::Builder::new()
+    let thread=std::thread::Builder::new()
         .name("ccg-engine-hub".into())
         .spawn(move || {
             // job object(KILL_ON_JOB_CLOSE) — 앱이 죽으면 커널이 claude.exe와 손자까지
@@ -1829,15 +1870,19 @@ pub fn start(app: AppHandle) {
                 hub.pump();
             }
             // 채널이 닫혔다 = 앱 종료. 남은 CLI를 거둔다.
-            for (_, mut s) in hub.slots.drain() {
+            for (chat, mut s) in hub.slots.drain() {
                 s.rt.app_quit();
+                ccg_store::archive::record(&chat,"lifecycle",&json!({"type":"interrupted","reason":"application-exit"}));
             }
+            ccg_store::archive::shutdown();
         })
         .ok();
+    *HUB_THREAD.get_or_init(||Mutex::new(None)).lock().unwrap_or_else(|e|e.into_inner())=thread;
 }
 
 /// 앱 종료 — 허브를 닫고 상태를 디스크로 내린다(D15).
 pub fn shutdown() {
+    ccg_store::archive::request_shutdown();
     {
         let mut g = tx_slot().lock().unwrap_or_else(|e| e.into_inner());
         // Sender를 떨어뜨리면 허브 루프가 Disconnected로 빠져나오며 CLI를 거둔다.
@@ -1845,4 +1890,5 @@ pub fn shutdown() {
     }
     // 500ms 디바운스가 남아 있을 수 있다 — 마지막 값을 지금 쓴다(§5.8 규약 4).
     ccg_store::status::flush();
+    if let Some(thread)=HUB_THREAD.get().and_then(|s|s.lock().unwrap_or_else(|e|e.into_inner()).take()){let _=thread.join();}
 }

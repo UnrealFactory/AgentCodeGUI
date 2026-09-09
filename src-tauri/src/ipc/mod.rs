@@ -438,6 +438,13 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
 }
 
 fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
+    if channel=="archive:resolve" {
+        let a=arg(p,0);
+        let chat=a.get("chatId").and_then(Value::as_str).filter(|s|!s.is_empty()).map(str::to_string)
+            .or_else(||a.get("panelId").and_then(Value::as_str).and_then(crate::engine::panel_id_to_chat));
+        return match chat{Some(chat)=>serde_json::json!({"chatId":chat}),None=>serde_json::json!({"ok":false,"error":ccg_fs::t("기록할 대화를 찾지 못했습니다.", "Could not find the conversation to record.")})};
+    }
+    if let Some(value) = ccg_store::archive::dispatch(channel, p) { return value; }
     if let Some(v) = crate::engine::environment::dispatch(channel, p) { return v; }
     // 통합 스토어 옵트인 — 켜졌을 때만, 그리고 **맨 앞에서** 옛 채널을 가로챈다.
     if ccg_store::unified_store_enabled() {

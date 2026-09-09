@@ -12,6 +12,7 @@ import { FileBadge } from './fileType'
 import { EngineEnvironmentCard } from './EngineEnvironmentCard'
 import { CodexResetCredits } from './CodexResetCredits'
 import { CodexContextCard } from './CodexContextCard'
+import { TranslationSettingsView } from './TranslationSettingsView'
 import { useEngineEnvironments } from '../api/engineEnvironment'
 // ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
 import {
@@ -62,6 +63,7 @@ import {
   IconMouse,
   IconContrast,
   IconGlobe,
+  IconTranslate,
   IconDownload,
   IconSparkles,
   IconInfo,
@@ -84,7 +86,7 @@ import {
 
 // ★3.0 R3 — 'mcp'·'skill' 탭 제거(2026-09-01 사용자 결정): 목록·토글이 패널 헤더의
 // 「MCP & Skill」 칩(McpSkillView)으로 옮겨 갔다 — 설정에 남기면 같은 일이 두 곳이 된다.
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'app'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'translation' | 'app'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -109,7 +111,8 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
       label: t('환경', 'Environment'),
       items: [
         { id: 'display', label: 'Display', Icon: IconContrast, keys: '화면 유리 투명 아크릴 벽지 비침 배경 glass 알림 토스트 notification display transparent acrylic wallpaper background toast sidebar' },
-        { id: 'language', label: 'Language', Icon: IconGlobe, keys: '언어 한국어 영어 한글 korean english 번역 language translation' },
+        { id: 'language', label: 'Language', Icon: IconGlobe, keys: '언어 한국어 영어 한글 korean english language' },
+        { id: 'translation', label: 'Translation', Icon: IconTranslate, keys: '번역 모델 사고 수준 effort 현재 세션 계정 translate translation model account language' },
         { id: 'lsp', label: 'Code', Icon: IconCode, keys: '코드 언어 서버 lsp 하이라이트 심볼 code language server highlight symbol' },
         { id: 'explorer', label: 'Explorer', Icon: IconFilter, keys: '탐색기 숨김 필터 폴더 explorer hide filter folder' },
         { id: 'gesture', label: 'Gestures', Icon: IconMouse, keys: '제스처 마우스 우클릭 gesture mouse right click' }
@@ -3239,6 +3242,7 @@ export function SettingsModal({
               {view === 'api' && <ApiView />}
               {view === 'display' && <DisplayView />}
               {view === 'language' && <LanguageView />}
+              {view === 'translation' && <TranslationSettingsView />}
               {view === 'lsp' && <LspView />}
               {view === 'explorer' && <ExplorerView />}
               {view === 'gesture' && <GestureView />}

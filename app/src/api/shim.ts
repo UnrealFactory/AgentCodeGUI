@@ -492,7 +492,7 @@ const api: WindowApi = {
     aiMessage: (cwd, files, opts) =>
       call(
         IPC.gitAiMessage,
-        [{ cwd, files, account: opts?.account, model: opts?.model, effort: opts?.effort }],
+        [{ cwd, files, engine: opts?.engine, account: opts?.account, model: opts?.model, effort: opts?.effort }],
         NO_AI_MSG
       )
   },

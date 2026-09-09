@@ -289,6 +289,7 @@ fn parse_resets(text: &str, now_epoch_ms: u64) -> Option<u64> {
 //
 // 받는 꼴(대소문자 무관, `resets`/`reset at` 뒤):
 //   `3:30pm (Asia/Seoul)` · `3pm` · `at 3pm` · `Sep 8 at 3pm (Asia/Seoul)` · `Sep 8, 3pm` · `in 1h 5m` · `in 45m`
+// Codex: `try again at Sep 15th, 2026 10:47 AM.` — explicit years never roll forward.
 // 괄호의 존은 **읽지 않는다** — CLI가 그 기기의 로컬 존을 적으므로 로컬 벽시계로 옮기면 같은
 // 값이다(다른 기기의 원문을 붙여 넣는 경우는 없다). 날짜 없는 시각은 오늘, 다만 12시간 넘게
 // 지난 시각이면 내일(자정 넘김). 날짜 있는 시각은 올해, 30일 넘게 지났으면 내년.
@@ -297,11 +298,14 @@ fn parse_resets(text: &str, now_epoch_ms: u64) -> Option<u64> {
 fn parse_reset_phrase(text: &str, now: chrono::DateTime<chrono::Local>) -> Option<u64> {
     use chrono::{Datelike, Duration, TimeZone};
     let lower = text.to_lowercase();
-    let idx = lower.find("resets").map(|i| i + "resets".len()).or_else(|| lower.find("reset at").map(|i| i + "reset".len()))?;
+    let idx = lower.find("resets").map(|i| i + "resets".len())
+        .or_else(|| lower.find("reset at").map(|i| i + "reset".len()))
+        .or_else(|| lower.find("try again at").map(|i| i + "try again at".len()))?;
     let mut toks: Vec<&str> = lower[idx..]
         .split(|c: char| c.is_whitespace() || c == ',' || c == '·')
+        .map(|t| t.trim_end_matches('.'))
         .filter(|t| !t.is_empty())
-        .take(6)
+        .take(8)
         .collect();
     if toks.first() == Some(&"at") {
         toks.remove(0);
@@ -330,11 +334,14 @@ fn parse_reset_phrase(text: &str, now: chrono::DateTime<chrono::Local>) -> Optio
     }
     // 선택적 날짜: `sep 8`
     const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    let mut date: Option<(u32, u32)> = None;
+    let mut date: Option<(u32, u32, Option<i32>)> = None;
     if let Some(m) = toks.first().and_then(|t| MONTHS.iter().position(|m| t.starts_with(m))) {
         let d: u32 = toks.get(1)?.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok()?;
-        date = Some((m as u32 + 1, d));
         toks.drain(..2);
+        let year = if toks.first().is_some_and(|t| t.len() == 4 && t.chars().all(|c| c.is_ascii_digit())) {
+            Some(toks.remove(0).parse::<i32>().ok()?)
+        } else { None };
+        date = Some((m as u32 + 1, d, year));
         if toks.first() == Some(&"at") {
             toks.remove(0);
         }
@@ -363,10 +370,10 @@ fn parse_reset_phrase(text: &str, now: chrono::DateTime<chrono::Local>) -> Optio
     }
     let tz = now.timezone();
     let at = match date {
-        Some((mo, d)) => {
-            let mut y = now.year();
+        Some((mo, d, year)) => {
+            let mut y = year.unwrap_or_else(|| now.year());
             let cand = tz.with_ymd_and_hms(y, mo, d, h, m, 0).single()?;
-            if cand < now - Duration::days(30) {
+            if year.is_none() && cand < now - Duration::days(30) {
                 y += 1;
             }
             tz.with_ymd_and_hms(y, mo, d, h, m, 0).single()?

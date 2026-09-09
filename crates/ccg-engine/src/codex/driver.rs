@@ -36,6 +36,8 @@ pub type HomeResolver = Arc<dyn Fn(&CodexPlan) -> Option<PathBuf> + Send + Sync>
 pub type ContextResolver = Arc<dyn Fn(&CodexPlan) -> std::io::Result<super::ContextOverrides> + Send + Sync>;
 
 pub struct CodexDriver {
+    observer: Option<crate::driver::ProtocolObserver>,
+    observed_errors: (usize,usize),
     /// **앱이 관리하는 codex 실행본**(없으면 전역 `codex`). `SpawnSpec.cli`는 Claude용
     /// 경로라 쓰지 않는다 — 엔진마다 바이너리가 다르다는 사실을 여기서 흡수한다.
     bin: PathBuf,
@@ -61,6 +63,8 @@ pub struct CodexDriver {
 impl CodexDriver {
     pub fn new(bin: PathBuf, job: Option<Arc<crate::job::Job>>, dump: Option<PathBuf>) -> CodexDriver {
         CodexDriver {
+            observer: None,
+            observed_errors: (0,0),
             bin,
             child: None,
             stdin: None,
@@ -83,6 +87,10 @@ impl CodexDriver {
     /// 계정별 격리 `CODEX_HOME` 훅. 셸이 꽂는다([`HomeResolver`] 참고).
     pub fn with_home_resolver(mut self, r: HomeResolver) -> Self {
         self.home = Some(r);
+        self
+    }
+    pub fn with_observer(mut self, observer: crate::driver::ProtocolObserver) -> Self {
+        self.observer = Some(observer);
         self
     }
 
@@ -122,6 +130,7 @@ impl CodexDriver {
     }
 
     fn write_line(&mut self, v: &Value) {
+        if let Some(observer) = &self.observer { observer("protocol-out", v); }
         if let Some(si) = &mut self.stdin {
             let _ = si.write_all(v.to_string().as_bytes());
             let _ = si.write_all(b"\n");
@@ -337,6 +346,10 @@ impl CliDriver for CodexDriver {
     }
 
     fn poll_frames(&mut self, now: Millis) -> Vec<Value> {
+        if let Some(observer)=&self.observer {
+            let counts={let stats=self.stats.lock().unwrap_or_else(|e|e.into_inner());(stats.parse_errors,stats.oversized_dropped)};
+            if counts!=self.observed_errors {self.observed_errors=counts;observer("protocol-in",&serde_json::json!({"type":"coverage-gap","text":"Engine parser rejected or exceeded the size limit for a frame","parseErrors":counts.0,"oversizedFrames":counts.1}));}
+        }
         let mut rpcs: Vec<Value> = vec![];
         if let Some(rx) = &self.rx {
             loop {
@@ -354,6 +367,7 @@ impl CliDriver for CodexDriver {
         }
         let wall = now_ms();
         for v in rpcs {
+            if let Some(observer) = &self.observer { observer("protocol-in", &v); }
             let e = self.tx.on_rpc(&v, wall);
             self.drive(e);
         }
@@ -380,6 +394,15 @@ fn now_ms() -> Millis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn archive_observer_keeps_unknown_original_rpc_payloads_before_translation() {
+        let seen=Arc::new(Mutex::new(Vec::new()));let copy=seen.clone();
+        let mut driver=CodexDriver::new(PathBuf::from("unused"),None,None).with_observer(Arc::new(move|source,value|{copy.lock().unwrap().push((source.to_string(),value.clone()));}));
+        let (tx,rx)=channel();driver.rx=Some(rx);
+        let frame=serde_json::json!({"method":"future/tool/fullResult","params":{"content":"원문 🧪\n".repeat(50_000),"unknownFields":{"preserved":true}}});
+        tx.send(frame.clone()).unwrap();driver.poll_frames(0);
+        assert_eq!(seen.lock().unwrap().iter().find(|(source,_)|source=="protocol-in").unwrap().1,frame);
+    }
 
     /// 네이티브 실행본은 **cmd를 안 거친다**(프로세스 하나 · 인용 문제 없음).
     #[test]

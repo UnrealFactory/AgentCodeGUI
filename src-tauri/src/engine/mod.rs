@@ -85,6 +85,7 @@ pub use hub::shutdown;
 /// 장전 순서가 규약이다(§5.8): **파일 로드 → 부팅 강제 → 브로드캐스트**. 강제 없이
 /// 그리면 지난 세션의 `busy`·`ask`가 그대로 살아나 유령 알약이 뜬다.
 pub fn boot(app: &AppHandle) {
+    ccg_store::archive::bootstrap();
     // ★R4 귀속 팔 — 스위치는 `flags.rs` 헤더의 표에 있다. 기본값은 전부 켬이라
     // 아무 env도 없으면 이 함수의 동작은 R3과 한 글자도 다르지 않다.
     if crate::flags::no_engine_glue() {
@@ -319,6 +320,25 @@ pub fn active_chat_id() -> String {
     all_chat_ids().into_iter().next().unwrap_or_else(|| "chat-unassigned".into())
 }
 
+/// Snapshot the explicitly addressed chat for an auxiliary request, without changing its identity.
+pub fn text_request_identity(session: &Value) -> Result<Value, String> {
+    let chat_id = session.get("chatId").and_then(Value::as_str).filter(|s| !s.is_empty());
+    let panel_id = session.get("panelId").and_then(Value::as_str).filter(|s| !s.is_empty());
+    let chat = match (chat_id, panel_id) {
+        (Some(chat), None) => Some(chat.to_string()),
+        (None, Some(panel)) => panel_id_to_chat(panel),
+        _ => None,
+    }.ok_or_else(|| ccg_fs::t("번역할 채팅 세션을 찾지 못했어요", "Could not find the chat to translate from"))?;
+    if !ccg_store::legacy_bridge::chats_load(&chat).is_object() {
+        return Err(ccg_fs::t("이 채팅 세션이 더 이상 존재하지 않아요", "This chat no longer exists"));
+    }
+    let state = hub::call(&chat, hub::Op::IdentityGet);
+    if !state["unresolved"].is_null() || !state["identity"].is_object() {
+        return Err(ccg_fs::t("현재 세션의 계정을 확인해 주세요", "Check the current session's account"));
+    }
+    Ok(state["identity"].clone())
+}
+
 /// `${boardId}::${slot}` → 그 자리에 앉은 채팅. 보드가 진실이라 패널을 옮겨도 따라간다.
 ///
 /// ★ 빈 자리는 **선지급**한다 — 새 자리의 첫 전송은 렌더러의 보드 저장(디바운스)과
@@ -551,7 +571,7 @@ pub fn dispatch(_app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Val
     };
 
     Some(match channel {
-        ch::CLAUDE_RUN | ch::SESSION_RUN | ch::MA_RUN => hub::call(&chat, hub::Op::Run(arg(p, req_at).clone())),
+        ch::CLAUDE_RUN | ch::SESSION_RUN | ch::MA_RUN => run_with_archive(&chat,arg(p,req_at)),
         // 소프트 중단 — 턴만 끊고 상주는 유지한다(2.6.2가 프로세스를 죽여 만든
         // "중단 1회 → 턴마다 CLI 사망 루프"를 여기서 되풀이하지 않는다).
         ch::CLAUDE_INTERRUPT | ch::SESSION_INTERRUPT | ch::MA_INTERRUPT => {
@@ -583,10 +603,20 @@ pub fn dispatch(_app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Val
     })
 }
 
+fn run_with_archive(chat:&str,request:&Value)->Value {
+    if let Err(error)=ccg_store::archive::prepare_run(chat,request){
+        // Preserve the user's request and expose recording failure before dispatch.
+        ccg_store::archive::record(chat,"lifecycle",&json!({"type":"capture-error","error":error.to_string(),"request":request}));
+        hub::cast(chat,hub::Op::ArchiveError(error.to_string()));
+        return Value::Null;
+    }
+    hub::call(chat,hub::Op::Run(request.clone()))
+}
+
 fn core_dispatch(channel: &str, p: &Value) -> Option<Value> {
     let chat = || arg(p, 0).get("chatId").and_then(Value::as_str).unwrap_or("").to_string();
     Some(match channel {
-        ch::CHAT_RUN => hub::call(&chat(), hub::Op::Run(arg(p, 0).clone())),
+        ch::CHAT_RUN => run_with_archive(&chat(),arg(p,0)),
         ch::CHAT_INTERRUPT => {
             hub::cast(&chat(), hub::Op::Cmd(Cmd::Interrupt));
             json!({ "ok": true })

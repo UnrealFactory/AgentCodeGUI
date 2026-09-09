@@ -24,6 +24,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct TapDriver {
+    archive_chat: Option<String>,
     /// ★M4 — 감싸는 대상이 `ClaudeDriver`에서 [`AnyDriver`]가 됐다(엔진을 스폰 인자가
     /// 고른다). 탭의 계약은 그대로다: **지나가는 프레임을 한 벌 더 뜬다**.
     inner: AnyDriver,
@@ -36,6 +37,7 @@ impl TapDriver {
         let tapped = Rc::new(RefCell::new(Vec::new()));
         (
             TapDriver {
+                archive_chat: None,
                 inner,
                 tapped: tapped.clone(),
             },
@@ -44,6 +46,10 @@ impl TapDriver {
     }
     pub fn pid(&self) -> Option<u32> {
         self.inner.pid()
+    }
+    pub fn with_archive(mut self, chat: &str) -> Self {
+        self.archive_chat = Some(chat.into());
+        self
     }
     pub fn drain_stderr(&mut self) -> Vec<String> {
         self.inner.drain_stderr()
@@ -59,9 +65,21 @@ impl TapDriver {
 
 impl CliDriver for TapDriver {
     fn spawn(&mut self, spec: &SpawnSpec) -> std::io::Result<()> {
+        if let Some(chat) = &self.archive_chat {
+            // Covers automatic queue drains and identity changes, too. Most runs
+            // were already prepared on the IPC pool, so this is a memory check.
+            ccg_store::archive::prepare_run(chat,&serde_json::json!({"cwd":spec.cwd}))?;
+            // Environment variables can contain credentials. Runtime identity and
+            // actual protocol messages carry the relevant model/settings instead.
+            ccg_store::archive::record(chat, "lifecycle", &serde_json::json!({
+                "type":"process-start", "cwd":spec.cwd, "resume":spec.resume,
+                "engine":if spec.codex.is_some(){"codex"}else{"claude"}
+            }));
+        }
         self.inner.spawn(spec)
     }
     fn send(&mut self, line: Value) {
+        if let Some(chat) = &self.archive_chat { ccg_store::archive::record(chat, "input", &line); }
         self.inner.send(line)
     }
     fn close_input(&mut self) {

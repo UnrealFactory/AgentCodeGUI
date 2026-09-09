@@ -1370,7 +1370,7 @@ function MainApp({ user }: { user: AppUser }) {
       // a blocking question/프롬프트 modal owns the keyboard (arrows/Enter/numbers) while
       // open — don't let these global shortcuts steal focus or cycle the mode underneath it.
       // .q-mini = 질문을 잠깐 내려둔 상태(여전히 답 대기 중)도 동일하게 비켜준다
-      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay, .wf-card')) return
+      if (document.querySelector('.q-overlay, .q-mini, .pr-overlay, .wf-card, .arc-overlay, .archive-loading-overlay')) return
       if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault()
         setPicker((p) => ({ ...p, mode: nextMode(p.mode) }))
@@ -1420,7 +1420,7 @@ function MainApp({ user }: { user: AppUser }) {
       if (e.key !== 'Escape' || mode !== 'single' || (!busy && !wfAlive)) return
       if (
         document.querySelector(
-          '.q-overlay, .q-mini, .wf-card, .set-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .wf-card, .set-overlay, .set-dialog-overlay, .pr-overlay, .fv-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .translation-popover, .arc-overlay, .archive-loading-overlay'
         )
       )
         return
@@ -2501,7 +2501,7 @@ function MainApp({ user }: { user: AppUser }) {
               </div>
             )}
           </div>
-          <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+          <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} session={{ chatId: activeChatId }} />
           <ChatFind scrollRef={scrollRef} onOpenChange={(o) => o && twin.reveal()} />
           <MouseGestureLayer target={scrollEl} actions={chatGestures} />
           <WorkBar

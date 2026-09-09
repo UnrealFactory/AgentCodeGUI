@@ -269,6 +269,12 @@ export const IconGlobe = (p: IconProps) => (
     <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
   </Icon>
 )
+export const IconTranslate = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 5h12M9 3v2M13 5c-1 6-5 10-10 12M5 8c1.5 3.5 4 6 7 8" />
+    <path d="m13 21 4.5-11L22 21M14.5 17.5h6" />
+  </Icon>
+)
 export const IconFolder = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

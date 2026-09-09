@@ -4,6 +4,14 @@
    창 자체가 카드(불투명 재질) — 표면은 아크릴 위에 얹는 반투명 층으로 깊이를 만든다.
    ============================================================ */
 
+.archive-chip-wrap{-webkit-app-region:no-drag;flex-shrink:0}
+.archive-chip{gap:5px!important;flex-shrink:0}
+.archive-chip:disabled{cursor:default;opacity:.55}
+.archive-chip.recording{color:var(--green)!important}
+.archive-chip.error{color:var(--red)!important}
+.archive-record-dot{width:5px;height:5px;border:1px solid currentColor;border-radius:50%;opacity:.65;flex:none}
+.archive-record-dot.on{background:var(--green);border-color:var(--green);opacity:1}
+.archive-loading-overlay{position:fixed;inset:0;background:#0009;z-index:9800;display:grid;place-items:center;color:var(--text);font-size:13px;-webkit-app-region:no-drag}
 :root{
   /* 표면 — 아크릴 위 틴트 (PoC 실측 확정: 바탕 18 ↔ 카드 21(+3) · 팝오버 28(+10) 단차)
      --panel·--chat-bg 알파는 설정 › Display '벽지 비침' 슬라이더가 :root 인라인으로 덮는다
@@ -916,7 +924,7 @@ button.hsec:hover{ color:var(--text-3); }
 .thread-older{ height:28px; display:flex; align-items:center; justify-content:center; }
 .thread-older::after{ content:'⋯'; color:var(--muted, #777); opacity:.5; font-size:15px; letter-spacing:2px; }
 
-/* floating toolbar above a text selection in the chat (복사 / 더 자세히) */
+/* floating toolbar above a text selection in the chat (복사 / 더 자세히 / 번역) */
 .sel-bar{
   position:fixed; z-index:150; display:flex; align-items:stretch; gap:2px;
   padding:4px; background:rgba(28,28,28,.72); border:1px solid rgba(255,255,255,.10);
@@ -934,6 +942,64 @@ button.hsec:hover{ color:var(--text-3); }
 .sel-act svg{ color:var(--text-3); }
 .sel-act:hover svg{ color:var(--accent); }
 .sel-div{ width:1px; align-self:center; height:18px; background:var(--line); }
+.sel-bar{ max-width:calc(100vw - 16px); flex-wrap:wrap; }
+.translation-popover{
+  position:fixed; z-index:155; display:flex; flex-direction:column; gap:12px;
+  width:480px; height:300px; min-width:min(320px,calc(100vw - 24px)); max-width:calc(100vw - 24px);
+  min-height:min(220px,calc(100vh - 24px)); max-height:calc(100vh - 24px);
+  padding:14px; resize:both; overflow:hidden; outline:none; border-radius:15px;
+  background:var(--bg); border:1px solid var(--line-strong);
+  box-shadow:0 18px 54px -12px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.04);
+  animation:fade .14s ease both;
+}
+.translation-topbar{ display:flex; align-items:center; gap:4px; flex-shrink:0; cursor:grab; touch-action:none; user-select:none; }
+.translation-title{ display:flex; align-items:center; gap:8px; color:var(--text); font-size:13px; font-weight:600; }
+.translation-title svg{ color:var(--text-3); }
+.translation-icon{ display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; border-radius:7px; color:var(--text-3); }
+.translation-icon:hover{ color:var(--text); background:var(--surface-2); }
+.translation-controls{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.translation-controls .select-menu{ width:164px; max-width:55%; flex-shrink:0; }
+.translation-controls .select-menu-trigger{ padding:6px 10px; background:var(--surface); border-color:var(--line-2); border-radius:7px; }
+.translation-output{ flex:1; min-height:0; overflow:auto; padding:13px 14px; background:var(--inset); border:1px solid var(--line); border-radius:9px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.8; color:var(--text); user-select:text; }
+.translation-output.is-status{ display:flex; align-items:center; justify-content:center; }
+.translation-state{ display:flex; align-items:center; gap:8px; color:var(--text-3); font-size:12px; }
+.translation-error{ color:var(--red); font-size:12px; line-height:1.6; }
+.translation-footer{ display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.translation-copy{ display:flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid var(--line-2); border-radius:7px; background:var(--surface); color:var(--text-2); font-size:12px; }
+.translation-copy:hover{ background:var(--surface-2); color:var(--text); }
+.translation-model{ flex:1; min-width:0; text-align:right; color:var(--text-4); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.translation-speed{ flex-shrink:0; color:var(--text-3); font-size:10px; }
+.translation-popover button:disabled{ opacity:.45; cursor:default; }
+.translation-settings fieldset{ min-width:0; padding:0; margin:0; border:0; }
+.translation-session-note{ display:flex; align-items:flex-start; gap:11px; padding:16px; margin:18px 0 24px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--text-2); }
+.translation-session-note > svg{ flex-shrink:0; margin-top:2px; }
+.translation-session-note b{ font-size:12px; font-weight:600; color:var(--text); }
+.translation-session-note p{ margin:6px 0 0; font-size:12px; line-height:1.7; }
+.translation-settings .sc2{ display:block; padding:18px; margin-bottom:12px; }
+.translation-setting-heading{ display:flex; align-items:center; gap:10px; margin-bottom:16px; color:var(--text-2); }
+.translation-setting-heading .em{ margin:0; }
+.translation-setting-heading > span{ margin-left:auto; font-size:10px; color:var(--text-3); }
+.translation-setting-fields{ display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; }
+.translation-setting-fields.with-speed{ grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); }
+.translation-setting-field{ display:grid; gap:8px; min-width:0; font-size:11px; color:var(--text-3); }
+.translation-speed-note{ margin:12px 0 0; color:var(--text-3); font-size:11px; line-height:1.6; }
+.translation-save-note{ margin:16px 0; color:var(--text-3); font-size:11px; }
+
+/* Dropdowns use the same app surface in every Windows/WebView theme. */
+.select-menu{ min-width:0; }
+.select-menu-trigger{ display:flex; align-items:center; gap:12px; width:100%; padding:11px 12px; border:1px solid transparent; border-radius:10px; background:var(--surface-2); color:var(--text-2); font-family:inherit; font-size:12px; line-height:18px; text-align:left; cursor:pointer; }
+.select-menu-trigger > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.select-menu-trigger > svg{ flex-shrink:0; color:var(--text-3); transition:transform .12s; }
+.select-menu-trigger[aria-expanded="true"] > svg{ transform:rotate(180deg); }
+.select-menu-trigger:hover:not(:disabled),.select-menu-trigger[aria-expanded="true"]{ border-color:var(--line-2); background:var(--surface-3); color:var(--text); }
+.select-menu-trigger:focus-visible{ outline:2px solid var(--accent-line); outline-offset:2px; }
+.select-menu-trigger:disabled{ opacity:.45; cursor:default; }
+.select-menu-popover{ position:fixed; z-index:220; padding:5px; overflow-y:auto; overscroll-behavior:contain; background:#252525; color:var(--text); color-scheme:dark; border:1px solid var(--line-strong); border-radius:11px; box-shadow:0 12px 34px -10px rgba(0,0,0,.65); }
+.select-menu-option{ display:flex; align-items:center; gap:10px; width:100%; min-height:34px; padding:7px 10px; border-radius:6px; background:transparent; color:var(--text-2); font-family:inherit; font-size:12px; line-height:18px; text-align:left; cursor:pointer; }
+.select-menu-option > span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.select-menu-option > svg{ flex-shrink:0; color:var(--text); }
+.select-menu-option.is-active{ color:var(--text); background:var(--surface-3); }
+.select-menu-option[aria-selected="true"]{ color:var(--text); font-weight:600; }
 
 /* empty-chat welcome screen */
 .welcome{
@@ -3219,7 +3285,7 @@ button.wb-prow{ width:100%; text-align:left; }
 .gitm-compose .row{ display:flex; align-items:center; gap:8px; margin-top:10px; }
 .gitm-compose .row .sp{ flex:1; }
 
-/* AI 커밋 메시지 카드 — 2단계(계정 → 모델·effort), qcard 문법 위 세그먼트만 추가 */
+/* AI 커밋 메시지 카드 — 제공업체 → 계정 → 모델·effort, qcard 문법 위 세그먼트만 추가 */
 .gai-lab{ margin:15px 2px 7px; font-size:11px; font-weight:700; color:var(--text-4); }
 .gai-seg{ display:flex; gap:6px; flex-wrap:wrap; }
 .gai-seg button{

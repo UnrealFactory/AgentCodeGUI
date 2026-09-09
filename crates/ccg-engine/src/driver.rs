@@ -32,6 +32,10 @@ const SPAWN_WAIT_PRIOR: Duration = Duration::from_millis(2500);
 pub const MAX_LINE: usize = 64 * 1024 * 1024;
 const CHUNK: usize = 16 * 1024;
 
+/// Optional transport observer. The shell supplies the opt-in archive; the engine
+/// has no storage dependency and the observer never changes protocol messages.
+pub type ProtocolObserver = Arc<dyn Fn(&str, &Value) + Send + Sync>;
+
 #[derive(Debug, Clone)]
 pub struct SpawnSpec {
     pub cli: PathBuf,
@@ -312,6 +316,8 @@ pub trait CliDriver {
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct ClaudeDriver {
+    observer: Option<ProtocolObserver>,
+    observed_errors: (usize,usize),
     child: Option<Child>,
     stdin: Option<std::process::ChildStdin>,
     rx: Option<Receiver<Value>>,
@@ -345,6 +351,8 @@ pub struct FrameStats {
 impl ClaudeDriver {
     pub fn new(job: Option<Arc<crate::job::Job>>, dump: Option<PathBuf>) -> ClaudeDriver {
         ClaudeDriver {
+            observer: None,
+            observed_errors: (0,0),
             child: None,
             stdin: None,
             rx: None,
@@ -360,6 +368,10 @@ impl ClaudeDriver {
     }
     pub fn pid(&self) -> Option<u32> {
         self.child.as_ref().map(|c| c.id())
+    }
+    pub fn with_observer(mut self, observer: ProtocolObserver) -> Self {
+        self.observer = Some(observer);
+        self
     }
     pub fn drain_stderr(&mut self) -> Vec<String> {
         let mut out = vec![];
@@ -441,6 +453,7 @@ impl CliDriver for ClaudeDriver {
     }
 
     fn send(&mut self, line: Value) {
+        if let Some(observer) = &self.observer { observer("protocol-out", &line); }
         if let Some(si) = &mut self.stdin {
             let s = line.to_string();
             let _ = si.write_all(s.as_bytes());
@@ -514,11 +527,18 @@ impl CliDriver for ClaudeDriver {
     }
 
     fn poll_frames(&mut self, _now: Millis) -> Vec<Value> {
+        if let Some(observer)=&self.observer {
+            let counts={let stats=self.stats.lock().unwrap_or_else(|e|e.into_inner());(stats.parse_errors,stats.oversized_dropped)};
+            if counts!=self.observed_errors {self.observed_errors=counts;observer("protocol-in",&json!({"type":"coverage-gap","text":"Engine parser rejected or exceeded the size limit for a frame","parseErrors":counts.0,"oversizedFrames":counts.1}));}
+        }
         let mut out = vec![];
         if let Some(rx) = &self.rx {
             loop {
                 match rx.try_recv() {
-                    Ok(v) => out.push(v),
+                    Ok(v) => {
+                        if let Some(observer) = &self.observer { observer("protocol-in", &v); }
+                        out.push(v);
+                    }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
                         // stdout EOF — 스트림 급사/정상 종료. **삼키지 않는다**:

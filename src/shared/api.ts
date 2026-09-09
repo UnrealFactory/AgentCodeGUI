@@ -65,8 +65,7 @@ import type {
   GitBranch,
   GitResult,
   GitAiMessageResult,
-  ModelId,
-  EffortId,
+  GitAiMessageOptions,
   NotifyEventPayload,
   NotifyEntry,
   NotifyTarget,
@@ -254,7 +253,7 @@ export interface WindowApi {
     aiMessage(
       cwd: string,
       files: string[],
-      opts?: { account?: string; model?: ModelId; effort?: EffortId }
+      opts?: GitAiMessageOptions
     ): Promise<GitAiMessageResult>
   }
   /** LSP code intelligence for the in-app viewer (lazy per-project language servers) */

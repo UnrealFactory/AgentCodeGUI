@@ -417,7 +417,7 @@ export interface PlanPreview {
 }
 
 export type EngineEvent =
-  | { type: 'status'; runId: string; status: AgentStatus }
+  | { type: 'status'; runId: string; status: AgentStatus; queued?: boolean }
   | { type: 'session'; runId: string; sessionId: string; model: string; cwd: string; tools: string[] }
   | { type: 'assistant-done'; runId: string; messageId: string; text: string }
   // streaming text chunk appended to the in-progress assistant message
@@ -745,6 +745,25 @@ export interface CodexModelInfo {
   tiers?: CodexModelTier[]
   defaultTier?: string | null
 }
+
+/** Auxiliary text tasks use the selected provider's account, model and reasoning effort. */
+export interface AiTextOptions {
+  engine?: EngineId
+  account?: string
+  model?: string
+  effort?: string
+}
+export type GitAiMessageOptions = AiTextOptions
+export type TranslationLanguage = 'ko' | 'en' | 'ja' | 'zh-CN' | 'fr' | 'de' | 'es'
+export type TranslationSession = { chatId: string; panelId?: never } | { panelId: string; chatId?: never }
+export type TranslationModels = Record<EngineId, { model: string; effort: string; codexTier?: string }>
+export interface TranslationRequest {
+  text: string
+  targetLanguage: TranslationLanguage
+  session: TranslationSession
+  models: TranslationModels
+}
+export type TranslationResult = { ok: true; text: string; engine: EngineId; account: string | null; model: string; effort: string; codexTier?: string | null } | { ok: false; error: string }
 export interface CodexModelTier {
   id: string
   name: string
@@ -1331,6 +1350,7 @@ export const IPC = {
   gitSwitchBranch: 'git:switch-branch', // 브랜치 전환
   gitCreateBranch: 'git:create-branch', // 새 브랜치 만들고 전환
   gitAiMessage: 'git:ai-message', // AI 커밋 메시지 — diff 읽고 저장소 톤으로 1회 생성
+  translateText: 'ai:translate',
   lspStatus: 'lsp:status', // code-intel status for a file (lazily spawns the project's server)
   lspHover: 'lsp:hover', // symbol hover (markdown) at a position
   lspDefinition: 'lsp:definition', // definition target(s) for the symbol at a position

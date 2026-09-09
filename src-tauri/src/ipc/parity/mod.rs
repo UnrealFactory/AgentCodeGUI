@@ -34,6 +34,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, WebviewWindow};
 
 mod aimsg;
+mod translation;
 mod btw;
 mod codex;
 pub(crate) mod codex_tooling;
@@ -79,6 +80,7 @@ pub mod ch {
     /// `ipc/git.rs`가 아니라 여기 있는 이유: 저 모듈은 `ccg_fs::git`의 얇은 변환기이고
     /// 이 채널만 **엔진 프로세스를 스폰**한다(최대 90초). 성격이 다르면 자리도 다르다.
     pub const GIT_AI_MESSAGE: &str = "git:ai-message";
+    pub const TRANSLATE_TEXT: &str = "ai:translate";
 }
 
 /// 이 묶음이 맡는 채널인가 — `ipc_call`이 **블로킹 팔로 보낼지** 가르는 유일한 판정.
@@ -104,6 +106,7 @@ pub fn owns(channel: &str) -> bool {
             | ch::CODEX_ACCOUNTS_USAGE
             | ch::CODEX_RESET_CREDIT_CONSUME
             | ch::GIT_AI_MESSAGE
+            | ch::TRANSLATE_TEXT
     ) || misc::owns(channel)
 }
 
@@ -165,6 +168,7 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
 
         // ★M5 — diff를 읽고 엔진을 1턴 돌린다(최대 90초 · 블로킹 팔).
         ch::GIT_AI_MESSAGE => aimsg::ai_message(super::arg(p, 0)),
+        ch::TRANSLATE_TEXT => translation::translate(super::arg(p, 0)),
 
         _ => misc::dispatch(app, window, channel),
     }

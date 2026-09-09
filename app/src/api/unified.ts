@@ -12,7 +12,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import type { ChatStatusLite, ChatTooling, EngineEvent, RunRequest } from '@shared/protocol'
+import type { ChatStatusLite, ChatTooling, EngineEvent, EngineId, RunRequest } from '@shared/protocol'
 
 /** 이 창의 라벨 — 셸이 사용자 말풍선 에코를 보낸 창만 빼고 뿌릴 때 쓴다(shim `winLabel`과 같다). */
 function winLabel(): string {
@@ -199,6 +199,17 @@ export async function resumeHold(chatId: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/** Apply an explicit account choice while a quota hold is waiting. */
+export async function setHeldAccount(chatId: string, engine: EngineId, account?: string): Promise<boolean> {
+  try {
+    const patch = engine === 'codex' ? { engine: { codexAccount: account ?? null } } : { billing: { account: account ?? null } }
+    const result = await invoke<{ kind?: string }>('ipc_call', {
+      channel: 'chat:identity-set', payload: [{ chatId, patch, applyPolicy: 'now' }]
+    })
+    return result.kind === 'applied' || result.kind === 'noop'
+  } catch { return false }
 }
 
 /**

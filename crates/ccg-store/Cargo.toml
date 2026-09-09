@@ -21,6 +21,8 @@ serde_json = { workspace = true, features = ["unbounded_depth"] }
 # api-config.json의 env 키 지문(sha256 앞 12자) — 2.6.2와 같은 레시피여야 답이 승계된다.
 # (워크스페이스 lock에 이미 있는 버전 — 새 패키지가 늘지 않는다)
 sha2 = "0.10"
+# Native filesystem notifications; the archive never polls whole projects while idle.
+notify = { version = "8.2", default-features = false, features = ["macos_fsevent"] }
 
 # safeStorage(Chromium OSCrypt) 복호 — 저장된 API 키를 재로그인 없이 승계한다.
 # v10 = AES-256-GCM(Local State의 DPAPI 키), 접두사 없음 = DPAPI 직접.

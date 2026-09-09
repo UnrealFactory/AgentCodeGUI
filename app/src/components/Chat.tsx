@@ -27,11 +27,12 @@ import type {
   AccountUsage,
   TokenTally,
   WorkflowState,
-  SessionWindowInfo
+  SessionWindowInfo,
+  TranslationSession
 } from '@shared/protocol'
 import { isEn, t, useLang } from '../lib/i18n'
 // ★R28 ACCT §1·§3 — 계정 목록·한도·「사용 중」 역인덱스의 단일 스토어.
-import { ensureAccounts, ensureCodexAccounts, inUseLabel, liveAccountOf, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts } from '../lib/accounts'
+import { chatIdOfPanel, ensureAccounts, ensureCodexAccounts, inUseLabel, liveAccountOf, primeUsageFromDisk, refreshCodexUsage, refreshUsage, useAccounts, useChatStatus } from '../lib/accounts'
 import { sameCwd, type ApiRetryInfo, type ThreadItem } from '../store/session'
 import { budgetLanding, canPressContinue, holdDelayMs, type LimitHold } from '../lib/limitResume'
 import { nowSec, windowRolled } from '../lib/usageWindow'
@@ -43,11 +44,14 @@ import { getPref, setPref } from '../lib/prefs'
 import { loadRecentDirs, loadFavDirs, toggleFavDir, removeRecentDir } from '../lib/recentDirs'
 import { Markdown } from './Markdown'
 import { PlanApproval } from './PlanApproval'
+import { TranslationDialog } from './TranslationDialog'
+import { setHeldAccount } from '../api/unified'
 import { systemEnvironment } from '../api/engineEnvironment'
 import { FileBadge } from './fileType'
 import { MouseGestureLayer, scrollGestures } from './mouseGesture'
 import { Todos, FileRow, SubAgent } from './AgentPanel'
 import { McpSkillView } from './McpSkillView'
+import { RecordingChip } from './RecordingChip'
 import { useCodexTooling } from '../api/codexTooling'
 import { WinControls } from './TitleBar'
 import { mentionAtCaret, mentionEntries, type MentionEntry } from '../lib/mentions'
@@ -95,6 +99,7 @@ import {
   IconActivity,
   IconPower,
   IconBan,
+  IconTranslate,
   type IconProps
 } from './icons'
 import { classifyNotice, NOTICE_CAT, type NoticeCat } from '../lib/noticeCat'
@@ -277,6 +282,12 @@ export function useCodexModels(engine: EngineId): CodexModelOpt[] {
   }, [engine])
   // 목록은 state가 아니라 렌더마다 캐시에서 만든다 — state에 담아두면 그때 언어가 박제된다
   return codexModelCache ? codexOptsOf(codexModelCache) : codexFallback()
+}
+
+/** Reuse the server's reasoning choices for auxiliary model pickers. */
+export function codexModelEfforts(id: string): string[] {
+  const efforts = codexModelCache?.find((m) => m.id === id)?.efforts
+  return efforts?.length ? efforts : ['low', 'medium', 'high', 'xhigh']
 }
 
 /** raw SDK model id ('claude-opus-5-…') → picker ModelId, or undefined if unknown.
@@ -1641,6 +1652,7 @@ export function ChatHeader({
           onOpen이 폴더 팝오버를 접는다(멀티 헤더와 같은 배타 규약 — .hfold끼리는
           stopPropagation 때문에 바깥닫힘이 서로 안 울린다). */}
       {onBrowseFolder && chatId && <McpSkillView chatId={chatId} cwd={cwd || ''} engine={engine} account={codexAccount} apiMode={apiMode} onOpen={() => setFpop(false)} />}
+      {chatId && <RecordingChip chatId={chatId} cwd={cwd || ''} refDirs={refDirs} title={title} onOpen={() => setFpop(false)} />}
       <span className="spacer" />
       {dial}
       <button
@@ -1671,22 +1683,29 @@ export function ChatHeader({
   )
 }
 
-// Floating toolbar for a text selection inside the chat thread. 복사 copies the
-// highlighted text; 더 자세히 quotes it into the composer so the user can ask Claude to
-// expand on it. It appears on right-click (contextmenu) over a non-empty selection scoped
-// to the chat — never on a plain drag — anchored at the mouse cursor like a context menu,
-// flipping at the viewport edges. Dismisses on Esc / mousedown / when the selection
-// collapses out of view on scroll.
+// Chat text selection actions, shown after a drag or by right-clicking a selection.
 export function SelectionToolbar({
   scrollRef,
-  onElaborate
+  onElaborate,
+  session
 }: {
   scrollRef: React.RefObject<HTMLElement | null>
   onElaborate: (text: string) => void
+  session: TranslationSession
 }) {
   const barRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number; text: string } | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const [translation, setTranslation] = useState<{ text: string; session: TranslationSession; anchor: { x: number; y: number } } | null>(null)
+  const [barSize, setBarSize] = useState({ width: 290, height: 40 })
+  const closeTranslation = useCallback(() => setTranslation(null), [])
+  useEffect(() => { setTranslation(null); setPos(null) }, [session.chatId, session.panelId])
+  useLayoutEffect(() => {
+    if (!pos || !barRef.current) return
+    const { width, height } = barRef.current.getBoundingClientRect()
+    setBarSize(prev => prev.width === width && prev.height === height ? prev : { width, height })
+  }, [pos])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -1711,15 +1730,19 @@ export function SelectionToolbar({
       if (barRef.current?.contains(e.target as Node)) return
       setPos(null)
     }
-    // 드래그(선택)만으로는 뜨지 않고, 선택 위에서 우클릭할 때만 — 마우스 커서 위치에 띄운다
     const onContextMenu = (e: MouseEvent): void => {
       if (barRef.current?.contains(e.target as Node)) return
+      if ([...document.querySelectorAll('.set-dialog-overlay, .fv-overlay, .set-overlay')].some(el => el.getClientRects().length > 0)) return
       const text = readSel()
       if (!text) return // 선택이 없으면 여기선 무동작 (기본 메뉴 억제는 main.tsx 전역이 맡는다)
       e.preventDefault()
       setPos({ x: e.clientX, y: e.clientY, text })
       setCopied(false)
     }
+    const onMouseUp = (e: MouseEvent): void => {
+      if (e.button === 0) onContextMenu(e)
+    }
+    const onSelectionChange = (): void => { if (!readSel()) setPos(null) }
     // 스크롤하면 선택이 화면에서 벗어날 수 있으니, 선택이 사라지면 내린다
     const onScroll = (): void => setPos((p) => (p && readSel() ? p : null))
     const onKey = (e: KeyboardEvent): void => {
@@ -1728,26 +1751,26 @@ export function SelectionToolbar({
 
     document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('contextmenu', onContextMenu)
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('selectionchange', onSelectionChange)
     container.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('contextmenu', onContextMenu)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('selectionchange', onSelectionChange)
       container.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onKey)
     }
   }, [scrollRef])
 
+  if (translation !== null) return <TranslationDialog {...translation} onClose={closeTranslation} />
   if (!pos) return null
   // 커서 오른쪽 아래에 붙이되(컨텍스트 메뉴 느낌), 화면 가장자리에선 반대쪽으로 뒤집는다
-  const BAR_W = 188
-  const BAR_H = 40
-  const flipX = pos.x + BAR_W + 6 > window.innerWidth
-  const flipY = pos.y + BAR_H + 10 > window.innerHeight
   const style: CSSProperties = {
-    left: flipX ? pos.x - 6 : pos.x + 6,
-    top: flipY ? pos.y - 8 : pos.y + 8,
-    transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`
+    left: Math.max(8, Math.min(pos.x + 6, window.innerWidth - barSize.width - 8)),
+    top: Math.max(8, pos.y + barSize.height + 10 > window.innerHeight ? pos.y - barSize.height - 8 : pos.y + 8)
   }
   const copy = (): void => {
     navigator.clipboard?.writeText(pos.text).then(() => setCopied(true), () => {})
@@ -1757,7 +1780,13 @@ export function SelectionToolbar({
     setPos(null)
     window.getSelection()?.removeAllRanges()
   }
-  return (
+  const translate = (): void => {
+    const chatId = session.panelId ? chatIdOfPanel(session.panelId) : session.chatId
+    setTranslation({ text: pos.text, session: chatId ? { chatId } : session, anchor: { x: pos.x, y: pos.y } })
+    setPos(null)
+    window.getSelection()?.removeAllRanges()
+  }
+  return createPortal(
     <div
       className="sel-bar"
       ref={barRef}
@@ -1775,7 +1804,12 @@ export function SelectionToolbar({
         <IconSearch size={14} />
         <span>{t('더 자세히', 'Tell me more')}</span>
       </button>
-    </div>
+      <span className="sel-div" />
+      <button className="sel-act" onClick={translate}>
+        <IconTranslate size={14} />
+        <span>{t('번역', 'Translate')}</span>
+      </button>
+    </div>, document.body
   )
 }
 
@@ -1790,7 +1824,7 @@ interface CFHighlightCtor {
 const CF_HL = (globalThis as unknown as { Highlight?: CFHighlightCtor }).Highlight
 const CF_REG = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
 // Ctrl+F를 스스로 처리하는 오버레이(파일 뷰어·설정·깃 등)가 떠 있으면 채팅 검색은 비켜선다
-const CF_BLOCKING = '.fv-overlay, .set-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .set-dialog-overlay'
+const CF_BLOCKING = '.fv-overlay, .set-overlay, .gitm-overlay, .iv-overlay, .sa-overlay, .set-dialog-overlay, .translation-popover'
 
 // 스크롤 컨테이너 안 텍스트 노드를 훑어 q(대소문자 무시)의 매치마다 Range를 만든다.
 // 컨테이너 전체를 한 블록으로 스캔해 마크다운 span 으로 쪼개진 텍스트 경계를 넘는 매치도 잡는다.
@@ -2888,6 +2922,7 @@ export function PickerChip({
   }, [open])
 
   const engine: EngineId = picker.engine === 'codex' ? 'codex' : 'claude'
+  const quotaStatus = useChatStatus(chatId ?? '')
   const usesSystem = systemEnvironment(engine)
   const codexModels = useCodexModels(engine)
   const codexId = picker.codexModel ?? CODEX_DEFAULT_MODEL
@@ -2953,11 +2988,15 @@ export function PickerChip({
     to?: string
   } | null>(null)
   const shortOf = (e?: string): string => (e ? e.split('@')[0] : t('기본', 'default'))
+  const commitAccount = (key: 'account' | 'codexAccount', next: string | undefined): void => {
+    setPicker({ ...pickerRef.current, [key]: next })
+    if (quotaStatus?.hold) void setHeldAccount(quotaStatus.chatId, key === 'codexAccount' ? 'codex' : 'claude', next)
+  }
   /** 계정 행 클릭 — 다른 계정이면 확인 카드부터, 같은 계정은 바인딩만 조용히 갱신. */
   const switchAccount = (key: 'account' | 'codexAccount', next: string | undefined, fromEmail?: string, toEmail?: string): void => {
     if (fromEmail === toEmail) {
       // 같은 계정을 다시 고른 것(따라가던 계정을 고정) — 전환이 아니라 확인 불요
-      setPicker({ ...pickerRef.current, [key]: next })
+      commitAccount(key, next)
       return
     }
     // ★3.0.4 — 대화가 아직 시작되지 않은 채팅은 묻지 않는다(2026-09-03 보고: 빈 채팅에서
@@ -2965,7 +3004,7 @@ export function PickerChip({
     // 새 계정에 없다」인데, 주고받은 것이 없으면 식을 캐시도 없다 — `engineLocked`가 곧
     // 「대화가 시작됐다」이다(엔진 세그먼트 잠금과 같은 신호).
     if (!engineLocked) {
-      setPicker({ ...pickerRef.current, [key]: next })
+      commitAccount(key, next)
       return
     }
     setAcctConfirm({ key, next, from: fromEmail, to: toEmail })
@@ -3266,7 +3305,7 @@ export function PickerChip({
                 onClick={() => {
                   const c = acctConfirm
                   setAcctConfirm(null)
-                  setPicker({ ...pickerRef.current, [c.key]: c.next })
+                  commitAccount(c.key, c.next)
                 }}
               >
                 {t('전환', 'Switch')}

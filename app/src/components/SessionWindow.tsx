@@ -45,7 +45,7 @@ import {
 } from './Chat'
 import { parseBtw, btwForkOf, btwRunResume, wrapBtwFork, type BtwSeed } from '../lib/btw'
 import { pushRecentDir } from '../lib/recentDirs'
-import { useLimitResume } from '../lib/useLimitResume'
+import { useManagedLimitResume } from '../lib/useManagedLimitResume'
 import { listChatWindows, onChatIdentity, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
 import { MAIN_SLOT_NAME, putChatStatuses, putSlotNames, WINDOW_SLOT_NAME } from '../lib/accounts'
 import { pickerAfterLanding } from '../lib/identityLanding'
@@ -537,7 +537,7 @@ export function SessionWindow(): React.ReactElement {
       if (e.key !== 'Escape' || (!busy && !wfAlive)) return
       if (
         document.querySelector(
-          '.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar'
+          '.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .translation-popover'
         )
       )
         return
@@ -736,7 +736,7 @@ export function SessionWindow(): React.ReactElement {
   // 소유 키는 고정('')이고, 대기표는 창이 살아 있는 동안만 유효하다(런타임 전용 —
   // 창을 닫으면 자동 재개 약속도 접힌다). 아래 큐 드레인 effect보다 먼저 선언돼야
   // 장전(ref 동기 갱신)이 같은 커밋의 드레인 가드에 보인다.
-  const limitResume = useLimitResume({
+  const limitResume = useManagedLimitResume({
     state,
     busy,
     enabled: autoResume,
@@ -746,14 +746,14 @@ export function SessionWindow(): React.ReactElement {
     fable: picker.engine !== 'codex' && picker.model === 'fable',
     holdKey: '',
     send: (p) => runPrompt(p, { keepDraft: true })
-  })
+  }, selfChatId)
 
   const prevBusyRef = useRef(busy)
   useEffect(() => {
     const was = prevBusyRef.current
     prevBusyRef.current = busy
     // 한도 대기표가 있으면 드레인 보류 — 지금 보내봐야 같은 한도에 막혀 에러만 쌓인다 (본채팅과 동일)
-    if (busy || !was || queue.length === 0 || limitResume.holdRef.current) return
+    if (busy || !was || queue.length === 0 || limitResume.waiting) return
     const next = queue[0]
     setQueue((q) => q.slice(1))
     runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
@@ -936,7 +936,7 @@ export function SessionWindow(): React.ReactElement {
             </div>
           )}
         </div>
-        <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} />
+        <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborateSelection} session={{ chatId: selfChatId }} />
         <ChatFind scrollRef={scrollRef} onOpenChange={(o) => o && twin.reveal()} />
         <MouseGestureLayer target={scrollEl} actions={gestures} />
         <WorkBar
@@ -963,7 +963,7 @@ export function SessionWindow(): React.ReactElement {
           onRefreshUsage={onRefreshUsage}
         />
         {/* 한도 자동 이어서 상태줄 — 이 창 대화의 대기표 (본채팅과 같은 공용 바) */}
-        <LimitHoldBar hold={limitResume.hold} enabled={autoResume} onCancel={() => limitResume.setHold(null)} onContinue={limitResume.resumeNow} />
+        <LimitHoldBar hold={limitResume.hold} managed={limitResume.managedHold} enabled={autoResume} onCancel={() => limitResume.setHold(null)} onResume={limitResume.resumeNow} onContinue={limitResume.resumeNow} />
         <Composer
           value={input}
           onChange={setInput}

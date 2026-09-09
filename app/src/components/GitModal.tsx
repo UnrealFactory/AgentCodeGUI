@@ -1,26 +1,22 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
-  AccountInfo,
-  AccountUsage,
-  EffortId,
+  GitAiMessageOptions,
   FileDiff,
   GitBranch,
   GitCommit,
   GitCommitDetail,
   GitFileStatus,
   GitRepoInfo,
-  GitStatus,
-  ModelId
+  GitStatus
 } from '@shared/protocol'
 import { relTime } from './Sidebar'
 import { t, isEn } from '../lib/i18n'
-import { getPref, setPref } from '../lib/prefs'
 import { discoverGitRepos } from '../lib/gitTrack'
+import { AiRequestPicker } from './AiRequestPicker'
 import { MouseGestureLayer, type GestureAction } from './mouseGesture'
 import {
   IconCheck,
-  IconChevLeft,
   IconClock,
   IconClose,
   IconDiff,
@@ -88,39 +84,6 @@ function repoName(root: string): string {
   return root.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? root
 }
 
-// AI 커밋 메시지 카드의 선택지 — 컴포저 picker와 같은 축(모델·effort)
-const AI_MODELS: { id: ModelId; label: string }[] = [
-  { id: 'fable', label: 'Fable 5.1' },
-  { id: 'opus', label: 'Opus' },
-  { id: 'sonnet', label: 'Sonnet' },
-  { id: 'haiku', label: 'Haiku' }
-]
-// 함수화 — 모듈 스코프 t()는 import 시점 언어로 박제되므로 렌더 때 평가한다
-const aiEffortOpts = (): { id: EffortId; label: string }[] => [
-  { id: 'minimal', label: t('최소', 'Minimal') },
-  { id: 'low', label: t('낮음', 'Low') },
-  { id: 'medium', label: t('중간', 'Medium') },
-  { id: 'high', label: t('높음', 'High') },
-  { id: 'xhigh', label: t('매우 높음', 'Very high') },
-  { id: 'max', label: t('최대', 'Max') }
-]
-
-// 계정 행의 한도 요약 — "남은 %"로 말한다 (이 카드의 존재 이유가 남은 한도 비교라서).
-// 경고 장식 없이 숫자만 — 판단은 숫자가 이미 말해준다 (⚠는 실측 후 제거).
-function usageDesc(u: AccountUsage | undefined, loading: boolean): string {
-  if (!u) return loading ? t('한도 확인 중…', 'Checking limits…') : t('한도 정보를 못 가져왔어요', 'Could not load limit info')
-  const parts: string[] = []
-  const push = (label: string, pct: number | null): void => {
-    if (pct == null) return
-    const left = Math.max(0, Math.round(100 - pct))
-    parts.push(t(`${label} ${left}% 남음`, `${label} ${left}% left`))
-  }
-  push(t('5시간', '5h'), u.fiveHourPct)
-  push(t('주간', 'Weekly'), u.weeklyPct)
-  push('Fable', u.fablePct)
-  return parts.length ? parts.join(' · ') : t('한도 정보 없음', 'No limit info')
-}
-
 /**
  * Git 카드 — 탐색기 하단 상태 스트립으로 여는 Fork식 3분할 모달(내비·목록·상세).
  * 파일 클릭은 전부 기존 뷰어(FileModal)의 override(일회성 diff·커밋 스냅샷·해시 칩)로
@@ -163,14 +126,7 @@ export function GitModal({
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [creating, setCreating] = useState(false)
   const [newBranch, setNewBranch] = useState('')
-  // AI 메시지 2단계 카드 — 1: 계정(남은 한도 보고 결정), 2: 모델·effort. 매번 묻는 게
-  // 의도다: 계정마다 남은 한도가 달라 "어느 계정으로 돌릴지"가 실사용 결정이라서.
-  const [aiStep, setAiStep] = useState<0 | 1 | 2>(0)
-  const [aiAccounts, setAiAccounts] = useState<AccountInfo[] | null>(null)
-  const [aiUsage, setAiUsage] = useState<Map<string, AccountUsage> | null>(null)
-  const [aiAccount, setAiAccount] = useState<string>(() => getPref('git.ai.account', ''))
-  const [aiModel, setAiModel] = useState<ModelId>(() => getPref<ModelId>('git.ai.model', 'sonnet'))
-  const [aiEffort, setAiEffort] = useState<EffortId>(() => getPref<EffortId>('git.ai.effort', 'low'))
+  const [aiOpen, setAiOpen] = useState(false)
   // 비동기 응답이 낡은 폴더/닫힌 카드에 내려앉지 않게
   const genRef = useRef(0)
   // 우클릭 마우스 제스처(뷰어와 동일) — ↓→ 창 닫기, ←/→ 변경↔히스토리 전환
@@ -257,8 +213,8 @@ export function GitModal({
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      if (aiStep > 0) {
-        setAiStep(0)
+      if (aiOpen) {
+        setAiOpen(false)
         return
       }
       if (confirm) {
@@ -270,7 +226,7 @@ export function GitModal({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [confirm, aiStep, onClose])
+  }, [confirm, aiOpen, onClose])
 
   const rootFs = (st?.root || repo).replace(/\\/g, '/')
   const absOf = (rel: string): string => rootFs.replace(/\/+$/, '') + '/' + rel
@@ -306,36 +262,13 @@ export function GitModal({
       }
     })
 
-  // AI 메시지 버튼 → 카드 1단계. 계정 목록은 바로, 한도는 조회되는 대로 채운다
-  // (계정별 usage 일괄 조회는 네트워크라 몇 초 걸릴 수 있다 — 목록을 기다리게 하지 않는다)
   const openAiFlow = (): void => {
-    if (busy || checkedFiles.length === 0) return
-    setAiStep(1)
-    setAiAccounts(null)
-    setAiUsage(null)
-    window.api.auth
-      .listAccounts()
-      .then(setAiAccounts)
-      .catch(() => setAiAccounts([]))
-    window.api.auth
-      .accountsUsage()
-      .then((list) => setAiUsage(new Map(list.map((u) => [u.email, u]))))
-      .catch(() => setAiUsage(new Map()))
-  }
-  const pickAiAccount = (email: string): void => {
-    setAiAccount(email)
-    setPref('git.ai.account', email)
-    setAiStep(2)
-  }
-  const startAi = (): void => {
-    setPref('git.ai.model', aiModel)
-    setPref('git.ai.effort', aiEffort)
-    setAiStep(0)
-    void doAi({ account: aiAccount, model: aiModel, effort: aiEffort })
+    if (!busy && checkedFiles.length > 0) setAiOpen(true)
   }
 
-  const doAi = async (opts: { account: string; model: ModelId; effort: EffortId }): Promise<void> => {
+  const doAi = async (opts: GitAiMessageOptions): Promise<void> => {
     if (busy || checkedFiles.length === 0) return
+    const gen = genRef.current
     setBusy('ai')
     setErr(null)
     const r = await window.api.git
@@ -345,6 +278,7 @@ export function GitModal({
         error: e instanceof Error ? e.message : t('AI 메시지 생성에 실패했어요', 'Failed to generate AI message')
       }))
     setBusy('')
+    if (gen !== genRef.current) return
     if (!r.ok) {
       setErr(r.error ?? t('AI 메시지 생성에 실패했어요', 'Failed to generate AI message'))
       return
@@ -703,7 +637,7 @@ export function GitModal({
                       className="gitm-btn claude has-tip tip-wrap"
                       disabled={!!busy || checkedFiles.length === 0}
                       onClick={openAiFlow}
-                      data-tip={t('계정(남은 한도)·모델·사고 수준을 골라 diff로 메시지를 써줘요', 'Pick an account (remaining limits), model, and effort — writes a message from the diff')}
+                      data-tip={t('제공업체·계정(남은 한도)·모델·사고 수준을 골라 diff로 메시지를 써줘요', 'Pick a provider, account (remaining limits), model, and effort — writes a message from the diff')}
                     >
                       {busy === 'ai' ? <span className="spin" /> : <IconSpark size={12} />}
                       {busy === 'ai' ? t('diff 읽는 중…', 'Reading diff…') : t('AI 메시지', 'AI message')}
@@ -853,106 +787,16 @@ export function GitModal({
       </div>
 
       {/* 우클릭 드래그 제스처 — 뷰어(FileModal)와 동일한 레이어. 확인/AI 카드 중엔 쉼 */}
-      <MouseGestureLayer target={cardEl} actions={gestures} disabled={!!confirm || aiStep > 0} />
+      <MouseGestureLayer target={cardEl} actions={gestures} disabled={!!confirm || aiOpen} />
 
-      {/* AI 커밋 메시지 카드 — 1) 계정(남은 한도 비교) 2) 모델·effort → 작성.
-          매번 묻는 게 의도: 계정마다 남은 한도가 달라 그때그때 고르는 게 이 앱의 문법 */}
-      {aiStep > 0 &&
-        createPortal(
-          <div
-            className="set-dialog-overlay"
-            onMouseDown={(e) => {
-              if (e.button === 0 && e.target === e.currentTarget) setAiStep(0)
-            }}
-          >
-            <div className="qcard">
-              <div className="qhead">
-                <IconSpark size={15} />
-                <span className="qhl">{t('AI 커밋 메시지', 'AI commit message')}</span>
-                <span className="qsp" />
-                <button className="qmin" aria-label={t('닫기', 'Close')} onClick={() => setAiStep(0)}>
-                  <IconClose size={14} />
-                </button>
-              </div>
-              {aiStep === 1 ? (
-                <div className="qwrap qstep-b" key="ai1">
-                  <div className="qbl">{t('1 / 2 — 계정', '1 / 2 — Account')}</div>
-                  <div className="qbt">{t('어떤 계정으로 작성할까요?', 'Which account should write it?')}</div>
-                  <div className="qopts">
-                    {aiAccounts === null ? (
-                      <div className="gitm-state small">
-                        <span className="spin" />
-                        {t('계정 목록 읽는 중…', 'Reading account list…')}
-                      </div>
-                    ) : aiAccounts.length === 0 ? (
-                      <div className="gitm-state small">
-                        {t('등록된 계정이 없어요 — 설정 → Account에서 로그인해 주세요', 'No accounts yet — sign in at Settings → Account')}
-                      </div>
-                    ) : (
-                      aiAccounts.map((a) => (
-                        <button
-                          key={a.email}
-                          className={'qopt' + (a.email === aiAccount ? ' on' : '')}
-                          onClick={() => pickAiAccount(a.email)}
-                        >
-                          <span className="ql">
-                            {a.email}
-                            {a.isDefault ? t(' · 기본', ' · default') : ''}
-                          </span>
-                          <span className="qd">{usageDesc(aiUsage?.get(a.email), aiUsage === null)}</span>
-                          <span className="qck">
-                            <IconCheck size={14} />
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="qwrap qstep" key="ai2">
-                  <div className="qbl">
-                    <button className="qback" onClick={() => setAiStep(1)}>
-                      <IconChevLeft size={11} />
-                      {t('계정 다시 고르기', 'Choose account again')}
-                    </button>
-                    <span className="qsp" />
-                    {t('2 / 2 — 모델 · 사고 수준', '2 / 2 — Model · effort')}
-                  </div>
-                  <div className="qbt">{t('무엇으로 작성할까요?', 'What should it write with?')}</div>
-                  <div className="gai-lab">{t('모델', 'Model')}</div>
-                  <div className="gai-seg">
-                    {AI_MODELS.map((m) => (
-                      <button key={m.id} className={aiModel === m.id ? 'on' : ''} onClick={() => setAiModel(m.id)}>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="gai-lab">{t('사고 수준 (effort)', 'Effort')}</div>
-                  <div className="gai-seg">
-                    {aiEffortOpts().map((ef) => (
-                      <button key={ef.id} className={aiEffort === ef.id ? 'on' : ''} onClick={() => setAiEffort(ef.id)}>
-                        {ef.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="qfoot">
-                    <span className="qhint">
-                      {aiAccount} ·{' '}
-                      {t(
-                        `담긴 파일 ${checkedFiles.length}개의 diff로 작성해요`,
-                        `writes from the diff of ${checkedFiles.length} included file${checkedFiles.length === 1 ? '' : 's'}`
-                      )}
-                    </span>
-                    <button className="qgo" onClick={startAi}>
-                      {t('작성', 'Write')}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
+      {aiOpen && <AiRequestPicker
+        title={t('AI 커밋 메시지', 'AI commit message')}
+        prefPrefix="git.ai"
+        submitLabel={t('작성', 'Write')}
+        hint={t(`담긴 파일 ${checkedFiles.length}개의 diff로 작성해요`, `writes from the diff of ${checkedFiles.length} included files`)}
+        onClose={() => setAiOpen(false)}
+        onSubmit={opts => { setAiOpen(false); void doAi(opts) }}
+      />}
 
       {/* 확인 카드 — 파괴적 동작(되돌리기)·더티 브랜치 전환. 네이티브 confirm 금지 규약 */}
       {confirm &&

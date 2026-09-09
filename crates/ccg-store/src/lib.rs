@@ -26,6 +26,8 @@ pub mod status;
 // ── 그 외 도메인 ────────────────────────────────────────────────────────────
 pub mod api_config;
 pub mod api_usage;
+/// Optional conversation archive: ordered journals and immutable file objects.
+pub mod archive;
 /// ★M11 R3(F1) — 앱 홈 파일의 크로스-프로세스 잠금(`accounts.json` 임계 구역).
 pub mod flock;
 pub mod safe_storage;

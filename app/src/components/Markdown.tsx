@@ -47,7 +47,7 @@ const baseComponents: Components = {
   // inline code (block code is handled in `pre`)
   code: ({ children }) => <code className="inline">{children}</code>,
   ul: ({ children }) => <ul className="bullets">{children}</ul>,
-  ol: ({ children }) => <ol className="md-ol">{children}</ol>,
+  ol: ({ children, start }) => <ol className="md-ol" start={start}>{children}</ol>,
   h1: ({ children }) => <div className="md-h md-h1">{children}</div>,
   h2: ({ children }) => <div className="md-h md-h2">{children}</div>,
   h3: ({ children }) => <div className="md-h md-h3">{children}</div>,

@@ -855,6 +855,9 @@ export function reducer(state: SessionState, action: Action): SessionState {
   }
   switch (e.type) {
     case 'status':
+      if (e.queued && state.curRunId === PENDING_RUN) {
+        return { ...state, status: 'idle', curRunId: e.runId, turnAt: undefined, interrupted: false }
+      }
       // analyzing = 모든 실행의 첫 이벤트 (엔진 계약) — 이 실행을 현재 실행으로 채택
       if (e.status === 'analyzing') {
         const adopt = { ...state, status: 'analyzing' as const, curRunId: e.runId, interrupted: false }

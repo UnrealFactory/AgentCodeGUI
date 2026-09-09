@@ -1,7 +1,7 @@
 //! D5 — 예약 큐(정체성 스냅샷 동봉) · 한도 대기(큐 게이트) · 되돌리기 버퍼. (§7)
 
 use crate::clock::Millis;
-use crate::identity::{BillingAxis, RunIdentity};
+use crate::identity::{BillingAxis, EngineKind, RunIdentity};
 use crate::ids::RunId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +127,8 @@ pub struct QueuedMessage {
 pub struct LimitHold {
     /// 대기표도 정체성 축으로 식별 — 계정을 바꾸면 이 표는 무효다.
     pub account: BillingAxis,
+    pub engine: EngineKind,
+    pub codex_account: Option<String>,
     /// 해제 예정 시각 — **런타임 시계 ms**(벽시계 unix 초가 아니다.
     /// `ChatRuntime::epoch_secs_to_runtime`이 옮긴 값이다).
     ///
@@ -198,6 +200,12 @@ pub struct LimitHold {
 }
 
 impl LimitHold {
+    pub fn matches_identity(&self, identity: &RunIdentity) -> bool {
+        self.account == *identity.billing()
+            && self.engine == identity.engine_kind()
+            && self.codex_account.as_deref() == identity.codex_account()
+    }
+
     /// 신선 usage 재검증 시각 — 2.6.2 `resumeDelayMs`(`limitResume.ts:90`)의 이식.
     ///
     /// ```text

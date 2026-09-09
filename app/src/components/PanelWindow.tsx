@@ -10,7 +10,7 @@ import { getPref, setPref } from '../lib/prefs'
 import { t, useLang } from '../lib/i18n'
 import { extractMentions } from '../lib/mentions'
 import { pushRecentDir } from '../lib/recentDirs'
-import { useLimitResume } from '../lib/useLimitResume'
+import { useManagedLimitResume } from '../lib/useManagedLimitResume'
 import { useZoom, ZoomBadge } from './zoom'
 import { openInViewerWindow, setViewerWindowMode, viewerWindowMode } from '../lib/viewerWindow'
 import { WinControls } from './TitleBar'
@@ -339,11 +339,9 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
       .catch(() => {})
   })
 
-  // ── 한도 자동 이어서 — 팝아웃 동안엔 이 창이 대기표를 굴린다 (그리드 미러는 게이트로
-  // 잠김). 큐 드레인 effect보다 먼저 선언 — 장전(ref 동기 갱신)이 같은 커밋의 드레인
-  // 가드에 보이는 순서 보장 (그리드 ActiveSession과 같은 규칙).
+  // Read the same engine-owned quota hold as the grid, without a second timer.
   const engine: EngineId = meta.picker.engine === 'codex' ? 'codex' : 'claude'
-  const limitResume = useLimitResume({
+  const limitResume = useManagedLimitResume({
     state,
     busy,
     enabled: autoResume,
@@ -353,7 +351,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     fable: engine === 'claude' && meta.picker.model === 'fable',
     holdKey: `pop:${panelId}`,
     send: (p) => void send({ text: p, images: [], picker: meta.picker })
-  })
+  }, panelId)
 
   // 예약 큐 — 이 창이 소유(그리드 쪽 큐는 팝아웃 때 비워짐). 드레인 규칙은 그리드와 동일.
   const schedule = useEvent(() => {
@@ -371,7 +369,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   useEffect(() => {
     const was = busyEdgeRef.current
     busyEdgeRef.current = busy
-    if (busy || !was || drainingRef.current || limitResume.holdRef.current) return
+    if (busy || !was || drainingRef.current || limitResume.waiting) return
     const q = meta.queue
     let clears = 0
     while (clears < q.length && q[clears].text.trim() === '/clear') clears++
@@ -497,7 +495,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         if (!busy && !state.workflows.some((w) => w.status === 'running')) return
-        if (document.querySelector('.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .hpop')) return
+        if (document.querySelector('.q-overlay, .q-mini, .wf-card, .set-dialog-overlay, .pr-overlay, .fv-overlay, .iv-overlay, .sa-overlay, .ctx-menu, .sel-bar, .translation-popover, .hpop')) return
         e.preventDefault()
         stop()
         return
@@ -565,6 +563,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
             patch({ api: next })
           }}
           limitHold={limitResume.hold}
+          managedLimitHold={limitResume.managedHold}
           autoResume={autoResume}
           onCancelHold={() => limitResume.setHold(null)}
           // ★R28c RCAP — 팝아웃 창도 자기 대기표를 굴린다(소유권 이전 규약) — 출구도 같이 온다

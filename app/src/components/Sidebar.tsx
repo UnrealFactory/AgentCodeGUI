@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppUser, AgentStatus } from '@shared/protocol'
 import {
@@ -10,10 +10,12 @@ import {
   IconMascot,
   IconGear,
   IconX2,
-  IconClipList
+  IconClipList,
+  IconClock
 } from './icons'
 import { t, useLang } from '../lib/i18n'
 import { PromptLibrary } from './PromptLibrary'
+const ConversationArchive = lazy(() => import('./ConversationArchive'))
 
 // 2.0 사이드바 — 모드 탭 없이 일반/멀티/추가 채팅 3섹션이 상시 노출된다 (PoC v3).
 // 일반 항목 클릭=코드 뷰, 멀티 항목 클릭=멀티 뷰, 추가 항목 클릭=그 세션 창 포커스.
@@ -127,7 +129,7 @@ function confirmAllText(label: string, n: number): { title: string; msg: string 
 
 // 열려 있는 동안 F2/Del 단축키를 비켜야 하는 오버레이들 — 모달이 키보드를 소유한다
 const OVERLAY_GUARD =
-  '.q-overlay, .sa-overlay, .fv-overlay, .set-overlay, .set-dialog-overlay, .sconfirm, .pr-overlay, .iv-overlay, .ma-expand-overlay, .pn-overlay, .chgm-overlay'
+  '.q-overlay, .sa-overlay, .fv-overlay, .set-overlay, .set-dialog-overlay, .sconfirm, .pr-overlay, .iv-overlay, .ma-expand-overlay, .pn-overlay, .chgm-overlay, .arc-overlay'
 
 interface MenuState {
   sec: SidebarSectionKey
@@ -168,6 +170,7 @@ export const Sidebar = memo(function Sidebar({
   const [removing, setRemoving] = useState<{ sec: SidebarSectionKey; id: string } | null>(null)
   // 프롬프트 라이브러리 모달 — 자주 쓰는 프롬프트를 저장해 두고 복사해 쓴다
   const [plibOpen, setPlibOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   // 상대 시간은 스스로 흐른다 — 1분마다 다시 그려 '지금'이 '1분'이 되게
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -304,6 +307,10 @@ export const Sidebar = memo(function Sidebar({
       <button className="sb-new" onClick={() => setPlibOpen(true)}>
         <IconClipList size={16} />
         <span>{t('프롬프트', 'Prompts')}</span>
+      </button>
+      <button className="sb-new sb-archive" onClick={() => setArchiveOpen(true)}>
+        <IconClock size={16} />
+        <span>{t('대화 기록소', 'Conversation archive')}</span>
       </button>
 
       <div className="sb-scroll scroll">
@@ -576,6 +583,11 @@ export const Sidebar = memo(function Sidebar({
 
       {/* 프롬프트 라이브러리 — 다른 오버레이처럼 body 포털 (fixed 좌표가 조상에 안 묶이게) */}
       {plibOpen && createPortal(<PromptLibrary onClose={() => setPlibOpen(false)} />, document.body)}
+      {archiveOpen && createPortal(
+        <Suspense fallback={<div className="archive-loading-overlay" role="status">{t('대화 기록소 여는 중…', 'Opening conversation archive…')}</div>}>
+          <ConversationArchive onClose={() => setArchiveOpen(false)} />
+        </Suspense>, document.body
+      )}
     </aside>
   )
 })

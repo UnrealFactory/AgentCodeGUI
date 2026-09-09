@@ -45,11 +45,14 @@ import { shellAuthored, verdictLine, verdictNote } from '../lib/verdict'
 // ★3.0.8 — 다이얼(자리 수) ↔ 표시 순서의 순수 규칙. 줄일 때의 포커스 자리 승격은 임시 오버레이다.
 import { resizeLayout, sanitizePromo, type LayoutPromo } from '../lib/panelLayout'
 import type { LimitHold } from '../lib/limitResume'
-import { useLimitResume, type LimitResumeSurface } from '../lib/useLimitResume'
+import type { LimitResumeSurface } from '../lib/useLimitResume'
+import { useManagedLimitResume } from '../lib/useManagedLimitResume'
+import type { EngineHold } from '../lib/resumeOwner'
 import type { ChatSummary } from './Sidebar'
 import { WinControls } from './TitleBar'
 import { FolderSwitchDialog } from './FolderSwitchDialog'
 import { McpSkillView } from './McpSkillView'
+import { RecordingChip } from './RecordingChip'
 import { FileModal } from '../lib/fileViewer'
 import { pushRecentDir } from '../lib/recentDirs'
 import { SubAgentModal } from './AgentPanel'
@@ -339,6 +342,7 @@ interface PanelViewProps {
   apiReadyCodex: boolean // OpenAI 키 존재 여부 — Codex 패널의 과금 선택용
   onApiMode: (slot: number, next: boolean, engine?: EngineId) => void // 패널별 과금 선택
   limitHold: LimitHold | null // 이 패널의 한도 대기표 — 컴포저 위 상태줄
+  managedLimitHold?: EngineHold | null
   autoResume: boolean // 한도 자동 이어서(전역) — 과금 picker 체크 + 상태줄 문구
   onCancelHold: (slot: number) => void // 상태줄 ✕ — 대기 취소
   onResumeHold: (slot: number) => void // ★R28c RCAP — 상태줄 「이어가기」(자동을 접은 표의 출구)
@@ -397,6 +401,7 @@ export const PanelView = memo(function PanelView({
   apiReadyCodex,
   onApiMode,
   limitHold,
+  managedLimitHold,
   autoResume,
   onCancelHold,
   onResumeHold,
@@ -442,13 +447,16 @@ export const PanelView = memo(function PanelView({
   const waiting = !!(state.pendingPermission || state.pendingQuestion)
   // 턴이 끝나도 백그라운드(셸·에이전트·워크플로)가 남아 돌면 아직 '완료'가 아니다 —
   // 완료 칩·컬러 링은 전부 걷힌 순간에만 켠다 (진짜 완료 판정 — store의 단일 규칙)
-  const effStatus = effectiveStatus(state)
+  const quotaWaiting = !busy && !!(managedLimitHold || limitHold)
+  const effStatus = quotaWaiting ? 'idle' : effectiveStatus(state)
   // ★ R2 — 중단으로 끝난 턴은 '완료'가 아니다(m3 R2의 `TerminalStatus::Aborted` 짝).
   // 와이어에는 그 어휘가 없어 셸이 `done`으로 접어 보내므로, 화면에 남은 '중단함' 마커가
   // 렌더러의 판정 근거다(store/session.ts `abortedTurn`). effectiveStatus가 이미 완료
   // 색·완료 링을 껐고, 여기서는 칩 **문구**를 「중단됨」으로 바로잡는다.
   const status = waiting
     ? { label: () => t('응답 대기', 'Needs input'), cls: 'ask' }
+    : quotaWaiting
+      ? { label: () => t('한도 대기', 'Quota wait'), cls: 'ask' }
     : abortedTurn(state)
       ? { label: () => t('중단됨', 'Stopped'), cls: 'idle' }
       : STATUS_META[effStatus]
@@ -683,6 +691,7 @@ export const PanelView = memo(function PanelView({
             방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
             끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
         <McpSkillView panelId={panelId} cwd={cwd} engine={meta.picker.engine} account={meta.picker.codexAccount} apiMode={meta.api} onOpen={() => setFolderPop(false)} />
+        <RecordingChip panelId={panelId} cwd={cwd} refDirs={meta.refDirs} onOpen={() => setFolderPop(false)} />
         <span className={'ma-status ' + status.cls}>
           {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
           {busy && !waiting && <span className="ma-status-spin" />}
@@ -786,7 +795,7 @@ export const PanelView = memo(function PanelView({
         <ChatFind scrollRef={scrollRef} active={focused} panel onOpenChange={(o) => o && twin.reveal()} />
       </div>
 
-      <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} />
+      <SelectionToolbar scrollRef={scrollRef} onElaborate={onElaborate} session={{ panelId }} />
       {/* 그리드에선 RU(→↑, 최대화 문법)=크게 보기, 카드에선 같은 RU 한 번 더=별도 창으로
           (확대의 다음 단계라 같은 획이 자연스럽다 — 팝아웃 창 안에선 onPopout이 없어 무동작),
           DR(↓→, 닫기 문법)=원래 크기로. 카드의 RU '토글 닫기'는 최대화 제스처와 헷갈려
@@ -836,7 +845,7 @@ export const PanelView = memo(function PanelView({
         onRefreshUsage={refreshUsage}
       />
       {/* 한도 자동 이어서 상태줄 — 이 패널 대기표의 재개 예정 (본채팅과 같은 공용 바) */}
-      <LimitHoldBar hold={limitHold} enabled={autoResume} onCancel={() => onCancelHold(slot)} onContinue={() => onResumeHold(slot)} />
+      <LimitHoldBar hold={limitHold} managed={managedLimitHold} enabled={autoResume} onCancel={() => onCancelHold(slot)} onResume={() => onResumeHold(slot)} onContinue={() => onResumeHold(slot)} />
       <Composer
         value={meta.input}
         onChange={(t) => onInput(slot, t)}
@@ -1499,7 +1508,7 @@ function ActiveSession({
     const onKey = (e: KeyboardEvent): void => {
       // 앱 전역 오버레이(폴더 확인 / 프롬프트 모달 / 파일 뷰어 / 폴더 팝오버)가 열려
       // 있으면 항상 양보한다
-      if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .hpop')) return
+      if (document.querySelector('.set-dialog-overlay, .pr-overlay, .fv-overlay, .hpop, .arc-overlay, .archive-loading-overlay')) return
       // 승인/질문 카드는 패널 안에 뜬다(스코프 오버레이). 키보드를 받는 건 포커스된
       // 패널의 카드뿐이니 그때만 양보하고, 다른 패널의 카드는 남은 키(Esc·F2·Enter)를
       // 막지 않는다 — 패널을 클릭해 포커스하면 카드가 키를 넘겨받는다. 패널 밖 .q-overlay
@@ -2130,19 +2139,15 @@ function ActiveSession({
     setMetas((prev) => prev.map((m, i) => (i === slot ? { ...m, queue: m.queue.filter((q) => q.id !== id) } : m)))
   )
 
-  // ── 한도 자동 이어서 — 슬롯마다 독립 대기표 (본채팅과 같은 useLimitResume 공용 훅).
-  // 소유 키는 슬롯 고정 — 멀티 세션 전환·패널 수 변경은 ActiveSession 재마운트(key)라
-  // 대기표가 함께 내려간다(런타임 전용: 이 세션 화면을 떠나면 자동 재개 약속도 접힌다).
-  // 아래 큐 드레인 effect보다 먼저 선언돼야 한다 — 장전(ref 동기 갱신)이 같은 커밋의
-  // 드레인 가드에 보이는 순서 보장.
+  // The engine owns each slot's quota timer. These hooks display its hold and
+  // prevent the local draft queue from draining through a closed quota gate.
   const lrOptsFor = (slot: number, sess: { state: SessionState; busy: boolean }): LimitResumeSurface => {
     const m = metas[slot]
     const engine = m.picker.engine === 'codex' ? ('codex' as const) : ('claude' as const)
     return {
       state: sess.state,
       busy: sess.busy,
-      // 팝아웃 중엔 창 쪽 useLimitResume이 대기표를 굴린다 — 여기 미러까지 켜 두면
-      // 같은 한도 에러에 양쪽이 재개 턴을 이중 전송한다
+      // Older backends may use the local fallback; only one visible surface may send.
       enabled: autoResume && !popped[slot],
       apiMode: m.api,
       engine,
@@ -2153,12 +2158,12 @@ function ActiveSession({
       send: (p) => void sendPanel(slot, { text: p, images: [], picker: metas[slot].picker })
     }
   }
-  const lr0 = useLimitResume(lrOptsFor(0, s0))
-  const lr1 = useLimitResume(lrOptsFor(1, s1))
-  const lr2 = useLimitResume(lrOptsFor(2, s2))
-  const lr3 = useLimitResume(lrOptsFor(3, s3))
-  const lr4 = useLimitResume(lrOptsFor(4, s4))
-  const lr5 = useLimitResume(lrOptsFor(5, s5))
+  const lr0 = useManagedLimitResume(lrOptsFor(0, s0), chan(sessionId, 0))
+  const lr1 = useManagedLimitResume(lrOptsFor(1, s1), chan(sessionId, 1))
+  const lr2 = useManagedLimitResume(lrOptsFor(2, s2), chan(sessionId, 2))
+  const lr3 = useManagedLimitResume(lrOptsFor(3, s3), chan(sessionId, 3))
+  const lr4 = useManagedLimitResume(lrOptsFor(4, s4), chan(sessionId, 4))
+  const lr5 = useManagedLimitResume(lrOptsFor(5, s5), chan(sessionId, 5))
   const lrs = [lr0, lr1, lr2, lr3, lr4, lr5]
   const onCancelHold = useEvent((slot: number) => lrs[slot].setHold(null))
   // ★R28c RCAP — 「이어가기」. 자동 재발사를 접은 표(`autoPaused`)의 유일한 출구다.
@@ -2179,7 +2184,7 @@ function ActiveSession({
     SLOTS.forEach((slot) => {
       // 한도 대기표가 걸린 패널은 드레인 보류 — 지금 보내봐야 같은 한도에 막혀 에러만
       // 쌓인다. 자동/수동 재개 턴이 끝난 다음 idle 전환이 이어받는다 (본채팅과 동일).
-      if (busySig[slot] === '1' || was[slot] !== '1' || drainingRef.current.has(slot) || lrs[slot].holdRef.current) return
+      if (busySig[slot] === '1' || was[slot] !== '1' || drainingRef.current.has(slot) || lrs[slot].waiting) return
       // 런을 시작하지 않는 클라이언트 명령(/clear)은 busy 전환이 다시 오지 않아 뒤 항목이
       // 영영 갇힌다 — 앞쪽의 /clear 들을 연달아 소진하고, 엔진 런을 시작할 첫 일반 항목까지
       // 한 번에 내보낸다(그 런이 끝나면 다음 idle 전환이 나머지를 이어받는다).
@@ -2309,6 +2314,7 @@ function ActiveSession({
         apiReadyCodex={apiReadyCodex}
         onApiMode={onPanelApi}
         limitHold={lrs[slot].hold}
+        managedLimitHold={lrs[slot].managedHold}
         autoResume={autoResume}
         onCancelHold={onCancelHold}
         onResumeHold={onResumeHold}

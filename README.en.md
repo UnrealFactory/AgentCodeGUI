@@ -190,7 +190,7 @@ Register several Anthropic and OpenAI subscription accounts and pick one per cha
 
 ## Finish with Git
 
-Click the Git strip under the explorer to open the change list and commit composer. Write the message yourself or **let the AI draft it** (pick an account and model).
+Click the Git strip under the explorer to open the change list and commit composer. Write the message yourself or **let the AI draft it** (choose Anthropic or OpenAI, an account, a model, and reasoning effort).
 
 <img src="docs/images/en/git-changes.png" width="1000" alt="Git card — selecting changed files and composing a commit">
 
@@ -234,7 +234,9 @@ Click the Git strip under the explorer to open the change list and commit compos
 
 | Area | Features |
 |---|---|
-| **Chat** | `Ctrl+F` search · recall sent messages · selection toolbar (copy, explain more) · `/clear` `/compact` `/init` result cards · image lightbox · links open in the default browser · `Ctrl+wheel` zoom · mouse gestures |
+| **Chat** | `Ctrl+F` search · recall sent messages · selection toolbar (copy, translate, explain more) · `/clear` `/compact` `/init` result cards · image lightbox · links open in the default browser · `Ctrl+wheel` zoom · mouse gestures |
+| **Archive** | conversation, command, and tool originals with actual file snapshots · before-and-after contents · session search, rename, and deletion · import a session folder on another computer · [usage guide](docs/conversation-archive.md) |
+| **Translation** | translate selected passages with the current session's provider and account · copy results and change languages · choose language, model, effort, and supported speed in Settings › Translation |
 | **Viewer** | ask about selected code · find in viewer · file history (back / forward) · maximize · separate OS window that remembers its position · partial display for huge files · Git commit snapshots |
 | **Explorer** | file search · hidden-item filters · new file / folder · rename · copy path · reveal in File Explorer · show changed files · track a nested repository in Git from its folder's context menu |
 | **Window · system** | acrylic glass · sidebar auto-hide · close button hides to tray · aggregated toasts · English / Korean UI · app updates and patch notes under Settings › Updates |

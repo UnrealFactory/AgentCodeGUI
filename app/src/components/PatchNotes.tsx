@@ -152,6 +152,34 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.2.0': {
+    ko: {
+      eyebrow: 'FEATURE UPDATE',
+      lead: '대화와 실제 작업 과정을 파일 사본까지 함께 보관하세요. 선택 문장 번역, Git 메시지 생성의 AI 선택, Codex 한도 대기와 계정 전환도 개선했습니다.',
+      notes: [
+        { tag: '기록소', name: '대화와 작업을 한 흐름으로', desc: '채팅 상단에서 대화 기록을 켜고 사이드바의 대화 기록소를 열어 보세요. 프롬프트, 답변, 명령 실행, 도구 입력과 출력을 시간순으로 확인하고, 여러 요청과 앱 재시작 이후의 기록도 같은 세션에 보관합니다.' },
+        { tag: '파일', name: '실제 원본과 변경 전후 내용', desc: '생성한 파일 내용, 수정 전후 코드, 삭제 전 사본을 함께 보관합니다. 긴 출력과 파일도 저장 원문을 줄이지 않고 나누어 읽습니다. 확보하지 못한 사본이나 수집 중 오류는 보관 상태에서 확인하세요.' },
+        { tag: '이동', name: '세션 폴더 하나로 다른 컴퓨터에서', desc: '기록을 중지한 뒤 세션 폴더의 Chat과 View를 함께 복사하고, 다른 컴퓨터에서 세션 가져오기로 여세요. 원래 작업 폴더 없이 보관 내용을 볼 수 있고, 가져올 때 파일 사본의 무결성을 확인합니다.' },
+        { tag: '관리', name: '세션 검색·이름 변경·삭제', desc: '기록소에서 세션을 검색하고 우클릭으로 이름을 변경하거나 삭제할 수 있습니다. 삭제는 확인 후 실행하며 실제 작업 파일과 원래 채팅은 유지합니다. 저장 위치 변경과 세션 폴더 열기도 지원합니다.' },
+        { tag: '번역', name: '선택한 문장을 바로 번역', desc: '문장을 선택하고 번역을 누르면 현재 세션의 제공업체와 계정을 사용합니다. 이동 가능한 결과 창에서 언어 변경과 복사를 지원합니다. 설정의 Translation에서 기본 언어, 모델, 사고 수준과 지원하는 OpenAI 속도를 선택하세요.' },
+        { tag: 'Git', name: '메시지를 생성할 AI와 계정 선택', desc: 'Anthropic 또는 OpenAI를 고른 뒤 계정, 모델, 사고 수준을 지정해 커밋 메시지를 생성하세요. 계정별 남은 한도도 선택 화면에서 확인할 수 있습니다.' },
+        { tag: 'Codex', name: '한도 대기와 계정 전환 개선', desc: '한도 복구 날짜와 연도를 정확히 읽고 창과 패널의 대기 상태를 맞췄습니다. 다른 Codex 계정으로 바꾸면 이전 계정의 대기를 해제하고 대기 중 입력한 메시지도 새 계정으로 이어갑니다. 대기열에 들어간 전송이 계속 실행 중으로 표시되던 문제도 수정했습니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'FEATURE UPDATE',
+      lead: 'Keep conversations, tool activity, and actual file snapshots together. This release also adds selection translation, expands AI selection for Git messages, and improves Codex quota recovery and account switching.',
+      notes: [
+        { tag: 'Archive', name: 'Conversations and work in one timeline', desc: 'Enable recording in the chat header, then open the archive from the sidebar. Review prompts, replies, commands, and complete tool inputs and outputs in order. Multiple requests and recordings after an app restart stay in the same session.' },
+        { tag: 'Files', name: 'Actual originals and before-and-after contents', desc: 'Preserve created files, before-and-after edits, and pre-deletion snapshots. Long outputs and files are paged without truncating the saved originals. Capture status shows unavailable snapshots and recording errors.' },
+        { tag: 'Transfer', name: 'One session folder, another computer', desc: 'Pause recording, copy the session folder containing both Chat and View, and use Import session on another computer. View the saved content without the original workspace; import checks snapshot integrity.' },
+        { tag: 'Manage', name: 'Search, rename, and delete sessions', desc: 'Search the archive and right-click a session to rename or delete it. Deletion requires confirmation and preserves workspace files and the original chat. You can also change the storage location or open a session folder.' },
+        { tag: 'Translate', name: 'Translate selected passages', desc: 'Select text and choose Translate to use the current session’s provider and account. Change languages or copy results in a movable popup. Choose the default language, model, effort, and supported OpenAI speed options in Translation settings.' },
+        { tag: 'Git', name: 'Choose the AI and account for messages', desc: 'Select Anthropic or OpenAI, then choose an account, model, and reasoning effort to generate a commit message. Check remaining account limits in the picker.' },
+        { tag: 'Codex', name: 'Quota recovery and account switching', desc: 'Reset dates and years are parsed correctly, and panels and windows show a consistent waiting state. Switching Codex accounts clears the previous account’s hold and resumes messages entered while waiting with the new account. Queued sends no longer stay incorrectly marked as running.' }
+      ]
+    }
+  },
   '3.1.3': {
     ko: {
       eyebrow: 'UPDATE',

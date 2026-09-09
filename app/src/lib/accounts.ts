@@ -422,12 +422,30 @@ let slotNames: Record<string, string> = {}
 /** 셸이 준 살아 있는 채팅들(계정 키가 있는 행만). */
 type LiveAccountRow = { chatId: string; engine: EngineId; account: string; panelId: string; seat: number | null }
 let liveRows: LiveAccountRow[] = []
+let chatStatusRows: ChatStatusLite[] = []
+const chatStatusSubs = new Set<() => void>()
+const subscribeChatStatus = (cb: () => void): (() => void) => {
+  chatStatusSubs.add(cb)
+  return () => { chatStatusSubs.delete(cb) }
+}
+
+/** Live engine state for a chat or a board slot, shared by all surfaces in this window. */
+export function useChatStatus(address: string): ChatStatusLite | null {
+  const current = () => address ? chatStatusRows.find(r => r.chatId === address || r.panelId === address) ?? null : null
+  return useSyncExternalStore(subscribeChatStatus, current, current)
+}
 
 /**
  * `chat:status` REPLACE를 스토어에 앉힌다. **키가 있는 행만** 산다 —
  * `account`(Claude)·`codexAccount`(Codex)는 살아 있는 런타임만 싣기 때문이다(`engine/lite.rs`).
  */
 export function putChatStatuses(rows: ChatStatusLite[]): void {
+  const previous = new Map(chatStatusRows.map(r => [r.chatId, r]))
+  chatStatusRows = rows.map(r => {
+    const old = previous.get(r.chatId)
+    return old && JSON.stringify(old) === JSON.stringify(r) ? old : r
+  })
+  for (const cb of chatStatusSubs) cb()
   const next: LiveAccountRow[] = []
   for (const r of rows) {
     const engine: EngineId = r?.codexAccount ? 'codex' : 'claude'
@@ -497,6 +515,11 @@ export function slotsUsing(email: string | undefined, selfKey?: string, engine: 
 export function liveAccountOf(selfKey?: string, engine: EngineId = 'claude'): string | undefined {
   if (!selfKey) return undefined
   return liveRows.find((r) => r.engine === engine && (r.chatId === selfKey || (!!r.panelId && r.panelId === selfKey)))?.account
+}
+
+/** Freeze a panel's current chat address before opening an auxiliary text task. */
+export function chatIdOfPanel(panelId: string): string | undefined {
+  return liveRows.find(r => r.panelId === panelId)?.chatId
 }
 
 /** chatId → 셸이 준 보드 자리(`${boardId}::${slot}`). 살아 있는 행에 없으면 `null`

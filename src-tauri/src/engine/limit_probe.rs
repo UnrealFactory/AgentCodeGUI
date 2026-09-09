@@ -191,14 +191,13 @@ impl Probe {
         if matches!(q.billing, BillingAxis::ApiKey { .. }) {
             return self.tally(LimitVerdict::Clear);
         }
-        // 물어볼 계정이 없다 = **창구가 없다**. 여기서 `Unavailable`을 주면 R3 회귀가
-        // 모양만 바꿔 되살아난다 — 그 채팅은 465초 뒤에야 버튼을 얻는다.
+        // Missing credentials or a missing CLI do not prove that quota has reset.
         let Some(email) = super::codex_limit::account_for(q.codex_account) else {
-            return self.tally(LimitVerdict::Unknown);
+            return self.tally(LimitVerdict::Unavailable);
         };
         // 읽기만 하는 검사다(stat 1 + 작은 JSON 1) — 격리 홈 물질화는 워커의 몫이다.
         if !super::codex_limit::can_ask(&email) {
-            return self.tally(LimitVerdict::Unknown);
+            return self.tally(LimitVerdict::Unavailable);
         }
         let now_sec = (q.now_epoch_ms / 1000) as i64;
         match super::codex_limit::peek(&email, PEEK_TTL_MS) {
@@ -227,11 +226,16 @@ pub fn fold_codex(windows: &Value, now_sec: i64) -> LimitVerdict {
         return LimitVerdict::Unavailable;
     };
     let mut latest: Option<u64> = None;
+    let mut exhausted_without_reset = false;
     for w in ws {
-        if w.get("usedPct").and_then(Value::as_i64).unwrap_or(0) < 100 {
+        let Some(used) = w.get("usedPct").and_then(Value::as_f64) else { return LimitVerdict::Unavailable };
+        if used < 100.0 {
             continue;
         }
-        let Some(at) = w.get("resetsAt").and_then(Value::as_i64) else { continue };
+        let Some(at) = w.get("resetsAt").and_then(Value::as_i64).filter(|at| *at > 0) else {
+            exhausted_without_reset = true;
+            continue;
+        };
         // 클로드 축과 같은 `+60초` 경계 — 1분 안에 풀릴 창은 풀린 셈이다.
         if at <= now_sec + EDGE_SEC {
             continue;
@@ -241,6 +245,7 @@ pub fn fold_codex(windows: &Value, now_sec: i64) -> LimitVerdict {
     }
     match latest {
         Some(t) => LimitVerdict::Blocked { resets_at: Some(t) },
+        None if exhausted_without_reset => LimitVerdict::Blocked { resets_at: None },
         None => LimitVerdict::Clear,
     }
 }
@@ -472,12 +477,12 @@ mod tests {
 
         // ② ★ Codex 채팅 — 클로드 창을 **한 번도 안 본다**. 물어볼 창구가 없으니 판정 없음.
         let v = p.probe(&codex_q(&billing, Some("me@openai.com")));
-        assert_eq!(v, LimitVerdict::Unknown, "★ Codex 채팅을 클로드 한도로 판정했다");
+        assert_eq!(v, LimitVerdict::Unavailable, "An unavailable Codex probe cannot authorize automatic execution");
         assert_eq!(p.stats().blocked, 1, "★ Codex 물음이 `blocked`를 올렸다 = 클로드 창을 봤다");
-        assert_eq!(p.stats().unknown, 1);
+        assert_eq!(p.stats().unavailable, 1);
 
         // ③ 계정 미지정(=codex 기본 계정)도 같다 — 등록이 0이면 물어볼 곳이 없다.
-        assert_eq!(p.probe(&codex_q(&billing, None)), LimitVerdict::Unknown);
+        assert_eq!(p.probe(&codex_q(&billing, None)), LimitVerdict::Unavailable);
 
         crate::ipc::parity::usage::seed_peek_for_test(email, Value::Null);
     }
@@ -495,7 +500,9 @@ mod tests {
         assert_eq!(fold_codex(&ws, now), LimitVerdict::Blocked { resets_at: Some((now + 90_000) as u64) });
         // 안 찬 창·시각 미상 창은 게이트가 아니다.
         assert_eq!(fold_codex(&json!([cw(99, json!(now + 600))]), now), LimitVerdict::Clear);
-        assert_eq!(fold_codex(&json!([cw(100, Value::Null)]), now), LimitVerdict::Clear);
+        assert_eq!(fold_codex(&json!([cw(100, Value::Null)]), now), LimitVerdict::Blocked { resets_at: None });
+        assert_eq!(fold_codex(&json!([{"usedPct":100.0,"resetsAt":now + 600}]), now), LimitVerdict::Blocked { resets_at: Some((now + 600) as u64) });
+        assert_eq!(fold_codex(&json!([{"resetsAt":now + 600}]), now), LimitVerdict::Unavailable);
         // +60초 경계 — 1분 안에 풀릴 창은 풀린 셈이다(클로드 축과 같은 값).
         assert_eq!(fold_codex(&json!([cw(100, json!(now + 60))]), now), LimitVerdict::Clear);
         assert_eq!(

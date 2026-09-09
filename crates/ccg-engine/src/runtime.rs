@@ -843,6 +843,8 @@ impl<D: CliDriver> ChatRuntime<D> {
         if let Some(h) = hold {
             self.hold = Some(LimitHold {
                 account: self.identity.billing().clone(),
+                engine: self.identity.engine_kind(),
+                codex_account: self.identity.codex_account().map(str::to_string),
                 // ★R5 — 저장된 값이 없으면 **미상 그대로** 둔다(옛 판은 `now + 5분`으로
                 // 채워 부팅 6.5분 뒤 헛 재개를 한 번 태웠다). 미상 대기는 `due_at`이
                 // 2.6.2 `PROBE_MS`(10분)로 잡는다.
@@ -1817,9 +1819,24 @@ impl<D: CliDriver> ChatRuntime<D> {
         let stale = self
             .hold
             .as_ref()
-            .is_some_and(|h| h.account != *self.identity.billing());
+            .is_some_and(|h| !h.matches_identity(&self.identity));
         if stale {
-            self.hold = None;
+            if let Some(hold) = self.hold.take() {
+                // Messages sent while waiting are the requested continuation.
+                // Releasing them must not respawn the exhausted account.
+                for message in &mut self.queue {
+                    if message.origin == QueueOrigin::User && message.created_at > hold.armed_at
+                        && hold.matches_identity(&message.identity)
+                    {
+                        message.identity = self.identity.clone();
+                        message.identity_rev = self.revision;
+                    }
+                }
+            }
+            self.auto_resume_streak = 0;
+            self.auto_resume_at = None;
+            self.auto_resume_fired_at = None;
+            self.episode_fires = 0;
             self.emit(Event::Notice("계정을 바꿔서 대기표를 취소했어요".into()));
             self.broadcast_plan();
             self.drain_if_possible();
@@ -3524,6 +3541,8 @@ impl<D: CliDriver> ChatRuntime<D> {
         self.auto_resume_streak = attempts;
         self.hold = Some(LimitHold {
             account: self.identity.billing().clone(),
+            engine: self.identity.engine_kind(),
+            codex_account: self.identity.codex_account().map(str::to_string),
             resets_at,
             verified_at: None,
             ready: false,
@@ -3952,7 +3971,7 @@ impl<D: CliDriver> ChatRuntime<D> {
         let same_account = self
             .hold
             .as_ref()
-            .is_some_and(|h| h.account == *self.identity.billing());
+            .is_some_and(|h| h.matches_identity(&self.identity));
         if !same_account {
             self.hold = None;
             self.emit(Event::Notice("계정을 바꿔서 대기표를 취소했어요".into()));
