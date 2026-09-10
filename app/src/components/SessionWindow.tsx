@@ -1,4 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { captureExternalContext } from '../api/bridge'
+import type { ExternalContextSnapshot } from '@shared/externalTools'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChangedFile, ChatStatusLite, EngineId, RunRequest, SessionPersistPayload, SubAgentInfo, UserProfile, UsageInfo } from '@shared/protocol'
 
 // 백그라운드 셸 컨트롤 — 이 창의 세션 엔진으로 라우팅 (memo된 WorkBar용 고정 함수)
@@ -636,7 +638,7 @@ export function SessionWindow(): React.ReactElement {
     return true
   }
 
-  const runPrompt = (text: string, opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }): void => {
+  const runPrompt = (text: string, opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean; externalContext?: ExternalContextSnapshot | null }): void => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
     if ((!text.trim() && imgs.length === 0) || busy) return
@@ -654,7 +656,9 @@ export function SessionWindow(): React.ReactElement {
     // 전송 = 따라가기 재개 — 위를 읽던 중이어도 내 메시지와 답이 시야로 들어온다
     follow.pin()
     lastActiveRef.current = Date.now() // 사이드바 상대 시간의 기준 — 프롬프트 전송 시각
-    begin(text, cmd, imgs)
+    const externalContext = cmd ? null : opts?.externalContext !== undefined ? opts.externalContext : captureExternalContext(selfChatId)
+    if (externalContext === false) return
+    begin(text, cmd, imgs, externalContext)
     // fold mention/attachment notes into the prompt so the engine reads them (same as 채팅)
     let promptForEngine = text
     if (!cmd) {
@@ -680,6 +684,7 @@ export function SessionWindow(): React.ReactElement {
     // 없으면 이어받은 컨텍스트에 이끌려 원본 작업을 마저 개발하려 든다(실사용 보고).
     if (rs.forkSession) promptForEngine = wrapBtwFork(promptForEngine)
     const req: RunRequest = {
+      externalContext,
       prompt: promptForEngine,
       model: pk.model,
       effort: pk.effort,
@@ -727,7 +732,9 @@ export function SessionWindow(): React.ReactElement {
       return
     }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${queue.length}-${state.messages.length}`
-    setQueue((q) => [...q, { id, text: input, images, picker }])
+    const externalContext = commandOf(input) ? null : captureExternalContext(selfChatId)
+    if (externalContext === false) return
+    setQueue((q) => [...q, { id, text: input, images, picker, externalContext }])
     setInput('')
     setImages([])
     composerRef.current?.focus()
@@ -756,7 +763,7 @@ export function SessionWindow(): React.ReactElement {
     if (busy || !was || queue.length === 0 || limitResume.waiting) return
     const next = queue[0]
     setQueue((q) => q.slice(1))
-    runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
+    runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true, externalContext: next.externalContext ?? null })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, queue])
 

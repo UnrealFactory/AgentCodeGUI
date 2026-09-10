@@ -416,7 +416,12 @@ try {
     Buffer.concat(seedHeaders),
   );
   fs.writeFileSync(path.join(seedDir, "entries.idx"), seedIndex);
+  const largeInitial = path.join(work, "large-initial-review.bin");
+  const largeHandle = fs.openSync(largeInitial, "wx");
+  fs.ftruncateSync(largeHandle, 512 * 1024 * 1024);
+  fs.closeSync(largeHandle);
   await until('document.querySelector(".archive-chip")?.disabled === false');
+  const initialStart = performance.now();
   await evaluate('document.querySelector(".archive-chip").click()');
   await until(
     'document.querySelector(".archive-chip")?.getAttribute("aria-pressed")==="true" && !document.querySelector(".archive-chip").disabled',
@@ -429,6 +434,57 @@ try {
   const chat = fs.readdirSync(chatsDir)[0];
   const archive = (channel) =>
     `window.__TAURI_INTERNALS__.invoke('ipc_call',{channel:'archive:${channel}',payload:[{chatId:${JSON.stringify(chat)}}]})`;
+  await until('document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"');
+  const initialStartMs = performance.now() - initialStart;
+  assert(initialStartMs < 2000, "The header should enable before a large file is copied");
+  assert.equal((await evaluate(archive("status"))).status.preparing, true);
+  assert(await evaluate('!document.querySelector(".archive-chip").hasAttribute("data-tip") && !document.querySelector(".archive-chip").hasAttribute("title") && document.querySelector(".archive-record-state").textContent==="ON"'),
+    "The header is ON/OFF only, without file preparation details or warnings");
+  const initialStop = performance.now();
+  await evaluate('document.querySelector(".archive-chip").click()');
+  await until('document.querySelector(".archive-chip")?.getAttribute("aria-pressed")==="false" && document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"');
+  const initialStopMs = performance.now() - initialStop;
+  assert(initialStopMs < 2000, "Stopping should cancel initial copying without waiting for the file");
+  fs.unlinkSync(largeInitial);
+  // Delay settings IPC to verify visual response and rapid clicks independently
+  // of disk speed, then exercise recovery from an actual failed toggle request.
+  await evaluate(`(()=>{
+    window.__archiveToggleFetch=window.fetch;
+    window.__archiveToggleDelay=750;
+    window.fetch=async function(input,options){
+      const url=new URL(typeof input==='string'?input:input.url);
+      if(url.pathname==='/ipc_call'&&(url.hostname==='ipc.localhost'||url.protocol==='ipc:')){
+        const args=JSON.parse(options.body);
+        if(args.channel==='archive:configure'){
+          if(window.__archiveToggleFail){window.__archiveToggleFail=false;return new Response(JSON.stringify({ok:false,error:'TOGGLE-FAILURE-CHECK'}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}})}
+          await new Promise(resolve=>setTimeout(resolve,window.__archiveToggleDelay));
+        }
+      }
+      return window.__archiveToggleFetch.apply(this,arguments);
+    };
+  })()`);
+  const switchClick = `new Promise(resolve=>{const button=document.querySelector('.archive-chip'),start=performance.now();button.click();requestAnimationFrame(()=>resolve({on:button.getAttribute('aria-pressed'),busy:button.getAttribute('aria-busy'),disabled:button.disabled,text:button.textContent,ms:performance.now()-start}))})`;
+  const immediateOn = await evaluate(switchClick);
+  assert.equal(immediateOn.on, "true");
+  assert.equal(immediateOn.busy, "true");
+  assert.equal(immediateOn.disabled, false);
+  assert(immediateOn.ms < 250 && immediateOn.text.includes("ON"));
+  const immediateOff = await evaluate(switchClick);
+  assert.equal(immediateOff.on, "false");
+  assert.equal(immediateOff.busy, "true");
+  assert.equal(immediateOff.disabled, false);
+  await until('document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"');
+  assert.equal((await evaluate(archive("status"))).status.enabled, false);
+  await evaluate('(()=>{window.__archiveToggleFail=true;document.querySelector(".archive-chip").click()})()');
+  await until('document.querySelector(".archive-action-notice")?.textContent.includes("TOGGLE-FAILURE-CHECK") && document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"');
+  assert.equal(await evaluate('document.querySelector(".archive-chip").getAttribute("aria-pressed")'), "false");
+  assert(await evaluate('!document.querySelector(".archive-chip.error,.archive-chip svg")'));
+  await evaluate(`(()=>{document.querySelector('.archive-action-notice button').click();window.fetch=window.__archiveToggleFetch;delete window.__archiveToggleFetch;delete window.__archiveToggleDelay;delete window.__archiveToggleFail})()`);
+  await evaluate('document.querySelector(".archive-chip").click()');
+  await until('document.querySelector(".archive-chip")?.getAttribute("aria-pressed")==="true" && document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"');
+  // This fixture checks before/after file bytes. Recording itself is already on;
+  // explicitly wait for its initial file snapshot before editing the source.
+  await evaluate(archive("flush"));
   await evaluate(
     `(()=>{const ta=document.querySelector('.ma-panel .composer textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta,'대화와 도구 실행, 파일 원본까지 저장해줘');ta.dispatchEvent(new Event('input',{bubbles:true}));ta.focus()})()`,
   );
@@ -638,26 +694,18 @@ try {
   await until(
     'document.querySelector(".arc-event-body")?.textContent.includes("file_path")',
   );
-  await evaluate(
-    `(()=>{const group=[...document.querySelectorAll('.arc-file-group')].find(g=>Number(g.dataset.firstSeq)<=${modified.seq}&&Number(g.dataset.lastSeq)>=${modified.seq});if(!group)throw Error('File group not found');group.querySelector('.arc-activity-head').click()})()`,
-  );
-  await until(
-    `!!document.querySelector('.arc-event[data-seq="${modified.seq}"]')`,
-  );
-  await evaluate(
-    `document.querySelector('.arc-event[data-seq="${modified.seq}"] .arc-event-head').click()`,
-  );
-  await until('!!document.querySelector(".arc-file-versions button")');
-  await evaluate('document.querySelector(".arc-file-versions button").click()');
-  await until(
-    'document.querySelectorAll(".arc-snapshot").length === 2 && document.querySelector(".arc-snapshot-grid").textContent.includes("Before archive edit") && document.querySelector(".arc-snapshot-grid").textContent.includes("보관된 결과물")',
-  );
-  await screenshot("archive-session-files");
+  assert(await evaluate('!document.querySelector(".arc-file-group, .arc-infinite-timeline>.arc-page-controls")'),
+    "Automatic file snapshot cards and record-page buttons are absent from the conversation");
+  for (const [hash, expected] of [[modified.payload.before.hash, before], [modified.payload.after.hash, after]]) {
+    const saved = await evaluate(`window.__TAURI_INTERNALS__.invoke('ipc_call',{channel:'archive:object',payload:[${JSON.stringify({chatId:chat,hash,offset:0})}]})`);
+    assert.equal(saved.text, expected, "Hidden file snapshots remain available intact");
+  }
+  await screenshot("archive-session-continuous");
   await evaluate('document.querySelector(".arc-close").click()');
   await screenshot("archive-recording");
   await evaluate('document.querySelector(".archive-chip").click()');
   await until(
-    'document.querySelector(".archive-chip")?.getAttribute("aria-pressed")==="false" && !document.querySelector(".archive-chip").disabled',
+    'document.querySelector(".archive-chip")?.getAttribute("aria-pressed")==="false" && document.querySelector(".archive-chip")?.getAttribute("aria-busy")==="false"',
   );
   const pausedBytes = fs.statSync(logPath).size;
   fs.writeFileSync(
@@ -1034,14 +1082,15 @@ try {
     1,
     "Two turns across native restarts remain one session",
   );
-  await until(
-    'document.querySelector(".arc-detail-scroll")?.textContent.includes("대화와 도구 실행") && document.querySelector(".arc-detail-scroll")?.textContent.includes("재시작 후 첫 요청도 기록해줘")',
-  );
-  assert.equal(
-    await evaluate('document.querySelectorAll(".arc-event.user").length'),
-    2,
-    "The default view includes every recorded user turn",
-  );
+  await until('document.querySelector(".arc-detail-scroll")?.textContent.includes("대화와 도구 실행")');
+  for (let i = 0; i < 100; i++) {
+    if (await evaluate('document.querySelector(".arc-detail-scroll")?.textContent.includes("재시작 후 첫 요청도 기록해줘")')) break;
+    await evaluate('(()=>{const s=document.querySelector(".arc-detail-scroll");s.scrollTop+=s.clientHeight*.6})()');
+    await sleep(80);
+  }
+  await until('document.querySelector(".arc-detail-scroll")?.textContent.includes("재시작 후 첫 요청도 기록해줘")');
+  assert(await evaluate('document.querySelectorAll(".arc-virtual-row").length<60'),
+    "All recorded user turns can be reached while only nearby rows stay mounted");
   await screenshot("archive-complete-session");
   await evaluate('document.querySelector(".arc-search input").focus()');
   await evaluate(
@@ -1064,12 +1113,19 @@ try {
         events: events.length,
         logBytes: fs.statSync(logPath).size,
         toolOutputBytes: Buffer.byteLength(longOutput),
+        initialStartMs,
+        initialStopMs,
+        immediateOn,
+        immediateOff,
         checks: [
           "native header toggle",
+          "header remains usable during 512 MiB initial file preparation and stop cancels the copy",
+          "immediate ON/OFF feedback and latest click preserved during delayed IPC",
+          "failed setting changes restore actual state and show a separate dismissible notice",
           "sidebar library entry and empty archive",
           "visible mouse gestures, scroll to top/bottom and close from empty archive or session row",
           "ordinary right-click menu preserved and gesture context menu suppressed",
-          "one conversation flow with tool actions and grouped file versions",
+          "one continuously scrolling conversation with tool actions and hidden file snapshots",
           "capture notices hidden from conversation and available in error notifications",
           "all turns in one session across restarts",
           "automatic scan past 4001 raw events before conversation",

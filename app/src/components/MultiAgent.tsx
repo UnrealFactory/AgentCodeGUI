@@ -41,6 +41,9 @@ import { parseBtw, btwForkOf } from '../lib/btw'
 import { onChatIdentity, onChatVerdict } from '../api/unified'
 import { panelIdOfChat } from '../lib/accounts'
 import { panelSlotOfChat, pickerAfterLanding, queueAfterLanding } from '../lib/identityLanding'
+import { captureExternalContext } from '../api/bridge'
+import { ExternalToolChip } from './ExternalTools'
+import type { ExternalContextSnapshot } from '@shared/externalTools'
 import { shellAuthored, verdictLine, verdictNote } from '../lib/verdict'
 // ★3.0.8 — 다이얼(자리 수) ↔ 표시 순서의 순수 규칙. 줄일 때의 포커스 자리 승격은 임시 오버레이다.
 import { resizeLayout, sanitizePromo, type LayoutPromo } from '../lib/panelLayout'
@@ -437,6 +440,7 @@ export const PanelView = memo(function PanelView({
   const threadRef = useMemo(() => mergeRefs(scrollRef, setThreadEl), [])
   // 폴더 칩에서 펼쳐지는 작업 폴더 팝오버 — 본채팅 헤더와 같은 FolderPop(공유 최근 폴더)
   const [folderPop, setFolderPop] = useState(false)
+  const folderAnchor = useRef<HTMLButtonElement>(null)
 
   const cwd = meta.cwd || ''
   // 폴더를 고르지 않으면 엔진이 바탕화면에서 동작한다 — 라벨로 그 기본값을 알린다
@@ -652,6 +656,8 @@ export const PanelView = memo(function PanelView({
         <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
           {/* 팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버 위에 겹치지 않게 한다 */}
           <button
+            ref={folderAnchor}
+            aria-expanded={folderPop}
             className={'ma-p-folder' + (folderPop ? ' on' : ' has-tip tip-wrap')}
             data-tip={
               meta.cwd
@@ -672,7 +678,7 @@ export const PanelView = memo(function PanelView({
           </button>
           {folderPop && (
             <FolderPop
-              right
+              anchor={folderAnchor}
               cwd={meta.cwd}
               onSelect={(p) => onSelectFolder(slot, p)}
               onBrowse={() => onPickFolder(slot)}
@@ -690,7 +696,8 @@ export const PanelView = memo(function PanelView({
             ★R2 `onOpen` — 팝오버 배타. 도구 칩이 열릴 때 폴더 팝오버를 접는다(반대
             방향은 칩 쪽 캡처 리스너가 닫는다). 두 팝오버는 같은 자리(`.ma-p-head` 오른쪽
             끝)에 뜨므로, 하나라도 안 닫히면 정확히 포개져 뒤엣것이 통째로 가려진다. */}
-        <McpSkillView panelId={panelId} cwd={cwd} engine={meta.picker.engine} account={meta.picker.codexAccount} apiMode={meta.api} onOpen={() => setFolderPop(false)} />
+        <McpSkillView panelId={panelId} cwd={cwd} engine={meta.picker.engine} account={meta.picker.codexAccount} apiMode={meta.api} onOpen={() => { setFolderPop(false); onFocusPanel(slot) }} />
+        <ExternalToolChip address={panelId} onOpen={() => { setFolderPop(false); onFocusPanel(slot) }} />
         <RecordingChip panelId={panelId} cwd={cwd} refDirs={meta.refDirs} onOpen={() => setFolderPop(false)} />
         <span className={'ma-status ' + status.cls}>
           {/* 응답 대기 중엔 스피너를 숨긴다 — 도는 건 에이전트가 아니라 사용자 차례 */}
@@ -2013,7 +2020,7 @@ function ActiveSession({
   // `opts` lets a queued message replay with the text/attachments/run settings it was
   // scheduled with (instead of the live draft, which the user may be typing in — a
   // replay never consumes it); interactive sends omit it.
-  const sendPanel = useEvent(async (slot: number, opts?: { text: string; images: string[]; picker: PickerState }) => {
+  const sendPanel = useEvent(async (slot: number, opts?: { text: string; images: string[]; picker: PickerState; externalContext?: ExternalContextSnapshot | null }) => {
     const m = metas[slot]
     const sess = sessions[slot]
     const text = (opts?.text ?? m.input).trim()
@@ -2054,7 +2061,9 @@ function ActiveSession({
     const folderSwitched =
       !!sess.state.session && sess.state.messages.length > 0 && !sameCwd(sess.state.session.cwd, dir)
     if (folderSwitched) sess.load(initialSessionState)
-    sess.begin(text, cmd, imgs)
+    const externalContext = cmd ? null : opts?.externalContext !== undefined ? opts.externalContext : captureExternalContext(chan(sessionId, slot))
+    if (externalContext === false) return
+    sess.begin(text, cmd, imgs, externalContext)
     const title = deriveTitle(text)
     if (firstInSession) onFirstPrompt(sessionId, title)
     setMetas((prev) =>
@@ -2090,6 +2099,7 @@ function ActiveSession({
     // 참조 폴더 — 작업 폴더와 겹치는 항목은 걸러서 전달
     const extraDirs = m.refDirs.filter((p) => !sameCwd(p, dir))
     const req: MultiRunRequest = {
+      externalContext,
       panelId: chan(sessionId, slot),
       prompt: promptForEngine,
       model: pk.model,
@@ -2127,10 +2137,12 @@ function ActiveSession({
       return
     }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${m.queue.length}`
+    const externalContext = commandOf(m.input) ? null : captureExternalContext(chan(sessionId, slot))
+    if (externalContext === false) return
     setMetas((prev) =>
       prev.map((pm, i) =>
         i === slot
-          ? { ...pm, input: '', images: [], queue: [...pm.queue, { id, text: pm.input, images: pm.images, picker: pm.picker }] }
+          ? { ...pm, input: '', images: [], queue: [...pm.queue, { id, text: pm.input, images: pm.images, picker: pm.picker, externalContext }] }
           : pm
       )
     )
@@ -2199,7 +2211,7 @@ function ActiveSession({
       // 않는다. 순차 await: 이전 항목이 자리를 잡기 전에 다음 항목이 겹쳐 나가지 않게.
       void (async () => {
         try {
-          for (const next of items) await sendPanel(slot, { text: next.text, images: next.images, picker: next.picker })
+          for (const next of items) await sendPanel(slot, { text: next.text, images: next.images, picker: next.picker, externalContext: next.externalContext ?? null })
         } finally {
           drainingRef.current.delete(slot)
         }

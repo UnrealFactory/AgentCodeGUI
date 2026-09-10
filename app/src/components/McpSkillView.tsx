@@ -31,7 +31,7 @@
  * 문법은 전부 기존 것이다 — 행 토글의 축소 규칙(.wb-prow .sw2) 말고는 새 CSS가 없다:
  *   칩   = `.ma-p-folder` (패널 헤더 모노 필, 작업 폴더 칩과 같은 면)
  *   래퍼 = `.hfold`      (팝오버 기준점 + 안쪽 클릭의 바깥닫힘 차단)
- *   카드 = `.wb-pop.hpop.r` (아래로 열리는 WorkBar 유리 팝오버)
+ *   카드 = HeaderPopover + `.wb-pop.hpop` (버튼에 맞춰 열리는 공통 헤더 메뉴)
  *   섹션 = `.hsec` · 행 = `.wb-prow`(+`.done`/`.err`) · 토글 = `.sw2` · 빈 상태 = `.ag-none`
  * ============================================================ */
 import { useEffect, useRef, useState } from 'react'
@@ -41,6 +41,7 @@ import { setCodexToolEnabled, useCodexTooling, type CodexTooling } from '../api/
 import { IconAlert, IconBook, IconChevDown, IconEyeOff, IconPlug, IconServer } from './icons'
 import { t, useLang } from '../lib/i18n'
 import { getPref, setPref } from '../lib/prefs'
+import { HeaderPopover } from './HeaderPopover'
 
 /** 경로 비교용 정규화 — 대소문자·구분자·후행 슬래시를 접는다(m-logic §2.3의 축소판). */
 function norm(p: string): string {
@@ -277,7 +278,7 @@ export function McpSkillView({
     setScopeF(next)
     setPref(k === 'local' ? 'tooling.showLocal' : 'tooling.showGlobal', next[k])
   }
-  const wrapRef = useRef<HTMLSpanElement | null>(null)
+  const anchor = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let alive = true
@@ -344,30 +345,7 @@ export function McpSkillView({
     }
   }, [cwd, codex, account, apiMode])
 
-  // 팝오버는 Esc / 바깥 클릭으로 닫는다 (네이티브 다이얼로그 금지 — 카드 패턴 유지).
-  //
-  // ★R2 — **캡처 단계**로 듣고 내 래퍼 안이면 무시한다. R1은 버블 단계 `window` mousedown
-  // 하나였고 "안쪽 클릭은 `.hfold`의 stopPropagation이 막는다"에 기대고 있었는데, 그 전제가
-  // 옆 칩에서 반대로 물렸다: 폴더 칩의 래퍼도 `.hfold`(=stopPropagation)라 그 클릭이
-  // `window`까지 **안 온다**. 그래서 도구 팝오버가 안 닫힌 채 폴더 팝오버가 그 위에 정확히
-  // 포개져 떴다(크리틱 A10 — 겹침 64,200px²). 캡처는 타깃보다 **먼저** 돌므로 남이 끊어도
-  // 울리고, 내 안쪽 클릭은 래퍼 containment로 직접 가른다(전파에 안 기댄다).
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent): void => {
-      if (wrapRef.current?.contains(e.target as Node)) return
-      setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('mousedown', onDown, true)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('mousedown', onDown, true)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
+  useEffect(() => { setOpen(false) }, [panelId, chatId, cwd])
 
   // 폴더를 바꾼 직후의 스냅샷은 **남의 폴더 것**이다. 와이어가 cwd를 싣고 오므로
   // 어긋나면 없는 것으로 친다 — 낡은 목록을 그리느니 안 그리는 게 낫다.
@@ -490,8 +468,10 @@ export function McpSkillView({
   ].join(' · ')
 
   return (
-    <span className="hfold" ref={wrapRef} onMouseDown={(e) => e.stopPropagation()}>
+    <span className="hfold" onMouseDown={(e) => e.stopPropagation()}>
       <button
+        ref={anchor}
+        aria-expanded={open}
         className={'ma-p-folder' + (open ? ' on' : ' has-tip tip-wrap')}
         data-tip={tip}
         aria-label={tip}
@@ -513,7 +493,7 @@ export function McpSkillView({
         <IconChevDown size={10} />
       </button>
       {open && (
-        <div className="wb-pop hpop r">
+        <HeaderPopover anchor={anchor} onClose={() => setOpen(false)} className="wb-pop hpop" label={t('도구 환경', 'Tool environment')}>
           <div className="wb-pop-h">
             <span className="t">{t('도구 환경', 'Tool environment')}</span>
             {/* 로컬/전역 알약(ScopeFilter 주석) — 계정 picker 헤더의 .pp-filt 문법 그대로 */}
@@ -649,7 +629,7 @@ export function McpSkillView({
 
           {/* 출처 각주는 R4에서 제거(2026-09-01 사용자 지적) — 상시 문단은 소음이고,
               토글의 「다음 실행부터 적용」은 어긋난 행에만 인라인으로 붙는다. */}
-        </div>
+        </HeaderPopover>
       )}
     </span>
   )

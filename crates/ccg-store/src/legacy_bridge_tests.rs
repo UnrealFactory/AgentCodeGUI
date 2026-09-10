@@ -208,6 +208,49 @@ fn saving_unused_empty_panels_does_not_create_chats() {
 }
 
 #[test]
+fn first_run_survives_a_blank_save_before_its_seat_is_persisted() {
+    let _h = migrated("bridge-first-run-seat");
+    let mut stale = ma_get(false);
+    stale["sessions"].as_array_mut().unwrap().push(json!({
+        "id":"new-board", "title":"", "count":2,
+        "panels":[{"title":"","snapshot":{"messages":[]}},{"title":"","snapshot":{"messages":[]}}]
+    }));
+    let issued = "ma-new-board-0";
+    let record = json!({"id":issued,"origin":"panel","title":"First run",
+        "snapshot":{"messages":[{"kind":"msg","role":"user","text":"Selected context"}]}});
+    assert!(crate::chats_v3::upsert_chat(issued, &record));
+
+    let removed = ma_save(&stale);
+    assert!(!removed.iter().any(|id| id == issued), "A late empty save must not dispose the first run");
+    assert_eq!(crate::boards::read_board(&json!("new-board"))["slots"][0], issued);
+    assert_eq!(crate::chats_v3::stored_chat(issued).unwrap()["snapshot"], record["snapshot"]);
+    assert!(crate::boards::read_board(&json!("new-board"))["slots"][1].is_null(), "Unused slots must stay empty");
+    assert!(crate::chats_v3::stored_chat("ma-new-board-1").is_none());
+}
+
+#[test]
+fn a_first_run_with_only_runtime_identity_is_seated_before_status_pruning() {
+    let _h = migrated("bridge-first-run-memory");
+    let mut stale = ma_get(false);
+    stale["sessions"].as_array_mut().unwrap().push(json!({
+        "id":"issued-board", "title":"", "count":1,
+        "panels":[{"title":"","snapshot":{"messages":[]}}]
+    }));
+    let issued = "ma-issued-board-0";
+    let identity = to_raw_identity(&json!({"picker":{"model":"haiku"}}), Source::Panel, &Globals::read());
+    crate::chats_v3::set_owned_mem(issued, "identity", identity.clone());
+    crate::status::set(issued, json!({"busy":true,"status":"working"}));
+    assert!(crate::chats_v3::stored_chat(issued).is_none());
+
+    let removed = ma_save(&stale);
+    assert!(!removed.iter().any(|id| id == issued), "The runtime-only status must not be treated as a deleted conversation");
+    assert_eq!(crate::boards::read_board(&json!("issued-board"))["slots"][0], issued);
+    let record = crate::chats_v3::stored_chat(issued).unwrap();
+    assert_eq!(record["origin"], "panel");
+    assert_eq!(record["identity"], identity);
+}
+
+#[test]
 fn a_partial_ma_save_keeps_boards_it_was_never_handed() {
     let h = migrated("bridge-masubset");
     let before = threads(&h);

@@ -8,7 +8,10 @@
 .archive-chip{gap:5px!important;flex-shrink:0}
 .archive-chip:disabled{cursor:default;opacity:.55}
 .archive-chip.recording{color:var(--green)!important}
-.archive-chip.error{color:var(--red)!important}
+.archive-record-state{min-width:3ch;text-align:center;font-size:10px}
+.archive-action-notice{position:fixed;right:20px;bottom:20px;z-index:10020;display:flex;align-items:flex-start;gap:16px;max-width:min(460px,calc(100vw - 40px));padding:14px 16px;border:1px solid var(--line-strong);border-radius:10px;background:var(--bg);box-shadow:var(--shadow-win);color:var(--text);font-size:12px;-webkit-app-region:no-drag}
+.archive-action-notice p{margin:6px 0 0;color:var(--text-2);overflow-wrap:anywhere}
+.archive-action-notice button{flex:none;display:grid;place-items:center;border:0;background:transparent;color:var(--text-2);padding:3px;cursor:pointer}
 .archive-record-dot{width:5px;height:5px;border:1px solid currentColor;border-radius:50%;opacity:.65;flex:none}
 .archive-record-dot.on{background:var(--green);border-color:var(--green);opacity:1}
 .archive-loading-overlay{position:fixed;inset:0;background:#0009;z-index:9800;display:grid;place-items:center;color:var(--text);font-size:13px;-webkit-app-region:no-drag}
@@ -799,6 +802,13 @@ input,textarea{ font-family:inherit; }
    올려 top/bottom을 확정한다 — 안 그러면 top·bottom이 동시에 걸려 음수 높이로 짜부라진다 */
 .wb-pop.hpop{ position:absolute; top:calc(100% + 8px); bottom:auto; left:0; width:300px; z-index:90;
   animation:cmin .13s cubic-bezier(.2,.8,.2,1); }
+/* Header menus live above panel clipping and align to their own trigger. */
+.header-popover.wb-pop, .header-popover.ext-popover{ z-index:9400; animation:header-pop-in .12s ease-out; outline:none; -webkit-app-region:no-drag; }
+.header-popover.wb-pop{ background:rgba(28,28,28,.97); color:var(--text-2); }
+.header-popover .wb-pop-h .t{ color:var(--text-2); }
+.header-popover .hsec{ color:var(--text-3); }
+.header-popover .ag-none{ color:var(--text-2); line-height:1.6; }
+@keyframes header-pop-in{ from{opacity:0} to{opacity:1} }
 .hpop .hprow{ width:100%; text-align:left; cursor:pointer; transition:background .12s, color .12s; }
 .hpop .hprow:hover{ background:var(--hover); color:var(--text); }
 .hpop .hprow .sub{ font-family:var(--font-mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -4359,10 +4369,6 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid .ma-panel .workbar{ position:relative; }
 .ma-grid .ma-panel .workbar .wb-cell{ position:static; }
 .ma-grid .ma-panel .workbar .wb-pop{ max-width:100%; }
-/* 헤더 폴더 팝오버(.hpop)도 같은 함정 — 헤더(.ma-p-head) 기준으로 올려 앵커 */
-.ma-grid .ma-panel .ma-p-head{ position:relative; }
-.ma-grid .ma-panel .ma-p-head .hfold{ position:static; }
-.ma-grid .ma-panel .ma-p-head .wb-pop.hpop{ max-width:100%; }
 .ma-grid .ma-panel .composer-wrap{ padding:8px 12px 12px; }
 .ma-grid .ma-panel .composer-inner{ max-width:none; }
 /* 한도 자동 이어서 상태줄 — 패널 미니어처: 컴포저와 같은 배율(zoom .9)·같은 사이드
@@ -4662,12 +4668,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-grid.n1 .ma-panel .workbar{ max-width:880px; margin:0 auto; flex-wrap:nowrap; row-gap:0; }
 .ma-grid.n1 .ma-panel .workbar-wrap{ padding:8px 28px 0; }
 .ma-grid.n1 .ma-panel .limit-hold-wrap > .ntf-band{ max-width:880px; margin:0 auto; }
-/* 팝오버 앵커 — 그리드의 "바/헤더 전체 앵커"(좁은 패널에서 팝오버가 잘리는 함정 대책)는
-   창 전폭인 n1에선 오히려 칩에서 동떨어진 오른쪽 끝에 팝오버를 떨군다(2026-09-01 사용자
-   보고: 폴더 팝오버·도구 팝오버 위치 이상). 본채팅과 같은 칩(.hfold/.wb-cell) 앵커로
-   되돌리고, 폭 상한도 기본값(86vw)으로 복원한다. */
-.ma-grid.n1 .ma-p-head .hfold{ position:relative; }
-.ma-grid.n1 .ma-p-head .wb-pop.hpop{ max-width:86vw; }
+/* WorkBar popovers use each cell as their anchor in the full-width layout.
+   Header menus use HeaderPopover's viewport layer in every layout. */
 .ma-grid.n1 .ma-panel .workbar .wb-cell{ position:relative; }
 .ma-grid.n1 .ma-panel .workbar .wb-pop{ max-width:86vw; }
 /* 알약 자리 — 그리드 미니어처 오프셋(84px 선반·124/164 층계)은 창 전폭인 n1에서

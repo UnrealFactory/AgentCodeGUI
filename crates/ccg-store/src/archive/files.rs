@@ -1,5 +1,6 @@
 //! Immutable bytes, streamed to SHA-256 objects. Native change notifications avoid
 //! project-wide polling; turn boundaries reconcile the directory inventory.
+use super::file_policy::{self, Policy};
 use super::{invalid, lock, now_ms, Captured, Status};
 use notify::{EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -9,8 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 pub type Sink = Arc<dyn Fn(Captured) + Send + Sync>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ pub(super) fn is_link(m: &fs::Metadata) -> bool {
     }
     m.file_type().is_symlink()
 }
-fn key(path: &Path) -> String {
+pub(super) fn key(path: &Path) -> String {
     let s = path.to_string_lossy().replace('\\', "/");
     let s = if let Some(p) = s.strip_prefix("//?/UNC/") {
         format!("//{p}")
@@ -51,7 +53,7 @@ fn key(path: &Path) -> String {
         s
     }
 }
-fn inside(path: &Path, root: &Path) -> bool {
+pub(super) fn inside(path: &Path, root: &Path) -> bool {
     let p = key(path);
     let r = key(root).trim_end_matches('/').to_string();
     p == r || p.starts_with(&(r + "/"))
@@ -70,6 +72,81 @@ pub(super) fn object_path(root: &Path, hash: &str) -> io::Result<PathBuf> {
 }
 static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 pub fn store_file(root: &Path, path: &Path) -> io::Result<(String, u64)> {
+    store_file_cancellable(root, path, None, None)
+}
+fn source_read<T>(result: io::Result<T>) -> io::Result<T> {
+    result.map_err(|e| {
+        if matches!(
+            e.kind(),
+            io::ErrorKind::PermissionDenied
+                | io::ErrorKind::WouldBlock
+                | io::ErrorKind::NotFound
+                | io::ErrorKind::Interrupted
+        ) || matches!(e.raw_os_error(), Some(32 | 33))
+        {
+            io::Error::new(io::ErrorKind::WouldBlock, e)
+        } else {
+            e
+        }
+    })
+}
+fn unstable_file() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::WouldBlock,
+        "파일이 저장 또는 교체되는 중이라 사본을 다시 확인합니다.",
+    )
+}
+fn same_metadata(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    a.len() == b.len() && modified(a) == modified(b) && a.created().ok() == b.created().ok()
+}
+pub(super) fn same_open_file(a: &File, b: &File) -> io::Result<bool> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        };
+        let identity = |file: &File| -> io::Result<(u32, u32, u32)> {
+            let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle() as _), &mut info) }
+                .map_err(io::Error::other)?;
+            Ok((
+                info.dwVolumeSerialNumber,
+                info.nFileIndexHigh,
+                info.nFileIndexLow,
+            ))
+        };
+        Ok(identity(a)? == identity(b)?)
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let (a, b) = (a.metadata()?, b.metadata()?);
+        Ok(a.dev() == b.dev() && a.ino() == b.ino())
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        Ok(same_metadata(&a.metadata()?, &b.metadata()?))
+    }
+}
+fn cancelled(stop: Option<&AtomicBool>) -> io::Result<()> {
+    if stop.is_some_and(|s| s.load(Ordering::Acquire)) {
+        Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "파일 초기 보관을 중지했습니다.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+fn store_file_cancellable(
+    root: &Path,
+    path: &Path,
+    stop: Option<&AtomicBool>,
+    expected: Option<&fs::Metadata>,
+) -> io::Result<(String, u64)> {
+    cancelled(stop)?;
     let temp_dir = root.join("pending");
     fs::create_dir_all(&temp_dir)?;
     let tmp = temp_dir.join(format!(
@@ -79,13 +156,18 @@ pub fn store_file(root: &Path, path: &Path) -> io::Result<(String, u64)> {
         TEMP_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     let outcome = (|| {
-        let mut input = File::open(path)?;
+        let mut input = source_read(File::open(path))?;
+        let before = source_read(input.metadata())?;
+        if expected.is_some_and(|m| !same_metadata(m, &before)) {
+            return Err(unstable_file());
+        }
         let mut output = OpenOptions::new().create_new(true).write(true).open(&tmp)?;
         let mut hash = Sha256::new();
         let mut bytes = 0;
         let mut buffer = vec![0u8; 128 * 1024];
         loop {
-            let n = input.read(&mut buffer)?;
+            cancelled(stop)?;
+            let n = source_read(input.read(&mut buffer))?;
             if n == 0 {
                 break;
             }
@@ -93,8 +175,19 @@ pub fn store_file(root: &Path, path: &Path) -> io::Result<(String, u64)> {
             output.write_all(&buffer[..n])?;
             bytes += n as u64;
         }
-        output.sync_data()?;
-        drop(output);
+        cancelled(stop)?;
+        // Verify before publishing the object or appending a manifest version.
+        // The reader keeps normal write/delete sharing, so it never locks out an editor.
+        let after = source_read(input.metadata())?;
+        let current_file = source_read(File::open(path))?;
+        let current = source_read(current_file.metadata())?;
+        if bytes != before.len()
+            || !same_metadata(&before, &after)
+            || !same_metadata(&before, &current)
+            || !same_open_file(&input, &current_file)?
+        {
+            return Err(unstable_file());
+        }
         let digest = format!("{:x}", hash.finalize());
         let destination = object_path(root, &digest)?;
         fs::create_dir_all(destination.parent().unwrap())?;
@@ -106,6 +199,8 @@ pub fn store_file(root: &Path, path: &Path) -> io::Result<(String, u64)> {
                 ));
             }
         } else {
+            output.sync_data()?;
+            drop(output);
             fs::rename(&tmp, &destination)?;
         }
         Ok((digest, bytes))
@@ -127,12 +222,18 @@ struct Work {
 struct Signals {
     work: Mutex<Work>,
     wake: Condvar,
+    stopping: AtomicBool,
+    finished: AtomicBool,
 }
 impl Signals {
     fn touch(&self, path: PathBuf, why: &str) {
         let mut w = lock(&self.work);
         if w.paths.len() < 4096 {
-            w.paths.insert(path, why.into());
+            // A filesystem notice must not erase an explicit attachment request.
+            let previous = w.paths.entry(path).or_insert_with(|| why.into());
+            if why == "tool-or-attachment" {
+                *previous = why.into();
+            }
         } else {
             w.rescan = true;
             w.overflow = true;
@@ -174,13 +275,19 @@ impl Monitor {
         let signals = Arc::new(Signals {
             work: Mutex::new(Work::default()),
             wake: Condvar::new(),
+            stopping: AtomicBool::new(false),
+            finished: AtomicBool::new(false),
         });
         let s = signals.clone();
-        let watch_root = root.clone();
+        let mut watch_policy = Policy::new(root.clone(), dirs.clone());
         let mut watcher=notify::recommended_watcher(move|result:notify::Result<notify::Event>|{
             match result {
                 Ok(event)=>{if matches!(event.kind,EventKind::Access(_)){return}
-                    let paths:Vec<_>=event.paths.into_iter().filter(|p|!inside(p,&watch_root)).collect();if paths.is_empty(){return}
+                    // Cached ignore matchers reject ignored build traffic before it
+                    // fills the bounded queue or causes a false coverage-gap notice.
+                    if event.paths.iter().any(|p|p.file_name().is_some_and(|n|n==".gitignore")){watch_policy.refresh();}
+                    let directory=matches!(event.kind,EventKind::Create(notify::event::CreateKind::Folder)|EventKind::Remove(notify::event::RemoveKind::Folder));
+                    let paths:Vec<_>=event.paths.into_iter().filter(|p|watch_policy.automatic(p,directory)).collect();if paths.is_empty(){return}
                     {let mut w=lock(&s.work);if w.notices.len()<4096{w.notices.push(json!({"type":"filesystem-event","kind":format!("{:?}",event.kind),"paths":paths,"observedAt":now_ms()}));}else{w.rescan=true;w.overflow=true;}}
                     for p in paths{s.touch(p,"filesystem");}
                 }
@@ -192,74 +299,67 @@ impl Monitor {
                 io::Error::other(format!("파일 변경 감시를 시작하지 못했습니다: {e}"))
             })?;
         }
-        let manifest = super::journal::chat_dir(&root, &chat)?.join("files-manifest.jsonl");
-        let mut versions: BTreeMap<PathBuf, Version> = BTreeMap::new();
-        let mut manifest_file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&manifest)?;
-        let mut reader = BufReader::new(manifest_file.try_clone()?);
-        let mut line = Vec::new();
-        let mut valid = 0u64;
-        loop {
-            line.clear();
-            let n = reader.read_until(b'\n', &mut line)?;
-            if n == 0 {
-                break;
-            }
-            if line.last() != Some(&b'\n') {
-                break;
-            }
-            let Ok((path, version)) = serde_json::from_slice::<(PathBuf, Option<Version>)>(&line)
-            else {
-                break;
-            };
-            if let Some(v) = version {
-                versions.insert(path, v);
-            } else {
-                versions.remove(&path);
-            }
-            valid += n as u64;
-        }
-        manifest_file.set_len(valid)?;
-        manifest_file.seek(SeekFrom::Start(valid))?;
-        let mut tracker = Tracker {
-            root: root.clone(),
-            store_root: super::layout::view_dir(&root, &chat)?,
-            dirs: dirs.clone(),
-            manifest: BufWriter::new(manifest_file),
-            versions,
-            sink: sink.clone(),
-            status: status.clone(),
-            targets: BTreeSet::new(),
-        };
-        // Baseline is complete before the toggle returns enabled. No file I/O on the GUI thread.
-        tracker.reconcile(true)?;
-        tracker.save()?;
-        sink(Captured::new(
-            "lifecycle",
-            &json!({"type":"baseline-complete","files":tracker.versions.len(),"roots":dirs}),
-        ));
         let signals2 = signals.clone();
         let cwd = dirs[0].clone();
         let thread = std::thread::Builder::new()
             .name("ccg-archive-files".into())
             .spawn(move || {
                 let _watcher = watcher;
+                let result = (|| -> io::Result<()> {
+                // The journal is already usable while the old inventory and initial
+                // file bytes load. The watcher was installed before starting this work.
+                let mut tracker = Tracker::open(root, chat, dirs, sink.clone(), status.clone(), signals2.clone())?;
+                let baseline = tracker.reconcile(true);
+                tracker.save()?;
+                baseline?;
+                let mut initial = true;
+                let mut barriers: Vec<std::sync::mpsc::Sender<()>> = Vec::new();
                 loop {
+                    if !signals2.stopping.load(Ordering::Acquire) {
+                        tracker.retry_pending(false);
+                        tracker.save()?;
+                    }
+                    if initial && !signals2.stopping.load(Ordering::Acquire) && !tracker.retries.values().any(|r| r.baseline) {
+                        sink(Captured::new("lifecycle", &json!({"type":"baseline-complete","files":tracker.versions.len(),"roots":tracker.dirs})));
+                        lock(&status).preparing = false;
+                        initial = false;
+                    }
+                    if tracker.retries.is_empty() && !barriers.is_empty() {
+                        tracker.save()?;
+                        for barrier in barriers.drain(..) { let _ = barrier.send(()); }
+                    }
                     let work = {
                         let mut w = lock(&signals2.work);
                         while w.paths.is_empty() && !w.rescan && !w.stop && !w.retry_targets {
-                            w = signals2.wake.wait(w).unwrap_or_else(|e| e.into_inner());
+                            if let Some(next) = tracker.retries.values().map(|r| r.next).min() {
+                                let delay = next.saturating_duration_since(Instant::now());
+                                if delay.is_zero() { break; }
+                                w = signals2.wake.wait_timeout(w, delay).unwrap_or_else(|e| e.into_inner()).0;
+                            } else {
+                                w = signals2.wake.wait(w).unwrap_or_else(|e| e.into_inner());
+                            }
                         }
                         std::mem::take(&mut *w)
                     };
+                    barriers.extend(work.barriers);
+                    if work.stop && initial {
+                        tracker.retry_pending(true);
+                        tracker.save()?;
+                        sink(Captured::new("lifecycle", &json!({"type":"baseline-cancelled"})));
+                        for barrier in barriers.drain(..) { let _ = barrier.send(()); }
+                        break;
+                    }
                     if work.overflow {
                         tracker.gap("파일 변경 알림이 밀려 전체 파일 목록을 다시 확인했습니다.");
                     }
-                    for notice in work.notices {
+                    if work.paths.keys().any(|p| p.file_name().is_some_and(|n| n == ".gitignore")) {
+                        tracker.policy.refresh();
+                    }
+                    for mut notice in work.notices {
+                        if let Some(paths) = notice["paths"].as_array_mut() {
+                            paths.retain(|p| p.as_str().is_some_and(|p| tracker.automatic(Path::new(p), false)));
+                            if paths.is_empty() { continue; }
+                        }
                         (tracker.sink)(Captured::new("file", &notice));
                     }
                     for (path, why) in work.paths {
@@ -274,16 +374,36 @@ impl Monitor {
                     } else if work.retry_targets {
                         tracker.retry_targets();
                     }
+                    if work.stop { tracker.retry_pending(true); }
                     if let Err(e) = tracker.save() {
                         tracker.failure(Path::new("manifest"), &e);
                     }
-                    for barrier in work.barriers {
-                        let _ = barrier.send(());
+                    if tracker.retries.is_empty() || work.stop {
+                        for barrier in barriers.drain(..) { let _ = barrier.send(()); }
                     }
                     if work.stop {
                         break;
                     }
                 }
+                Ok(())
+                })();
+                if let Err(e) = result {
+                    if e.kind() == io::ErrorKind::Interrupted && signals2.stopping.load(Ordering::Acquire) {
+                        sink(Captured::new("lifecycle", &json!({"type":"baseline-cancelled"})));
+                    } else {
+                        let text = if crate::prefs::read_ui_prefs().get("ui.lang").and_then(Value::as_str) == Some("en") {
+                            format!("File archive preparation failed: {e}")
+                        } else {
+                            format!("파일 보관 준비 실패: {e}")
+                        };
+                        { let mut s = lock(&status); s.error = Some(text.clone()); s.coverage_errors += 1; }
+                        sink(Captured::new("file", &json!({"type":"capture-error","error":text})));
+                    }
+                }
+                lock(&status).preparing = false;
+                let mut work = lock(&signals2.work);
+                signals2.finished.store(true, Ordering::Release);
+                for barrier in work.barriers.drain(..) { let _ = barrier.send(()); }
             })?;
         Ok(Self {
             signals,
@@ -325,12 +445,17 @@ impl Monitor {
     pub fn checkpoint_request(&self) -> std::sync::mpsc::Receiver<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut w = lock(&self.signals.work);
+        if self.signals.finished.load(Ordering::Acquire) {
+            let _ = tx.send(());
+            return rx;
+        }
         w.rescan = true;
         w.barriers.push(tx);
         self.signals.wake.notify_one();
         rx
     }
     pub fn stop(mut self) {
+        self.signals.stopping.store(true, Ordering::Release);
         let mut w = lock(&self.signals.work);
         w.stop = true;
         self.signals.wake.notify_one();
@@ -383,19 +508,130 @@ struct Tracker {
     sink: Sink,
     status: Arc<Mutex<Status>>,
     targets: BTreeSet<PathBuf>,
+    policy: Policy,
+    signals: Arc<Signals>,
+    retries: BTreeMap<PathBuf, RetryCapture>,
+    failures: BTreeMap<PathBuf, String>,
+}
+const RETRY_DELAYS: [Duration; 5] = [
+    Duration::from_millis(50),
+    Duration::from_millis(150),
+    Duration::from_millis(350),
+    Duration::from_millis(750),
+    Duration::from_millis(1500),
+];
+const MAX_RETRIES: usize = 4096;
+struct RetryCapture {
+    path: PathBuf,
+    baseline: bool,
+    why: String,
+    attempts: usize,
+    next: Instant,
+    missing: bool,
 }
 impl Tracker {
-    fn failure(&self, path: &Path, e: &io::Error) {
-        let text = format!("{}: {e}", path.display());
+    fn open(
+        root: PathBuf,
+        chat: String,
+        dirs: Vec<PathBuf>,
+        sink: Sink,
+        status: Arc<Mutex<Status>>,
+        signals: Arc<Signals>,
+    ) -> io::Result<Self> {
+        let manifest = super::journal::chat_dir(&root, &chat)?.join("files-manifest.jsonl");
+        let mut manifest_file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&manifest)?;
+        let mut reader = BufReader::new(manifest_file.try_clone()?);
+        let mut versions = BTreeMap::new();
+        let mut policy = Policy::new(root.clone(), dirs.clone());
+        let mut line = Vec::new();
+        let mut valid = 0u64;
+        loop {
+            cancelled(Some(&signals.stopping))?;
+            line.clear();
+            let n = reader.read_until(b'\n', &mut line)?;
+            if n == 0 || line.last() != Some(&b'\n') {
+                break;
+            }
+            let Ok((path, version)) = serde_json::from_slice::<(PathBuf, Option<Version>)>(&line)
+            else {
+                break;
+            };
+            // Historic objects and manifest rows remain on disk for export. Avoid
+            // keeping hundreds of thousands of excluded build paths in memory.
+            let in_workspace = dirs.iter().any(|dir| inside(&path, dir));
+            if if in_workspace {
+                policy.automatic(&path, false)
+            } else {
+                policy.explicit(&path)
+            } {
+                if let Some(v) = version {
+                    versions.insert(path, v);
+                } else {
+                    versions.remove(&path);
+                }
+            }
+            valid += n as u64;
+        }
+        // Cancellation must never truncate a partially read historical manifest.
+        cancelled(Some(&signals.stopping))?;
+        manifest_file.set_len(valid)?;
+        manifest_file.seek(SeekFrom::Start(valid))?;
+        Ok(Self {
+            store_root: super::layout::view_dir(&root, &chat)?,
+            policy,
+            root,
+            dirs,
+            manifest: BufWriter::new(manifest_file),
+            versions,
+            sink,
+            status,
+            targets: BTreeSet::new(),
+            signals,
+            retries: BTreeMap::new(),
+            failures: BTreeMap::new(),
+        })
+    }
+    fn automatic(&mut self, path: &Path, is_dir: bool) -> bool {
+        (self.targets.contains(path) && self.policy.explicit(path))
+            || self.policy.automatic(path, is_dir)
+    }
+    fn failure(&mut self, path: &Path, e: &io::Error) {
+        let id = map_key(path);
+        let text = format!("{}: {e}", id.display());
+        if self.failures.get(&id) == Some(&text) {
+            return;
+        }
+        if self.failures.len() < MAX_RETRIES || self.failures.contains_key(&id) {
+            self.failures.insert(id, text.clone());
+        }
         {
             let mut s = lock(&self.status);
             s.coverage_errors += 1;
-            s.error = Some(text.clone());
+            if !s
+                .error
+                .as_ref()
+                .is_some_and(|e| e.starts_with("기록 저장 실패:"))
+            {
+                s.error = Some(text.clone());
+            }
         }
         (self.sink)(Captured::new(
             "file",
             &json!({"type":"capture-error","path":path,"error":text}),
         ));
+    }
+    fn recovered(&mut self, path: &Path) {
+        if let Some(error) = self.failures.remove(&map_key(path)) {
+            let mut status = lock(&self.status);
+            if status.error.as_ref() == Some(&error) {
+                status.error = self.failures.values().next_back().cloned();
+            }
+        }
     }
     fn gap(&self, message: &str) {
         lock(&self.status).coverage_errors += 1;
@@ -405,16 +641,109 @@ impl Tracker {
         ));
     }
     fn capture(&mut self, path: &Path, baseline: bool, why: &str) -> io::Result<()> {
-        if inside(path, &self.root) {
+        let id = map_key(path);
+        if let Some(pending) = self.retries.get_mut(&id) {
+            // A flood of notices must neither reset the retry budget nor force
+            // repeated reads while a writer still owns the file.
+            pending.baseline |= baseline;
+            if why == "tool-or-attachment" {
+                pending.why = why.into();
+            }
+            return Ok(());
+        }
+        let stopping = self.signals.stopping.load(Ordering::Acquire);
+        let force = self.failures.contains_key(&id);
+        match self.capture_once(path, baseline, why, stopping, force) {
+            Ok(()) => {
+                self.recovered(path);
+                Ok(())
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::NotFound
+                ) && !stopping
+                    && self.retries.len() < MAX_RETRIES =>
+            {
+                self.retries.insert(
+                    id,
+                    RetryCapture {
+                        path: path.into(),
+                        baseline,
+                        why: why.into(),
+                        attempts: 0,
+                        next: Instant::now() + RETRY_DELAYS[0],
+                        missing: e.kind() == io::ErrorKind::NotFound,
+                    },
+                );
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+    fn retry_pending(&mut self, stopping: bool) {
+        let due: Vec<_> = self
+            .retries
+            .iter()
+            .filter(|(_, retry)| stopping || retry.next <= Instant::now())
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in due {
+            let Some(mut retry) = self.retries.remove(&id) else {
+                continue;
+            };
+            // Cancelling the initial inventory does not wait through retry delays.
+            if stopping && retry.baseline {
+                continue;
+            }
+            retry.attempts += 1;
+            let final_attempt =
+                stopping || retry.attempts >= if retry.missing { 2 } else { RETRY_DELAYS.len() };
+            match self.capture_once(&retry.path, retry.baseline, &retry.why, final_attempt, true) {
+                Ok(()) => self.recovered(&retry.path),
+                Err(e)
+                    if !stopping
+                        && ((e.kind() == io::ErrorKind::WouldBlock
+                            && retry.attempts < RETRY_DELAYS.len())
+                            || (e.kind() == io::ErrorKind::NotFound && retry.attempts < 2)) =>
+                {
+                    retry.missing = e.kind() == io::ErrorKind::NotFound;
+                    retry.next = Instant::now() + RETRY_DELAYS[retry.attempts];
+                    self.retries.insert(id, retry);
+                }
+                Err(e)
+                    if e.kind() == io::ErrorKind::Interrupted
+                        && self.signals.stopping.load(Ordering::Acquire) => {}
+                Err(e) => self.failure(&retry.path, &e),
+            }
+        }
+    }
+    fn capture_once(
+        &mut self,
+        path: &Path,
+        baseline: bool,
+        why: &str,
+        confirm_missing: bool,
+        force: bool,
+    ) -> io::Result<()> {
+        if !self.policy.explicit(path) {
+            return Ok(());
+        }
+        if why == "tool-or-attachment" {
+            self.targets.insert(path.into());
+        } else if !matches!(why, "baseline" | "inventory") && !self.automatic(path, path.is_dir()) {
             return Ok(());
         }
         let map_path = map_key(path);
-        if why == "tool-or-attachment" && !self.dirs.iter().any(|d| inside(path, d)) {
-            self.targets.insert(path.into());
-        }
         let meta = match fs::symlink_metadata(path) {
             Ok(m) => m,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                if !confirm_missing {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "파일 교체 중인지 다시 확인합니다.",
+                    ));
+                }
                 if let Some(before) = self.versions.remove(&map_path) {
                     self.targets.retain(|p| map_key(p) != map_path);
                     serde_json::to_writer(
@@ -429,14 +758,13 @@ impl Tracker {
                 } else if matches!(why, "inventory-target" | "filesystem")
                     && !self.versions.keys().any(|p| inside(p, path))
                 {
-                    self.gap(&format!(
-                        "파일 내용을 확보하기 전에 경로가 사라졌습니다: {}",
-                        path.display()
+                    return Err(io::Error::other(
+                        "파일 내용을 확보하기 전에 경로가 사라졌습니다.",
                     ));
                 }
                 return Ok(());
             }
-            Err(e) => return Err(e),
+            Err(e) => return source_read(Err(e)),
         };
         if meta.is_dir() && !is_link(&meta) {
             return Ok(());
@@ -447,6 +775,7 @@ impl Tracker {
         let before = self.versions.get(&map_path).cloned();
         // Notifications force a content check even when a program preserves mtime.
         if matches!(why, "inventory" | "baseline" | "tool-or-attachment")
+            && !force
             && before.as_ref().is_some_and(|b| {
                 b.bytes == meta.len()
                     && b.modified == modified(&meta)
@@ -471,16 +800,12 @@ impl Tracker {
                 link: Some(fs::read_link(path)?.to_string_lossy().into_owned()),
             }
         } else {
-            let (hash, bytes) = store_file(&self.store_root, path)?;
-            let finish = fs::metadata(path).ok();
-            if finish.as_ref().is_some_and(|finish| {
-                finish.len() != meta.len() || modified(finish) != modified(&meta)
-            }) {
-                self.gap(&format!(
-                    "파일 보관 중 내용이 바뀌어 다음 변경 알림에서 재확인합니다: {}",
-                    path.display()
-                ));
-            }
+            let (hash, bytes) = store_file_cancellable(
+                &self.store_root,
+                path,
+                baseline.then_some(&self.signals.stopping),
+                Some(&meta),
+            )?;
             Version {
                 hash: Some(hash),
                 bytes,
@@ -501,7 +826,10 @@ impl Tracker {
                 s.file_bytes = s.file_bytes.saturating_add(after.bytes);
             }
         }
-        if !baseline && changed {
+        // Resuming an existing path may find a change before its asynchronous
+        // baseline visit. Preserve that before/after edge even if the queued
+        // native notification later finds identical bytes.
+        if changed && (!baseline || before.is_some()) {
             (self.sink)(Captured::new(
                 "file",
                 &json!({"type":"file-version","path":path,"change":if before.is_some(){"modified"}else{"created"},"before":before,"after":after,"origin":why}),
@@ -511,59 +839,70 @@ impl Tracker {
     }
     fn reconcile(&mut self, baseline: bool) -> io::Result<()> {
         let mut seen = BTreeSet::new();
-        let mut stack = self.dirs.clone();
-        let mut failed_roots = vec![];
-        while let Some(dir) = stack.pop() {
-            if inside(&dir, &self.root) {
-                continue;
-            }
-            let entries = match fs::read_dir(&dir) {
-                Ok(e) => e,
-                Err(e) => {
-                    self.failure(&dir, &e);
-                    failed_roots.push(dir);
+        self.policy.refresh();
+        let mut failed = false;
+        for dir in self.dirs.clone() {
+            let root = self.root.clone();
+            let dirs = self.dirs.clone();
+            let mut builder = file_policy::builder(&dir);
+            builder.filter_entry(move |entry| {
+                !file_policy::automatic_excluded(
+                    entry.path(),
+                    &root,
+                    &dirs,
+                    entry.file_type().is_some_and(|t| t.is_dir()),
+                )
+            });
+            for entry in builder.build() {
+                cancelled(baseline.then_some(&self.signals.stopping))?;
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(e) => {
+                        self.failure(&dir, &io::Error::other(e.to_string()));
+                        failed = true;
+                        continue;
+                    }
+                };
+                let path = entry.path();
+                // File metadata/read races are handled by the same retry path as
+                // change notifications; do not report them prematurely here.
+                if entry.file_type().is_some_and(|t| t.is_dir())
+                    && fs::symlink_metadata(path).is_ok_and(|m| !is_link(&m))
+                {
                     continue;
                 }
-            };
-            for e in entries {
-                match e {
-                    Ok(entry) => {
-                        let path = entry.path();
-                        if inside(&path, &self.root) {
-                            continue;
-                        }
-                        match fs::symlink_metadata(&path) {
-                            Ok(meta) if meta.is_dir() && !is_link(&meta) => stack.push(path),
-                            Ok(_) => {
-                                seen.insert(map_key(&path));
-                                if let Err(e) = self.capture(
-                                    &path,
-                                    baseline,
-                                    if baseline { "baseline" } else { "inventory" },
-                                ) {
-                                    self.failure(&path, &e);
-                                }
-                            }
-                            Err(e) => self.failure(&path, &e),
-                        }
+                seen.insert(map_key(path));
+                if let Err(e) = self.capture(
+                    path,
+                    baseline,
+                    if baseline { "baseline" } else { "inventory" },
+                ) {
+                    if e.kind() == io::ErrorKind::Interrupted {
+                        return Err(e);
                     }
-                    Err(e) => self.failure(&dir, &e),
+                    self.failure(path, &e);
                 }
             }
         }
+        // A filtered path is not a deletion. Only missing, still-in-scope paths
+        // produce tombstones; historical snapshots remain exportable unchanged.
         let deleted: Vec<_> = self
             .versions
             .keys()
             .filter(|p| {
                 self.dirs.iter().any(|d| inside(p, d))
                     && !seen.contains(*p)
-                    && !failed_roots.iter().any(|d| inside(p, d))
+                    && !failed
+                    && !p.exists()
             })
             .cloned()
             .collect();
         for path in deleted {
-            self.capture(&path, baseline, "inventory")?;
+            if self.automatic(&path, false) {
+                self.capture(&path, baseline, "inventory")?;
+            }
         }
+        lock(&self.status).file_count = seen.len() as u64;
         if !baseline {
             self.retry_targets();
         }

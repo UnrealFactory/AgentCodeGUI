@@ -13,6 +13,7 @@ import { EngineEnvironmentCard } from './EngineEnvironmentCard'
 import { CodexResetCredits } from './CodexResetCredits'
 import { CodexContextCard } from './CodexContextCard'
 import { TranslationSettingsView } from './TranslationSettingsView'
+import { ExternalToolsSettingsView } from './ExternalToolsSettingsView'
 import { useEngineEnvironments } from '../api/engineEnvironment'
 // ★R28 ACCT §1·§3·§4 — 계정 목록·한도의 단일 스토어 + 「사용 중」 역인덱스.
 import {
@@ -67,6 +68,7 @@ import {
   IconDownload,
   IconSparkles,
   IconInfo,
+  IconPlug,
   type IconProps
 } from './icons'
 import { getLang, isEn, setLang, t, type UiLang } from '../lib/i18n'
@@ -86,7 +88,7 @@ import {
 
 // ★3.0 R3 — 'mcp'·'skill' 탭 제거(2026-09-01 사용자 결정): 목록·토글이 패널 헤더의
 // 「MCP & Skill」 칩(McpSkillView)으로 옮겨 갔다 — 설정에 남기면 같은 일이 두 곳이 된다.
-export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'translation' | 'app'
+export type SettingsView = 'profile' | 'account' | 'version' | 'api' | 'external-tools' | 'lsp' | 'explorer' | 'gesture' | 'display' | 'language' | 'translation' | 'app'
 type View = SettingsView
 
 // 레일 — PoC 재해석: 그룹 라벨(사용자/엔진/확장/환경) 아래 항목. keys는 검색어(한국어·영어 동의어).
@@ -105,6 +107,12 @@ function navGroups(): { label: string; items: { id: View; label: string; Icon: (
       items: [
         { id: 'version', label: 'Engine', Icon: IconBot, keys: '엔진 claude code codex cli 버전 업데이트 설치 engine version update install' },
         { id: 'api', label: 'API', Icon: IconKey, keys: 'api 키 예산 과금 비용 key budget billing cost' }
+      ]
+    },
+    {
+      label: t('연동', 'Integrations'),
+      items: [
+        { id: 'external-tools', label: 'External Tools', Icon: IconPlug, keys: '외부 도구 연동 연결 프로그램 규격 설명서 지침 복사 붙여넣기 ai external tools integration connect adapter protocol guide copy paste' }
       ]
     },
     {
@@ -3240,6 +3248,7 @@ export function SettingsModal({
               {view === 'account' && <AccountView />}
               {view === 'version' && <EngineView />}
               {view === 'api' && <ApiView />}
+              {view === 'external-tools' && <ExternalToolsSettingsView />}
               {view === 'display' && <DisplayView />}
               {view === 'language' && <LanguageView />}
               {view === 'translation' && <TranslationSettingsView />}

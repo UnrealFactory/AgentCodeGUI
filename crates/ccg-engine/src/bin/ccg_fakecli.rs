@@ -13,6 +13,7 @@
 //! {"emit": {...프레임...}}              // stdout으로 그대로 흘린다
 //! {"emit": {...}, "afterMs": 300}       // 앞선 지시 뒤 300ms 기다렸다가
 //! {"awaitResponse": "dlg-1"}            // 그 request_id의 control_response를 기다린다
+//! {"awaitUser": 2}                      // 두 번째 사용자 입력까지 기다린다 (예약/연속 턴)
 //! {"exit": 0}                           // 종료(코드)
 //! ```
 //!
@@ -87,6 +88,9 @@ fn main() {
         if let Some(want) = step.get("awaitResponse").and_then(|v| v.as_str()) {
             wait_for(&rx, &mut seen, want, Duration::from_secs(120));
         }
+        if let Some(want) = step.get("awaitUser").and_then(|v| v.as_u64()) {
+            if !wait_for_user(&rx, &mut seen, want as usize) { std::process::exit(2); }
+        }
         if let Some(frame) = step.get("emit") {
             let mut h = out.lock();
             let _ = writeln!(h, "{frame}");
@@ -103,6 +107,22 @@ fn main() {
 
 fn is_closed(rx: &Receiver<String>) -> bool {
     matches!(rx.recv_timeout(Duration::from_millis(1)), Err(RecvTimeoutError::Disconnected))
+}
+
+/// Deterministic multi-turn fixtures: never emit the next reply until the real
+/// GUI/engine path has actually written its next user prompt to stdin.
+fn wait_for_user(rx: &Receiver<String>, seen: &mut Vec<String>, count: usize) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        let users = seen.iter().filter(|line| serde_json::from_str::<serde_json::Value>(line).ok().is_some_and(|v| v["type"] == "user")).count();
+        if users >= count { return true; }
+        if std::time::Instant::now() >= deadline { return false; }
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(line) => seen.push(line),
+            Err(RecvTimeoutError::Disconnected) => return false,
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
 }
 
 fn spawn_stdin_reader(log: Option<String>) -> Receiver<String> {

@@ -56,6 +56,11 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["n
 base64 = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
+# External tools connect to a loopback HTTP API. The adapter protocol lives in
+# bridge/, independently of any editor or model provider.
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
+uuid = { version = "1", features = ["v4"] }
 ccg-store = { path = "../crates/ccg-store" }
 # 3.0 엔진 코어(RunIdentity · 60전이 상태기계 · claude.exe 드라이버). 셸은 이 크레이트를
 # **글루 모듈(src/engine/)에서만** 만진다 — 창·크래시·스토어 코드는 엔진을 모른다.

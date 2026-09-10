@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { externalContextSnapshot, type ExternalContextSnapshot } from '@shared/externalTools'
 import type {
   AgentStatus,
   AgentQuestion,
@@ -30,6 +31,7 @@ export type ThreadItem =
       error?: boolean
       time: string
       images?: string[]
+      externalContext?: ExternalContextSnapshot
     }
   | { kind: 'thinking'; id: string; text: string }
   | { kind: 'toolgroup'; id: string; tools: ToolLogItem[]; time: string }
@@ -186,7 +188,7 @@ export interface SessionState {
 }
 
 type Action =
-  | { type: 'begin'; text: string; time: string; command: string | null; images?: string[] }
+  | { type: 'begin'; text: string; time: string; command: string | null; images?: string[]; externalContext?: ExternalContextSnapshot | null }
   | { type: 'engine'; event: EngineEventV3 }
   | { type: 'answer-permission'; requestId: string; behavior: 'allow' | 'allow_always' | 'deny' }
   | { type: 'clear-question' }
@@ -199,7 +201,7 @@ type Action =
   // ★ R4 — 엔진이 **스스로 연 턴**의 사용자 말풍선(`user-echo`, hub.rs:823). 계약면
   // (`EngineEvent`)에 없는 이벤트라 `{type:'engine'}`으로는 못 들어온다 — engineAction이
   // 여기로 접는다. 한도 재개·예약 드레인이 이 경로다(크리틱 R14 §5-F5).
-  | { type: 'user-echo'; text: string; images?: string[]; time: string }
+  | { type: 'user-echo'; text: string; images?: string[]; time: string; externalContext?: ExternalContextSnapshot | null }
   // ★ R4 — `chat:verdict`의 착지점. 거부는 **전송이 없던 일이 됐다**는 뜻이라 말풍선
   // 하나로 끝나지 않는다: begin이 올려 둔 busy를 되감아야 침묵 정지가 사라진다(D7).
   | { type: 'verdict'; text: string; blocked: boolean; time: string }
@@ -652,7 +654,7 @@ export function reducer(state: SessionState, action: Action): SessionState {
               ...without,
               { kind: 'cmdresult', id: cardId, name: cmd, title: cmdCards()[cmd].running, sub: null, stats: null, time: action.time, running: true }
             ]
-          : [...without, { kind: 'msg', id: `u${seq}`, role: 'user', text: action.text, animate: false, time: action.time, images: action.images?.length ? action.images : undefined }]
+          : [...without, { kind: 'msg', id: `u${seq}`, role: 'user', text: action.text, animate: false, time: action.time, images: action.images?.length ? action.images : undefined, externalContext: action.externalContext || undefined }]
       ),
       // snapshot the pre-run context so /compact can report real savings on completion
       pendingCommand: cmd
@@ -736,7 +738,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
           text: action.text,
           animate: false,
           time: action.time,
-          images: action.images?.length ? action.images : undefined
+          images: action.images?.length ? action.images : undefined,
+          externalContext: action.externalContext || undefined
         }
       ])
     }
@@ -1540,12 +1543,13 @@ export function reducer(state: SessionState, action: Action): SessionState {
  * 지나야 한다 — 한 곳이라도 `{type:'engine'}`을 직접 만들면 그 화면만 말풍선이 없다.
  */
 export function engineAction(event: EngineEventV3): Action {
-  const e = event as unknown as { type?: string; text?: unknown; images?: unknown }
+  const e = event as unknown as { type?: string; text?: unknown; images?: unknown; externalContext?: unknown }
   if (e?.type === 'user-echo' && typeof e.text === 'string')
     return {
       type: 'user-echo',
       text: e.text,
       images: Array.isArray(e.images) ? (e.images as string[]).filter((s) => typeof s === 'string') : undefined,
+      externalContext: externalContextSnapshot(e.externalContext),
       time: nowTime()
     }
   return { type: 'engine', event }
@@ -1590,8 +1594,8 @@ export function useAgentSession(
     }
   }, [busy])
 
-  const begin = (text: string, command: string | null = null, images?: string[]): void =>
-    dispatch({ type: 'begin', text, time: nowTime(), command, images })
+  const begin = (text: string, command: string | null = null, images?: string[], externalContext?: ExternalContextSnapshot | null): void =>
+    dispatch({ type: 'begin', text, time: nowTime(), command, images, externalContext })
   const answerPermission = (behavior: 'allow' | 'allow_always' | 'deny'): void => {
     if (state.pendingPermission) dispatch({ type: 'answer-permission', requestId: state.pendingPermission.requestId, behavior })
   }

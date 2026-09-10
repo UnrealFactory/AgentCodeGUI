@@ -1,0 +1,19 @@
+.external-tools-settings{min-width:0}
+.ext-guide-card{margin-top:22px;padding:20px}
+.ext-guide-card.sc2:hover{background:rgba(255,255,255,.03)}
+.ext-guide-card h2{margin:0;font-size:14px;font-weight:600;color:var(--text)}
+.ext-guide-card p{margin:8px 0 0;font-size:12px;line-height:1.8;color:var(--text-2)}
+.ext-guide-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-top:18px}
+.ext-guide-copy{min-width:174px;justify-content:center;padding:10px 15px}
+.ext-guide-status{font-size:10.5px;color:var(--text-3)}
+.ext-guide-steps{display:grid;gap:13px;list-style:none;margin:22px 0;padding:0}
+.ext-guide-steps li{display:flex;align-items:flex-start;gap:10px}
+.ext-guide-steps li>span{display:grid;place-items:center;flex:0 0 22px;height:22px;border:1px solid var(--line-2);border-radius:7px;font-size:10px;color:var(--text-3)}
+.ext-guide-steps strong{font-size:11.5px;font-weight:500;color:var(--text-2)}
+.ext-guide-steps p{font-size:11px;line-height:1.7;color:var(--text-3);margin:2px 0 0}
+.ext-guide-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.ext-guide-preview-heading label{font-size:11px;font-weight:500;color:var(--text-2)}
+.ext-guide-preview-heading .set-chipbtn{font-size:10px;padding:5px 10px}
+.ext-guide-preview{display:block;width:100%;min-height:220px;max-height:600px;resize:none;box-sizing:border-box;padding:14px 16px;border:1px solid var(--line-2);border-radius:10px;background:var(--inset);color:var(--text-2);font:11px/1.8 var(--font-mono);outline:none;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
+.ext-guide-preview:focus,.external-tools-settings button:focus-visible{outline:1px solid var(--accent-line);outline-offset:2px}
+.ext-guide-error{font-size:11px;line-height:1.7;color:var(--red);margin:0 0 8px}

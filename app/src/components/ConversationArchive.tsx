@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   archiveCall,
   archiveConfigure,
@@ -18,6 +18,9 @@ import {
 } from "../api/archive";
 import { t, useLang } from "../lib/i18n";
 import { imageSrc } from "../lib/images";
+import { loadArchivePage } from "../lib/archivePaging";
+import { ArchivePayloadCache } from "../lib/archiveReader";
+import { ArchiveVirtualList } from "./ArchiveVirtualList";
 import { Markdown } from "./Markdown";
 import { MouseGestureLayer, scrollGestures } from "./mouseGesture";
 import {
@@ -39,7 +42,7 @@ import {
   IconFile,
   IconFolder,
   IconMessage,
-  IconRefresh,
+  IconRotate,
   IconSearch,
   IconTerminal,
   IconUser,
@@ -487,30 +490,40 @@ const FileActivityGroup = memo(function FileActivityGroup({
   );
 });
 
+type EventViewState = { open: boolean; history: number[]; raw: boolean };
 const EventCard = memo(function EventCard({
   chatId,
   entry,
   autoOpen = false,
+  initialView,
+  rememberView,
+  readPayload,
+  cachedPayload,
 }: {
   chatId: string;
   entry: ArchiveEntry;
   autoOpen?: boolean;
+  initialView?: EventViewState;
+  rememberView?: (value: EventViewState) => void;
+  readPayload?: (seq: number, offset: number) => Promise<PayloadPage>;
+  cachedPayload?: (seq: number, offset: number) => PayloadPage | undefined;
 }) {
   useLang();
-  const [open, setOpen] = useState(autoOpen);
-  const [page, setPage] = useState<PayloadPage | null>(null);
-  const [history, setHistory] = useState<number[]>([0]);
-  const [raw, setRaw] = useState(false);
+  const [open, setOpen] = useState(initialView?.open ?? autoOpen);
+  const [page, setPage] = useState<PayloadPage | null>(() => cachedPayload?.(entry.seq, initialView?.history.at(-1) ?? 0) ?? null);
+  const [history, setHistory] = useState<number[]>(initialView?.history ?? [0]);
+  const [raw, setRaw] = useState(initialView?.raw ?? false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const offset = history[history.length - 1];
+  useEffect(() => { rememberView?.({ open, history, raw }); }, [open, history, raw, rememberView]);
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    setLoading(true);
+    setLoading(!cachedPayload?.(entry.seq, offset));
     setError("");
-    void archivePayload(chatId, entry.seq, offset)
+    void (readPayload ? readPayload(entry.seq, offset) : archivePayload(chatId, entry.seq, offset))
       .then((p) => {
         if (alive) setPage(p);
       })
@@ -523,7 +536,7 @@ const EventCard = memo(function EventCard({
     return () => {
       alive = false;
     };
-  }, [chatId, entry.seq, offset, open]);
+  }, [chatId, entry.seq, offset, open, readPayload, cachedPayload]);
   useEffect(() => {
     if (!copied) return;
     const timer = window.setTimeout(() => setCopied(false), 1800);
@@ -610,6 +623,7 @@ const EventCard = memo(function EventCard({
         }
         data-kind={entry.kind}
         data-seq={entry.seq}
+        data-archive-pending={loading || open && !page && !error || undefined}
       >
         <div className="arc-message-head">
           <span
@@ -677,6 +691,7 @@ const EventCard = memo(function EventCard({
     <article
       data-kind={entry.kind}
       data-seq={entry.seq}
+      data-archive-pending={loading || open && !page && !error || undefined}
       className={
         "arc-event" +
         (!isMessage && entry.source !== "file" ? " arc-activity" : "") +
@@ -758,6 +773,91 @@ const EventCard = memo(function EventCard({
     </article>
   );
 });
+const ArchiveTimeline = memo(function ArchiveTimeline({ chatId, refresh }: { chatId: string; refresh: number }) {
+  useLang();
+  const [entries, setEntries] = useState<ArchiveEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState("");
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+  const next = useRef<number | null>(1);
+  const total = useRef(0);
+  const busy = useRef(false);
+  const alive = useRef(false);
+  const refreshPending = useRef(false);
+  const lastRefresh = useRef(refresh);
+  const views = useRef(new Map<number, EventViewState>());
+  const cache = useMemo(() => new ArchivePayloadCache((seq, offset) => archivePayload(chatId, seq, offset)), [chatId]);
+  const connectScroll = useCallback((node: HTMLDivElement | null) => setScrollElement(node?.closest<HTMLElement>(".arc-detail-scroll") ?? null), []);
+
+  const loadMore = useCallback(async (checkTail = false): Promise<void> => {
+    if (busy.current) { if (checkTail) refreshPending.current = true; return; }
+    if (!alive.current || next.current == null && !checkTail) return;
+    busy.current = true;
+    setLoading(true);
+    setError("");
+    try {
+      const page = await loadArchivePage({
+        from: next.current ?? total.current + 1,
+        source: "timeline",
+        isActive: () => alive.current,
+        stalledMessage: t("기록을 계속 읽을 수 없습니다.", "Unable to advance through archive records."),
+        read: from => archiveEntries(chatId, from, "timeline"),
+      });
+      if (!alive.current || !page) return;
+      setEntries(previous => {
+        const last = previous[previous.length - 1]?.seq ?? 0;
+        const additions = page.items.filter(entry => entry.seq > last && entry.source !== "file");
+        return additions.length ? [...previous, ...additions] : previous;
+      });
+      next.current = page.next;
+      total.current = page.total;
+      setHasMore(page.next != null);
+    } catch (e) {
+      if (alive.current) setError(errorText(e));
+    } finally {
+      busy.current = false;
+      if (alive.current) {
+        setLoading(false);
+        if (refreshPending.current) { refreshPending.current = false; void loadMore(true); }
+      }
+    }
+  }, [chatId]);
+  useEffect(() => { alive.current = true; void loadMore(); return () => { alive.current = false; }; }, [loadMore]);
+  useEffect(() => {
+    if (lastRefresh.current === refresh) return;
+    lastRefresh.current = refresh;
+    void loadMore(true);
+  }, [refresh, loadMore]);
+  useEffect(() => {
+    if (!sentinel || !scrollElement || loading || error || !hasMore) return;
+    const observer = new IntersectionObserver(rows => {
+      if (rows.some(row => row.isIntersecting)) void loadMore();
+    }, { root: scrollElement, rootMargin: "900px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sentinel, scrollElement, loading, error, hasMore, loadMore]);
+
+  const renderEntry = useCallback((entry: ArchiveEntry) => {
+    const autoOpen = entry.source === "input" && entry.kind === "user" || entry.kind === "assistant-done";
+    return <EventCard chatId={chatId} entry={entry} autoOpen={autoOpen} readPayload={cache.load} cachedPayload={cache.peek} initialView={views.current.get(entry.seq)}
+      rememberView={view => {
+        if (view.open === autoOpen && !view.raw && view.history.length === 1) views.current.delete(entry.seq);
+        else views.current.set(entry.seq, view);
+      }} />;
+  }, [chatId, cache]);
+
+  return <div ref={connectScroll} className="arc-events arc-conversation arc-infinite-timeline" aria-busy={loading}>
+    {entries.length > 0 && <ArchiveVirtualList entries={entries} scrollElement={scrollElement} renderEntry={renderEntry} />}
+    {!entries.length && !loading && !error && <div className="arc-empty">{t("기록된 대화와 작업이 없습니다.", "No conversation or activity recorded.")}</div>}
+    {error && <div className="arc-load-error" role="alert"><p>{error}</p><button className="arc-text-button" onClick={() => { void loadMore(true); }}>{t("다시 읽기", "Retry")}</button></div>}
+    <div ref={setSentinel} className="arc-load-more" role="status">
+      {loading ? t("기록을 이어서 읽는 중…", "Loading more records…") : !hasMore && entries.length ? t("마지막 기록입니다.", "You’ve reached the end.") : ""}
+    </div>
+  </div>;
+});
+
 const EventList = memo(function EventList({
   chatId,
   turnId,
@@ -803,33 +903,25 @@ const EventList = memo(function EventList({
     let alive = true;
     setLoading(true);
     setError("");
-    // File baselines and raw streaming may span many index pages between chat
-    // messages. Skip empty filtered ranges without making the user page through
-    // them; each IPC read remains bounded and changing tabs cancels the scan.
-    const read = async (): Promise<ArchivePage<ArchiveEntry> | null> => {
-      let position = from;
-      while (alive) {
-        const p = await archiveEntries(
+    // Large file baselines may occupy many native scan ranges but only one
+    // visible card. Continue filling the display page so conversations appear.
+    void loadArchivePage({
+      from,
+      source,
+      isActive: () => alive,
+      stalledMessage: t(
+        "기록을 계속 읽을 수 없습니다.",
+        "Unable to advance through archive records.",
+      ),
+      read: (position) => archiveEntries(
           chatId,
           position,
           source,
           turnId,
           search,
           lastSeq,
-        );
-        if (p.items.length || p.next == null) return p;
-        if (p.next <= position)
-          throw new Error(
-            t(
-              "기록을 계속 읽을 수 없습니다.",
-              "Unable to advance through archive records.",
-            ),
-          );
-        position = p.next;
-      }
-      return null;
-    };
-    void read()
+        ),
+    })
       .then((p) => {
         if (alive && p) setPage(p);
       })
@@ -1083,6 +1175,16 @@ export default function ConversationArchive({
       alive = false;
     };
   }, [chat, refresh]);
+  useEffect(() => {
+    if (!chat || !diagnosticsOpen) return;
+    let alive = true;
+    const read = () => { void archiveStatus(chat).then(next => {
+      if (alive) setStatus(next);
+    }).catch(() => {}); };
+    read();
+    const timer = window.setInterval(read, 2000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [chat, diagnosticsOpen]);
   const reload = async (): Promise<void> => {
     setActing(true);
     setError("");
@@ -1279,15 +1381,15 @@ export default function ConversationArchive({
           </div>
           <span className="arc-grow" />
           <button
-            className="arc-icon arc-refresh has-tip"
+            className="arc-button arc-refresh"
             disabled={loading || acting}
-            data-tip={t("새로고침", "Refresh")}
             aria-label={t("새로고침", "Refresh")}
             onClick={() => {
               void reload();
             }}
           >
-            <IconRefresh size={16} />
+            <IconRotate size={15} />
+            {t("새로고침", "Refresh")}
           </button>
           <ArchiveImportButton
             disabled={acting}
@@ -1541,7 +1643,7 @@ export default function ConversationArchive({
                       onClick={() => setDiagnosticsOpen((v) => !v)}
                     >
                       <IconAlert size={12} />
-                      {t("오류 알림", "Error notifications")}
+                      {t("기록 상태", "Recording status")}
                     </button>
                     {enabled && (
                       <button
@@ -1560,8 +1662,15 @@ export default function ConversationArchive({
                   <section
                     id="arc-capture-status"
                     className="arc-diagnostics scroll"
-                    aria-label={t("오류 알림 상세", "Error notification details")}
+                    aria-label={t("기록 상태와 오류 알림", "Recording status and errors")}
                   >
+                    <p className="arc-current-recording" role="status">
+                      <strong>{enabled ? t("대화 기록 ON", "Recording ON") : t("대화 기록 OFF", "Recording OFF")}</strong>
+                      {status?.status.preparing && <span>{t(
+                        `파일 사본 준비 중 · ${status.status.fileCount.toLocaleString()}개`,
+                        `Preparing file copies · ${status.status.fileCount.toLocaleString()} files`,
+                      )}</span>}
+                    </p>
                     <p className="arc-tab-note">
                       {t(
                         "보관 중 발생한 오류와 누락 가능성을 시간순으로 보여줍니다.",
@@ -1578,7 +1687,7 @@ export default function ConversationArchive({
                       chatId={chat}
                       turnId=""
                       source="diagnostics"
-                      refresh={refresh}
+                      refresh={refresh + (status?.status.coverageErrors ?? 0)}
                     />
                   </section>
                 )}
@@ -1592,11 +1701,9 @@ export default function ConversationArchive({
                     "Conversation and activity",
                   )}
                 >
-                  <EventList
+                  <ArchiveTimeline
                     key={chat}
                     chatId={chat}
-                    turnId=""
-                    source="timeline"
                     refresh={refresh}
                   />
                 </div>

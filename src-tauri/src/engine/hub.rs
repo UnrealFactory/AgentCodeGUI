@@ -794,7 +794,7 @@ impl Hub {
         // (`ensure_for` 참고). `Op::Run`의 아래 `IdentitySet` 패치는 그대로 두었다 — 슬롯이 이미
         // 있는 채팅(대부분)은 그 문이 정체성을 바꾸고, 방금 seed로 만든 런타임에서는 `Noop`이다.
         if let Op::Run(req) = &op {
-            if let Err(message) = super::environment::bind_chat(&chat, req) {
+            if let Err(message) = crate::bridge::validate_run(&chat, req).and_then(|_| super::environment::bind_chat(&chat, req)) {
                 self.reject_seq += 1;
                 let run = format!("env-{}-{}", std::process::id(), self.reject_seq);
                 self.fanout(&chat, json!({ "type": "status", "runId": run, "status": "analyzing" }));
@@ -890,7 +890,7 @@ impl Hub {
                 //    판정 방출은 **런타임 하나**가 한다(`Event::Verdict` → `on_engine_event`).
                 //    R1은 여기서도 쐈고 `runtime.rs`의 `dispatch`가 무조건 또 쐈다 —
                 //    전송 1회에 `send:accepted` 2건(크리틱 배선 R1 F6). 저자를 하나로 줄인다.
-                let prompt = req.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
+                let prompt = crate::bridge::prompt_for_run(&req);
                 let verdict = slot.rt.dispatch(Cmd::Send { text: prompt });
                 let waiting_for_limit = slot.rt.hold().is_some()
                     && matches!(slot.rt.state(), StateTag::Idle | StateTag::Resident | StateTag::Terminating | StateTag::Ended);
@@ -942,6 +942,7 @@ impl Hub {
                     let images = req.get("echoImages").cloned().unwrap_or(Value::Null);
                     let ev = json!({
                         "type": "user-echo", "runId": run_id.clone(), "text": echo_text,
+                        "externalContext": req.get("externalContext").cloned().unwrap_or(Value::Null),
                         "images": images, "origin": "user",
                     });
                     self.fanout_except(&chat_id, ev, &echo_from);

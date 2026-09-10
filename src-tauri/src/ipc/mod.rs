@@ -439,6 +439,7 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
 }
 
 fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
+    if let Some(value) = crate::bridge::dispatch(app, channel, p) { return value; }
     if let Some(value) = archive::dispatch(app, window, channel, p) { return value; }
     if channel=="archive:resolve" {
         let a=arg(p,0);

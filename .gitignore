@@ -88,3 +88,9 @@ src-tauri/lsp-modules/
 
 # AgentMonitoring 도구가 레포 안에 쓰는 작업 기록(bugs/worklogs/notes) — 코드가 아니다
 AgentMonitoring/
+
+# Local identity of the independent external-tool example.
+examples/external-tool-lab/.instance-id
+
+# Local MCP server paths for this workstation.
+.codex/config.toml

@@ -633,7 +633,7 @@ fn library_pages_sessions_and_searches_beyond_the_first_page() {
 }
 
 #[test]
-fn timeline_keeps_actions_and_outputs_in_order_and_groups_file_records() {
+fn timeline_keeps_actions_and_outputs_while_file_snapshots_stay_separate() {
     let f = Fixture::new();
     let root = f.archive();
     let dir = journal::chat_dir(&root, "timeline").unwrap();
@@ -693,7 +693,7 @@ fn timeline_keeps_actions_and_outputs_in_order_and_groups_file_records() {
         rows.iter()
             .map(|e| e["seq"].as_u64().unwrap())
             .collect::<Vec<_>>(),
-        [1, 4, 5, 9, 10, 12]
+        [1, 4, 9, 10]
     );
     assert_eq!(journal::entry_count(&dir), 18);
     assert_eq!(full_payload(&dir, 11)["payload"]["isError"], false);
@@ -706,11 +706,10 @@ fn timeline_keeps_actions_and_outputs_in_order_and_groups_file_records() {
         "recording-paused"
     );
     assert_eq!(rows[1]["activity"]["operation"], "read");
-    assert_eq!(rows[2]["fileGroup"]["count"], 3);
-    assert_eq!(rows[2]["fileGroup"]["endSeq"], 8);
-    assert_eq!(rows[3]["activity"]["operation"], "read");
-    assert_eq!(rows[3]["activity"]["phase"], "end");
-    assert_eq!(rows[3]["activity"]["target"], "one.txt");
+    assert!(rows.iter().all(|row| row["source"] != "file"));
+    assert_eq!(rows[2]["activity"]["operation"], "read");
+    assert_eq!(rows[2]["activity"]["phase"], "end");
+    assert_eq!(rows[2]["activity"]["target"], "one.txt");
     let files = journal::list_entries_range(&dir, 5, 60, "files", "", "", 8).unwrap();
     assert_eq!(files["items"].as_array().unwrap().len(), 3);
     assert!(files["next"].is_null());
@@ -936,6 +935,7 @@ fn snapshots_preserve_binary_modified_deleted_and_external_attachment() {
     })
     .unwrap();
     r.record("input", &user("change files"));
+    r.flush_all().unwrap(); // Wait for the initial file copy before changing its bytes.
     fs::write(&src, "after 🧪\n").unwrap();
     r.checkpoint();
     let dir = journal::chat_dir(&root, "files").unwrap();
@@ -1060,6 +1060,7 @@ fn own_archive_inside_workspace_is_not_recursively_captured() {
         ..Default::default()
     })
     .unwrap();
+    r.flush_all().unwrap();
     assert_eq!(r.status()["status"]["fileCount"], 1);
     r.record("input", &user("self exclusion"));
     r.flush().unwrap();
@@ -1074,6 +1075,328 @@ fn invalid_ids_and_missing_files_are_errors_not_arbitrary_reads() {
     assert!(a.recorder("../escape").is_err());
     assert!(files::object_page(&a.root, "invalid", "../../x", 0).is_err());
     assert!(files::object_page(&a.root, "invalid", &"a".repeat(64), 0).is_err());
+    a.shutdown();
+}
+
+#[test]
+fn recording_and_stop_do_not_wait_for_a_large_initial_file_copy() {
+    let f = Fixture::new();
+    let root = f.archive();
+    let work = f.workspace();
+    // A sparse source makes copying take time without building a large fixture
+    // in memory. Stop should interrupt the copy at a streaming chunk boundary.
+    fs::File::create(work.join("large.bin")).unwrap().set_len(512 * 1024 * 1024).unwrap();
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("async-start").unwrap();
+    let mut config = Config { enabled: true, cwd: work.to_string_lossy().into(), ..Default::default() };
+    let start = Instant::now();
+    r.configure(config.clone()).unwrap();
+    assert!(start.elapsed() < Duration::from_secs(2), "start waited for file bytes");
+    assert_eq!(r.status()["status"]["enabled"], true);
+    assert_eq!(r.status()["status"]["preparing"], true);
+    let pending = layout::view_dir(&root, "async-start").unwrap().join("pending");
+    until(|| fs::read_dir(&pending).is_ok_and(|mut entries| entries.next().is_some()));
+    r.record("input", &user("record me during file preparation"));
+    r.record("ui", &json!({"type":"assistant-done","text":"also record the response"}));
+    r.flush().unwrap();
+    let chat = journal::chat_dir(&root, "async-start").unwrap();
+    assert!(fs::read_to_string(chat.join("events.jsonl")).unwrap().contains("record me during file preparation"));
+    let stop = Instant::now();
+    config.enabled = false;
+    r.configure(config).unwrap();
+    assert!(stop.elapsed() < Duration::from_secs(2), "stop waited for the rest of the baseline");
+    assert_eq!(r.status()["status"]["preparing"], false);
+    assert_eq!(r.status()["status"]["enabled"], false);
+    assert_eq!(r.status()["status"]["coverageErrors"], 0);
+    assert_eq!(fs::read_dir(&pending).unwrap().count(), 0, "cancelled partial copy was left behind");
+    assert!(fs::read_to_string(chat.join("events.jsonl")).unwrap().contains("baseline-cancelled"));
+    a.shutdown();
+}
+
+#[test]
+fn capture_policy_matches_nested_ignores_and_preserves_explicit_files_and_lockfiles() {
+    let f = Fixture::new();
+    let work = f.workspace();
+    let root = f.archive();
+    fs::create_dir_all(work.join("src/nested")).unwrap();
+    fs::write(work.join(".gitignore"), "generated/\n*.tmp\n!keep.tmp\n").unwrap();
+    fs::write(work.join("src/.gitignore"), "nested/*.txt\n!nested/keep.txt\n").unwrap();
+    let mut p = file_policy::Policy::new(root, vec![work.clone()]);
+    assert!(!p.automatic(&work.join("generated/hidden.txt"), false));
+    assert!(!p.automatic(&work.join("src/nested/drop.txt"), false));
+    assert!(p.automatic(&work.join("src/nested/keep.txt"), false));
+    assert!(p.automatic(&work.join("keep.tmp"), false));
+    assert!(!p.automatic(&work.join("drop.tmp"), false));
+    assert!(p.automatic(&work.join("Cargo.lock"), false));
+    assert!(p.automatic(&work.join("LOCK"), false));
+    assert!(p.explicit(&work.join("generated/hidden.txt")));
+    assert!(p.explicit(&work.join("node_modules/package/result.txt")));
+    assert!(!p.automatic(&work.join("node_modules/package/result.txt"), false));
+    assert!(!p.explicit(&work.join(".poc-home-review/webview2/EBWebView/LOCK")));
+    fs::write(work.join(".gitignore"), "").unwrap();
+    p.refresh();
+    assert!(p.automatic(&work.join("drop.tmp"), false));
+}
+
+#[test]
+fn cancelling_manifest_restore_preserves_all_historical_rows() {
+    let f = Fixture::new();
+    let root = f.archive();
+    let work = f.workspace();
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("restore-cancel").unwrap();
+    let manifest = journal::chat_dir(&root, "restore-cancel").unwrap().join("files-manifest.jsonl");
+    let row = format!("{}\n", json!([work.join("target/debug/old.bin"), {"hash":"a".repeat(64),"bytes":4,"modified":1,"link":null}]));
+    let history = row.repeat(150_000);
+    fs::write(&manifest, &history).unwrap();
+    r.configure(Config { enabled: true, cwd: work.to_string_lossy().into(), ..Default::default() }).unwrap();
+    assert_eq!(r.status()["status"]["preparing"], true);
+    r.record("input", &user("resume during manifest loading"));
+    r.configure(Config::default()).unwrap();
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), history);
+    a.shutdown();
+}
+
+#[test]
+fn resuming_file_capture_keeps_the_before_after_edge_found_by_the_baseline() {
+    let f = Fixture::new();
+    let root = f.archive();
+    let work = f.workspace();
+    let source = work.join("resume.txt");
+    fs::write(&source, "previously saved").unwrap();
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("resume-edge").unwrap();
+    let config = Config { enabled: true, cwd: work.to_string_lossy().into(), ..Default::default() };
+    r.configure(config.clone()).unwrap();
+    r.flush_all().unwrap();
+    r.configure(Config::default()).unwrap();
+    fs::write(&source, "changed before the baseline revisited it").unwrap();
+    r.configure(config).unwrap();
+    r.flush_all().unwrap();
+    let chat = journal::chat_dir(&root, "resume-edge").unwrap();
+    let rows = journal::list_entries(&chat, 1, 100, "files", "", "").unwrap();
+    let change = rows["items"].as_array().unwrap().iter()
+        .map(|e| full_payload(&chat, e["seq"].as_u64().unwrap())["payload"].clone())
+        .find(|p| p["change"] == "modified").expect("baseline must preserve the version edge");
+    assert_eq!(files::object_page(&root,"resume-edge",change["before"]["hash"].as_str().unwrap(),0).unwrap()["text"], "previously saved");
+    assert_eq!(files::object_page(&root,"resume-edge",change["after"]["hash"].as_str().unwrap(),0).unwrap()["text"], "changed before the baseline revisited it");
+    a.shutdown();
+}
+
+#[cfg(windows)]
+#[test]
+fn a_locked_project_source_still_reports_a_real_capture_failure() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f = Fixture::new();
+    let work = f.workspace();
+    let source = work.join("important.txt");
+    fs::write(&source, "must not silently ignore this").unwrap();
+    let _exclusive = OpenOptions::new().read(true).share_mode(0).open(&source).unwrap();
+    let a = Archive::new(f.archive()).unwrap();
+    let r = a.recorder("locked-source").unwrap();
+    r.configure(Config { enabled: true, cwd: work.to_string_lossy().into(), ..Default::default() }).unwrap();
+    r.record("input", &user("messages remain recordable"));
+    r.flush_all().unwrap();
+    assert!(r.status()["status"]["coverageErrors"].as_u64().unwrap() > 0);
+    assert!(r.status()["status"]["error"].as_str().unwrap().contains("important.txt"));
+    assert!(fs::read_to_string(journal::chat_dir(&a.root, "locked-source").unwrap().join("events.jsonl")).unwrap().contains("messages remain recordable"));
+    a.shutdown();
+}
+
+#[test]
+fn inventory_and_notifications_skip_ignored_files_but_explicit_outputs_are_saved() {
+    let f = Fixture::new();
+    let work = f.workspace();
+    let root = f.archive();
+    fs::write(work.join(".gitignore"), "generated/\n").unwrap();
+    for name in ["src/code.txt", "Cargo.lock", "generated/output.bin", "node_modules/pkg/cache", "target/debug/app", ".poc-home-test/webview2/EBWebView/Default/Extension State/LOCK"] {
+        let path = work.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, name).unwrap();
+    }
+    #[cfg(windows)]
+    let _locked_profile = {
+        use std::os::windows::fs::OpenOptionsExt;
+        OpenOptions::new().read(true).share_mode(0).open(work.join(".poc-home-test/webview2/EBWebView/Default/Extension State/LOCK")).unwrap()
+    };
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("policy").unwrap();
+    r.configure(Config { enabled: true, cwd: work.to_string_lossy().into(), ..Default::default() }).unwrap();
+    r.flush_all().unwrap();
+    let chat = journal::chat_dir(&root, "policy").unwrap();
+    let initial = fs::read_to_string(chat.join("files-manifest.jsonl")).unwrap();
+    assert!(initial.contains("code.txt") && initial.contains("cargo.lock"));
+    assert!(!initial.contains("node_modules") && !initial.contains("target") && !initial.contains("generated") && !initial.contains("webview"));
+    fs::write(work.join("generated/output.bin"), "explicit result").unwrap();
+    fs::write(work.join("node_modules/pkg/cache"), "ignored notification").unwrap();
+    r.flush_all().unwrap();
+    assert!(!fs::read_to_string(chat.join("files-manifest.jsonl")).unwrap().contains("generated"));
+    r.record("request", &json!({"path":work.join("generated/output.bin")}));
+    r.flush_all().unwrap();
+    assert!(fs::read_to_string(chat.join("files-manifest.jsonl")).unwrap().contains("generated"));
+    assert_eq!(r.status()["status"]["coverageErrors"], 0);
+    assert!(r.status()["status"]["error"].is_null());
+    a.shutdown();
+}
+
+#[cfg(windows)]
+fn transient_lock_recovers_without_another_write(byte_range: bool) {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f = Fixture::new();
+    let root = f.archive();
+    let work = f.workspace();
+    let source = work.join("locked.txt");
+    fs::write(&source, "read after unlock").unwrap();
+    fs::write(work.join("free.txt"), "other files must proceed").unwrap();
+    let held = OpenOptions::new().read(true).write(true).share_mode(if byte_range { 7 } else { 0 }).open(&source).unwrap();
+    if byte_range {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY};
+        let mut overlap = windows::Win32::System::IO::OVERLAPPED::default();
+        unsafe { LockFileEx(HANDLE(held.as_raw_handle() as _), LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, None, 1, 0, &mut overlap) }.unwrap();
+    }
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("transient-lock").unwrap();
+    r.configure(Config { enabled:true, cwd:work.to_string_lossy().into(), ..Default::default() }).unwrap();
+    r.record("input", &user("messages continue while the file is locked"));
+    r.flush().unwrap();
+    let chat = journal::chat_dir(&root, "transient-lock").unwrap();
+    let manifest = chat.join("files-manifest.jsonl");
+    until(|| fs::read_to_string(&manifest).is_ok_and(|s|s.contains("free.txt")));
+    assert!(!fs::read_to_string(&manifest).unwrap().contains("locked.txt"));
+    assert!(fs::read_to_string(chat.join("events.jsonl")).unwrap().contains("messages continue"));
+    assert_eq!(r.status()["status"]["coverageErrors"],0);
+    std::thread::sleep(Duration::from_millis(120));
+    drop(held); // No new write, tool-end, or checkpoint to wake the retry worker.
+    until(|| fs::read_to_string(&manifest).is_ok_and(|s|s.contains("locked.txt")) && r.status()["status"]["preparing"]==false);
+    assert_eq!(r.status()["status"]["coverageErrors"],0);
+    assert!(r.status()["status"]["error"].is_null());
+    a.shutdown();
+}
+
+#[cfg(windows)]
+#[test]
+fn sharing_violation_is_retried_while_other_files_and_messages_proceed() {
+    transient_lock_recovers_without_another_write(false);
+}
+
+#[cfg(windows)]
+#[test]
+fn byte_range_lock_is_retried_without_another_filesystem_event() {
+    transient_lock_recovers_without_another_write(true);
+}
+
+#[cfg(windows)]
+#[test]
+fn persistent_lock_is_reported_once_and_recovery_rechecks_preserved_mtime() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f = Fixture::new();
+    let work = f.workspace();
+    let source = work.join("same.txt");
+    fs::write(&source,"AAAA").unwrap();
+    let original_time = fs::metadata(&source).unwrap().modified().unwrap();
+    let a = Archive::new(f.archive()).unwrap();
+    let r = a.recorder("persistent-lock").unwrap();
+    r.configure(Config { enabled:true, cwd:work.to_string_lossy().into(), ..Default::default() }).unwrap();
+    r.flush_all().unwrap();
+    let mut held = OpenOptions::new().read(true).write(true).share_mode(0).open(&source).unwrap();
+    held.write_all(b"BBBB").unwrap();
+    held.set_times(std::fs::FileTimes::new().set_modified(original_time)).unwrap();
+    until(|| r.status()["status"]["coverageErrors"].as_u64().unwrap()>0);
+    assert_eq!(r.status()["status"]["coverageErrors"],1);
+    r.flush_all().unwrap();
+    assert_eq!(r.status()["status"]["coverageErrors"],1,"do not repeat the same unresolved error");
+    drop(held);
+    r.flush_all().unwrap();
+    assert!(r.status()["status"]["error"].is_null(),"recovery clears the current file error");
+    assert_eq!(r.status()["status"]["coverageErrors"],1,"historical error count is preserved");
+    let chat=journal::chat_dir(&a.root,"persistent-lock").unwrap();
+    let rows=journal::list_entries(&chat,1,100,"files","","").unwrap();
+    let change=rows["items"].as_array().unwrap().iter().map(|e|full_payload(&chat,e["seq"].as_u64().unwrap())["payload"].clone())
+        .find(|p|p["change"]=="modified").expect("failed reads must bypass unchanged mtime optimization");
+    assert_eq!(files::object_page(&a.root,"persistent-lock",change["after"]["hash"].as_str().unwrap(),0).unwrap()["text"],"BBBB");
+    a.shutdown();
+}
+
+#[cfg(windows)]
+#[test]
+fn stopping_during_retry_wait_does_not_wait_for_the_backoff_budget() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let f=Fixture::new();
+    let work=f.workspace();
+    let source=work.join("locked.txt");
+    fs::write(&source,"held through stop").unwrap();
+    fs::write(work.join("free.txt"),"ready").unwrap();
+    let _held=OpenOptions::new().read(true).share_mode(0).open(source).unwrap();
+    let a=Archive::new(f.archive()).unwrap();
+    let r=a.recorder("retry-stop").unwrap();
+    r.configure(Config { enabled:true,cwd:work.to_string_lossy().into(),..Default::default() }).unwrap();
+    let manifest=journal::chat_dir(&a.root,"retry-stop").unwrap().join("files-manifest.jsonl");
+    until(||fs::read_to_string(&manifest).is_ok_and(|s|s.contains("free.txt")));
+    std::thread::sleep(Duration::from_millis(100));
+    let start=Instant::now();
+    r.configure(Config::default()).unwrap();
+    assert!(start.elapsed()<Duration::from_millis(500));
+    assert_eq!(r.status()["status"]["preparing"],false);
+    assert_eq!(r.status()["status"]["enabled"],false);
+    a.shutdown();
+}
+
+#[test]
+fn copying_a_changing_file_does_not_publish_an_unstable_object() {
+    let f=Fixture::new();
+    let source=f.workspace().join("changing.bin");
+    fs::File::create(&source).unwrap().set_len(256*1024*1024).unwrap();
+    let root=f.archive();
+    let thread_root=root.clone();
+    let thread_source=source.clone();
+    let copy=std::thread::spawn(move||files::store_file(&thread_root,&thread_source));
+    // Windows may not expose the new length of an open output through directory
+    // metadata yet. Creation occurs after the input's initial metadata was read.
+    until(||fs::read_dir(root.join("pending")).is_ok_and(|mut items|items.next().is_some()));
+    OpenOptions::new().write(true).open(&source).unwrap().set_len(1).unwrap();
+    assert_eq!(copy.join().unwrap().unwrap_err().kind(),std::io::ErrorKind::WouldBlock);
+    assert!(!root.join("objects").exists(),"unstable bytes must not be published");
+    assert_eq!(fs::read_dir(root.join("pending")).unwrap().count(),0);
+}
+
+#[test]
+fn replacing_a_file_is_distinguished_from_the_original_open_handle() {
+    let f=Fixture::new();
+    let source=f.workspace().join("source.txt");
+    fs::write(&source,"same bytes").unwrap();
+    let before=fs::File::open(&source).unwrap();
+    let unchanged=fs::File::open(&source).unwrap();
+    assert!(files::same_open_file(&before,&unchanged).unwrap());
+    fs::rename(&source,f.0.join("previous.txt")).unwrap();
+    fs::write(&source,"same bytes").unwrap();
+    let replacement=fs::File::open(&source).unwrap();
+    assert!(!files::same_open_file(&before,&replacement).unwrap());
+}
+
+#[test]
+fn temporary_absence_during_replace_keeps_the_before_after_edge() {
+    let f=Fixture::new();
+    let work=f.workspace();
+    let source=work.join("replace.txt");
+    fs::write(&source,"before replacement").unwrap();
+    let a=Archive::new(f.archive()).unwrap();
+    let r=a.recorder("atomic-replace").unwrap();
+    r.configure(Config { enabled:true,cwd:work.to_string_lossy().into(),..Default::default() }).unwrap();
+    r.flush_all().unwrap();
+    fs::rename(&source,f.0.join("old.txt")).unwrap();
+    let replacement=source.clone();
+    let writer=std::thread::spawn(move||{std::thread::sleep(Duration::from_millis(80));fs::write(replacement,"after replacement").unwrap()});
+    r.flush_all().unwrap();
+    writer.join().unwrap();
+    r.flush_all().unwrap();
+    let chat=journal::chat_dir(&a.root,"atomic-replace").unwrap();
+    let rows=journal::list_entries(&chat,1,100,"files","","").unwrap();
+    let changes:Vec<_>=rows["items"].as_array().unwrap().iter().map(|e|full_payload(&chat,e["seq"].as_u64().unwrap())["payload"].clone()).collect();
+    assert!(!changes.iter().any(|p|p["change"]=="deleted"),"a short replace gap is not a completed deletion");
+    assert!(changes.iter().any(|p|p["change"]=="modified"));
+    assert_eq!(r.status()["status"]["coverageErrors"],0);
     a.shutdown();
 }
 #[test]
@@ -1096,7 +1419,7 @@ fn perf_batch_preserves_all_events_with_bounded_queue_and_paged_index() {
     })
     .unwrap();
     r.record("input", &user("benchmark"));
-    r.flush().unwrap();
+    r.flush_all().unwrap();
     let dir = journal::chat_dir(&root, "perf").unwrap();
     let before = journal::entry_count(&dir);
     let start = Instant::now();
@@ -1190,6 +1513,7 @@ fn filesystem_events_detect_same_size_writes_with_preserved_mtime() {
     })
     .unwrap();
     r.record("input", &user("same mtime"));
+    r.flush_all().unwrap();
     fs::write(&source, "BBBB").unwrap();
     OpenOptions::new()
         .write(true)

@@ -1,6 +1,7 @@
 //! Local opt-in archive. No rendering state owns recording; closed/hidden views do
 //! not affect capture. Payloads are append-only; file bytes are content addressed.
 mod files;
+mod file_policy;
 pub mod journal;
 mod layout;
 #[cfg(test)]
@@ -449,6 +450,9 @@ impl Recorder {
                 s.preparing = true;
                 s.enabled = false;
                 s.error = None;
+                s.coverage_errors = 0;
+                s.file_count = 0;
+                s.file_bytes = 0;
             }
             let weak = Arc::downgrade(self);
             let sink: files::Sink = Arc::new(move |e| {
@@ -479,7 +483,9 @@ impl Recorder {
         {
             let mut s = lock(&self.status);
             s.enabled = config.enabled;
-            s.preparing = false;
+            // Initial file capture is asynchronous; only its worker clears this
+            // flag. It no longer controls whether conversations are recorded.
+            if !config.enabled { s.preparing = false; }
         }
         self.enqueue(Captured::new("lifecycle",&json!({"type":if config.enabled{"recording-enabled"}else{"recording-paused"},"config":config})));
         self.flush()?;
@@ -779,8 +785,8 @@ pub fn prepare_run(chat: &str, request: &Value) -> io::Result<()> {
     if !c.enabled && !lock(&r.status).preparing {
         return Ok(());
     }
-    // A restored recorder starts disabled until its baseline is ready. configure
-    // serializes with the background restore and skips an already prepared config.
+    // Start the journal and file watcher before dispatching a restored request.
+    // File inventory preparation continues independently of conversation capture.
     if let Some(cwd) = request
         .get("cwd")
         .and_then(Value::as_str)

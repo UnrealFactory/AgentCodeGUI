@@ -1,6 +1,9 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { DiagnosticNotice } from './DiagnosticNotice'
+import { ExternalContextAttachments, ExternalContextTray, ExternalToolChip } from './ExternalTools'
+import { HeaderPopover } from './HeaderPopover'
+import type { ExternalContextSnapshot } from '@shared/externalTools'
 import type { ConnectionRetry } from '@shared/diagnostics'
 import { HoverTip } from './HoverTip'
 import type {
@@ -304,6 +307,7 @@ export interface ScheduledMsg {
   text: string
   images: string[]
   picker: PickerState
+  externalContext?: ExternalContextSnapshot | null
 }
 
 // next run mode — used by the Shift+Tab shortcut. 배열이 PoC 순서(일반→…→모두 허용)라
@@ -826,6 +830,7 @@ export const MessageView = memo(function MessageView({
           {item.kind === 'msg' && item.images && item.images.length > 0 && (
             <MessageAttachments images={item.images} onOpen={onOpenImage} onOpenFile={onOpenFile} />
           )}
+          {item.kind === 'msg' && item.externalContext && <ExternalContextAttachments capture={item.externalContext} />}
           {item.text &&
             (isUser ? (
               // ★R4 — 보낸 시각을 본문 끝에 **플로트**로 잇는다(사용자 결정: 필 안으로
@@ -1354,21 +1359,21 @@ export function WorkingIndicator({ elapsed, retry, connectionRetry }: { elapsed:
 // 목록은 공유 최근 폴더(lib/recentDirs — localStorage라 모든 창이 공유)를 마운트
 // (=열림) 시점에 새로 읽는다: 다른 화면/창에서 방금 고른 폴더가 바로 보인다.
 export function FolderPop({
+  anchor,
   cwd,
   onSelect,
   onBrowse,
   onClose,
-  right,
   refDirs,
   onAddRef,
   onAddRefPath,
   onRemoveRef
 }: {
+  anchor: React.RefObject<HTMLButtonElement | null>
   cwd?: string // 현재 폴더 — 맨 위 '지금' + 체크로 표시
   onSelect: (path: string) => void // 목록에서 선택 — 호스트의 requestFolder(확인 카드 흐름)
   onBrowse: () => void // 찾아보기 — OS 폴더 선택
   onClose: () => void
-  right?: boolean // 오른쪽 끝 칩용 — 팝오버 오른쪽 정렬 (.wb-pop.r)
   // 참조 폴더(--add-dir) — onAddRef를 넘긴 호스트만 섹션이 보인다. 작업 폴더와 달리
   // 선택이 아니라 목록 관리(추가/제거)라 행 클릭은 없다.
   refDirs?: string[]
@@ -1376,19 +1381,6 @@ export function FolderPop({
   onAddRefPath?: (path: string) => void // 즐겨찾기/최근 행의 + — 그 폴더를 참조로 바로 추가
   onRemoveRef?: (path: string) => void
 }) {
-  // 바깥 클릭/Esc로 닫기 — 안쪽 클릭은 호스트의 .hfold 래퍼가 전파를 막는다
-  useEffect(() => {
-    const close = (): void => onClose()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('mousedown', close)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
   // 즐겨찾기가 있으면 목록을 "즐겨찾기 / 최근" 섹션(캡션+밑줄)으로 나눈다. 별 토글과
   // 최근 ✕는 라이브 재구성 — 별을 달면 그 행이 즐겨찾기 섹션으로 올라가고, ✕를 누르면
   // 그 자리에서 사라지는 게 눈에 보인다.
@@ -1490,7 +1482,7 @@ export function FolderPop({
     )
   }
   return (
-    <div className={'wb-pop hpop' + (right ? ' r' : '')}>
+    <HeaderPopover anchor={anchor} onClose={onClose} className="wb-pop hpop" label={t('작업 폴더', 'Working folder')}>
       <div className="wb-pop-h">
         <span className="t">{t('작업 폴더', 'Working folder')}</span>
       </div>
@@ -1554,7 +1546,7 @@ export function FolderPop({
           </span>
         </button>
       </div>
-    </div>
+    </HeaderPopover>
   )
 }
 
@@ -1603,6 +1595,8 @@ export function ChatHeader({
   dial?: React.ReactNode
 }) {
   const [fpop, setFpop] = useState(false)
+  const folderAnchor = useRef<HTMLButtonElement>(null)
+  useEffect(() => { setFpop(false) }, [chatId])
   // 돋보기 켜짐 표시 — ChatFind가 알리는 열림 상태를 구독한다
   const [findOn, setFindOn] = useState(false)
   useEffect(() => {
@@ -1619,6 +1613,8 @@ export function ChatHeader({
               말줄임은 안쪽 span 몫 — 버튼에 overflow:hidden을 두면 ::after 툴팁째 잘린다.
               팝오버가 열려 있는 동안은 has-tip을 떼어 툴팁이 팝오버와 겹치지 않게 한다 */}
           <button
+            ref={folderAnchor}
+            aria-expanded={fpop}
             className={'tag mono fsel' + (fpop ? '' : ' has-tip')}
             data-tip={
               refDirs?.length
@@ -1636,6 +1632,7 @@ export function ChatHeader({
           </button>
           {fpop && (
             <FolderPop
+              anchor={folderAnchor}
               cwd={cwd}
               onSelect={(p) => onSelectFolder?.(p)}
               onBrowse={onBrowseFolder}
@@ -1652,6 +1649,7 @@ export function ChatHeader({
           onOpen이 폴더 팝오버를 접는다(멀티 헤더와 같은 배타 규약 — .hfold끼리는
           stopPropagation 때문에 바깥닫힘이 서로 안 울린다). */}
       {onBrowseFolder && chatId && <McpSkillView chatId={chatId} cwd={cwd || ''} engine={engine} account={codexAccount} apiMode={apiMode} onOpen={() => setFpop(false)} />}
+      {chatId && <ExternalToolChip address={chatId} onOpen={() => setFpop(false)} />}
       {chatId && <RecordingChip chatId={chatId} cwd={cwd || ''} refDirs={refDirs} title={title} onOpen={() => setFpop(false)} />}
       <span className="spacer" />
       {dial}
@@ -5708,6 +5706,7 @@ export function Composer({
   return (
     <div className="composer-wrap" ref={wrapRef}>
       <div className="composer-inner">
+        <ExternalContextTray address={chatId} />
         {queued.length > 0 && (
           <div className="sched">
             <div className="sched-head">

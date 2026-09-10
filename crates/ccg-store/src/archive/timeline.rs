@@ -116,7 +116,9 @@ pub fn visible(e: &super::Entry) -> bool {
     match e.source.as_str() {
         "input" => matches!(e.kind.as_str(), "user" | "control_response"),
         "tool" | "response" => true,
-        "file" => e.kind != "filesystem-event",
+        // Automatic workspace snapshots stay in the archive, outside the
+        // conversation reader. Explicit tool actions still describe file work.
+        "file" => false,
         // Completion bookkeeping is kept in the journal, not in the conversation.
         // A failed result can be the only explanation for a run ending early.
         "ui" if e.kind == "result" => e.activity.as_ref().is_some_and(|a| a.error),

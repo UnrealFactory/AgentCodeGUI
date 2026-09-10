@@ -1,4 +1,6 @@
 import { SidebarColumn } from './components/SidebarColumn'
+import { captureExternalContext } from './api/bridge'
+import type { ExternalContextSnapshot } from '@shared/externalTools'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiConfigStatus, AppUser, BgTaskRequest, ChatStatusLite, EngineId, RunRequest, SessionWindowInfo, SubAgentInfo, UsageInfo, UserProfile } from '@shared/protocol'
 import { pickerAfterLanding, queueAfterLanding } from './lib/identityLanding'
@@ -184,6 +186,7 @@ function promptWithNotes(text: string, cmd: string | null, imgs: string[]): stri
   return notes.length ? `${text}\n\n${notes.join('\n\n')}` : text
 }
 function buildRunRequest(a: {
+  externalContext?: ExternalContextSnapshot | null
   text: string
   images: string[]
   picker: PickerState
@@ -196,6 +199,7 @@ function buildRunRequest(a: {
   const extraDirs = a.refDirs.filter((p) => !sameCwd(p, a.cwd))
   return {
     prompt: promptWithNotes(a.text, commandOf(a.text), a.images),
+    externalContext: a.externalContext,
     model: pk.model,
     effort: pk.effort,
     mode: pk.mode,
@@ -1113,9 +1117,10 @@ function MainApp({ user }: { user: AppUser }) {
     const cmd = commandOf(next.text)
     bgSnapRef.current.set(
       id,
-      sessionReducer(snap, { type: 'begin', text: next.text, time: nowTime(), command: cmd, images: next.images })
+      sessionReducer(snap, { type: 'begin', text: next.text, time: nowTime(), command: cmd, images: next.images, externalContext: next.externalContext })
     )
     void runChat(id, buildRunRequest({
+      externalContext: next.externalContext ?? null,
       text: next.text,
       images: next.images,
       picker: next.picker,
@@ -1497,7 +1502,7 @@ function MainApp({ user }: { user: AppUser }) {
   // 반환은 false. 예약 큐 드레인이 이 값으로 "런 없이 소진된 항목" 뒤를 이어서 보낸다.
   const runPrompt = async (
     text: string,
-    opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean }
+    opts?: { images?: string[]; picker?: PickerState; keepDraft?: boolean; externalContext?: ExternalContextSnapshot | null }
   ): Promise<boolean> => {
     const imgs = opts?.images ?? images
     const pk = opts?.picker ?? picker
@@ -1533,7 +1538,9 @@ function MainApp({ user }: { user: AppUser }) {
     // stale messages the model no longer remembers.
     const folderSwitched = !!state.session && state.messages.length > 0 && !sameCwd(state.session.cwd, dir)
     if (folderSwitched) load(initialSessionState)
-    begin(text, cmd, imgs)
+    const externalContext = cmd ? null : opts?.externalContext !== undefined ? opts.externalContext : captureExternalContext(activeChatId)
+    if (externalContext === false) return false
+    begin(text, cmd, imgs, externalContext)
     // 한도 대기표 해제는 useLimitResume의 busy 상승 에지가 처리한다 — 이 채팅(소유 키
     // 일치)의 새 실행만 해제하고, 다른 채팅의 재개 약속은 보존된다.
     // derive the chat title from the prompt (command → its friendly title) unless renamed.
@@ -1550,6 +1557,7 @@ function MainApp({ user }: { user: AppUser }) {
     // 요청 조립은 buildRunRequest 한 곳 — 자리 밖 드레인(drainBgQueue)과 **같은 문장**이
     // 나가야 "돌아와 보니 예약이 다른 프롬프트로 나갔다"가 안 생긴다.
     const req = buildRunRequest({
+      externalContext,
       text,
       images: imgs,
       picker: pk,
@@ -1578,7 +1586,9 @@ function MainApp({ user }: { user: AppUser }) {
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
     // ★ R2 — 예약은 곧바로 **그 대화의 것**이 된다. state와 ChatMeta를 함께 쓰는 이유:
     // 전환이 saveActive를 못 타는 경로(창 닫기·크래시 직전 등)에서도 소유자가 남아야 한다.
-    const item: ScheduledMsg = { id, text: input, images, picker }
+    const externalContext = commandOf(input) ? null : captureExternalContext(activeChatId)
+    if (externalContext === false) return
+    const item: ScheduledMsg = { id, text: input, images, picker, externalContext }
     queueOwnerRef.current = activeChatId // 예약한 사람이 곧 소유자 (부팅 직후 착지가 없어도 맞다)
     setQueue((q) => [...q, item])
     setChats((list) => list.map((c) => (c.id === activeChatId ? { ...c, queue: [...(c.queue ?? []), item] } : c)))
@@ -1623,7 +1633,7 @@ function MainApp({ user }: { user: AppUser }) {
         setQueue((q) => q.slice(1))
         setChats((list) => list.map((c) => (c.id === owner ? { ...c, queue: (c.queue ?? []).slice(1) } : c)))
         // 예약 메시지는 자체 텍스트/첨부로 재생 — 실행 중에 새로 쓰던 초안은 건드리지 않는다
-        const started = await runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true })
+        const started = await runPrompt(next.text, { images: next.images, picker: next.picker, keepDraft: true, externalContext: next.externalContext ?? null })
         if (started) break
       }
     })()
@@ -1659,7 +1669,9 @@ function MainApp({ user }: { user: AppUser }) {
       setDocked(null)
       if (busy) {
         const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${queue.length}`
-        const item: ScheduledMsg = { id, text: prompt, images: [], picker }
+        const externalContext = captureExternalContext(activeChatIdRef.current)
+        if (externalContext === false) return
+        const item: ScheduledMsg = { id, text: prompt, images: [], picker, externalContext }
         queueOwnerRef.current = activeChatIdRef.current
         setQueue((q) => [...q, item])
         setChats((list) => list.map((c) => (c.id === activeChatIdRef.current ? { ...c, queue: [...(c.queue ?? []), item] } : c)))

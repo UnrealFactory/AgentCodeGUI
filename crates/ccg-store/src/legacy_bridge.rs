@@ -638,6 +638,19 @@ pub fn ma_save(data: &Value) -> Vec<String> {
                 // Clear save can therefore kill the next Run without any terminal event.
                 // Keep its address (including moved chats) and persist the blank snapshot.
                 if !panel_has_content(p) && seated.is_none() {
+                    // The first Run may issue its chat before the debounced board save
+                    // seats it. A pre-run blank copy is not a deletion of that new chat.
+                    // Preserve the issued record and give it the same canonical seat.
+                    let issued = format!("ma-{sid}-{i}");
+                    if crate::chats_v3::stored_chat(&issued).is_some_and(|c| origin_of(&c) == ORIGIN_PANEL) {
+                        slots[i] = json!(issued);
+                    } else if crate::chats_v3::stored_chat(&issued).is_none() && crate::chats_v3::has_identity_truth(&issued) {
+                        // Before the first renderer save the runtime has only an owned
+                        // identity and a status row. Materialize that issued chat so the
+                        // replacement list cannot prune its live status and runtime.
+                        slots[i] = json!(issued);
+                        updates.push(json!({"id":issued,"origin":ORIGIN_PANEL}));
+                    }
                     continue;
                 }
                 let chat_id = seated.map(str::to_string).unwrap_or_else(|| format!("ma-{sid}-{i}"));

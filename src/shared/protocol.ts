@@ -604,6 +604,8 @@ export interface ChatTooling {
 
 // ── Renderer → Main commands ─────────────────────────────────
 export interface RunRequest {
+  /** Frozen external tool data for this message; omitted for engine commands. */
+  externalContext?: import('./externalTools').ExternalContextSnapshot | null
   prompt: string
   model: ModelId
   effort: EffortId

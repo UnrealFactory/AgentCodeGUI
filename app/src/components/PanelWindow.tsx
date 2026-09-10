@@ -1,4 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { captureExternalContext } from '../api/bridge'
+import type { ExternalContextSnapshot } from '@shared/externalTools'
 import type { ApiConfigStatus, BgTaskRequest, ChatStatusLite, PanelPopState, SessionWindowInfo, UsageInfo } from '@shared/protocol'
 import type { EngineId } from '@shared/protocol'
 import { listChatWindows, onChatIdentity, onChatStatus, onChatWindows, type WindowSlot } from '../api/unified'
@@ -273,7 +275,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
   const btwWins = useMemo(() => sessionWins.filter((w) => w.btwOf === panelId), [sessionWins, panelId])
 
   // ── 전송 (ActiveSession.sendPanel의 단일 패널판 — panelId 고정) ──
-  const send = useEvent(async (opts?: { text: string; images: string[]; picker: PickerState }) => {
+  const send = useEvent(async (opts?: { text: string; images: string[]; picker: PickerState; externalContext?: ExternalContextSnapshot | null }) => {
     const text = (opts?.text ?? meta.input).trim()
     const imgs = opts?.images ?? meta.images
     const pk = opts?.picker ?? meta.picker
@@ -295,7 +297,9 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     if (!dir && state.session) dir = state.session.cwd
     const folderSwitched = !!state.session && state.messages.length > 0 && !sameCwd(state.session.cwd, dir)
     if (folderSwitched) load(initialSessionState)
-    begin(text, cmd, imgs)
+    const externalContext = cmd ? null : opts?.externalContext !== undefined ? opts.externalContext : captureExternalContext(panelId)
+    if (externalContext === false) return
+    begin(text, cmd, imgs, externalContext)
     const title = deriveTitle(text)
     patch({
       ...(opts ? {} : { input: '', images: [] }),
@@ -317,6 +321,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     const extraDirs = meta.refDirs.filter((p) => !sameCwd(p, dir))
     window.api.multi
       ?.run({
+        externalContext,
         panelId,
         prompt: promptForEngine,
         model: pk.model,
@@ -362,7 +367,9 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
       return
     }
     const id = crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${meta.queue.length}`
-    setMeta((m) => ({ ...m, input: '', images: [], queue: [...m.queue, { id, text: m.input, images: m.images, picker: m.picker }] }))
+    const externalContext = commandOf(meta.input) ? null : captureExternalContext(panelId)
+    if (externalContext === false) return
+    setMeta((m) => ({ ...m, input: '', images: [], queue: [...m.queue, { id, text: m.input, images: m.images, picker: m.picker, externalContext }] }))
   })
   const drainingRef = useRef(false)
   const busyEdgeRef = useRef(busy)
@@ -379,7 +386,7 @@ function PanelHost({ boot }: { boot: PanelPopState }): React.ReactElement {
     setMeta((m) => ({ ...m, queue: m.queue.slice(items.length) }))
     void (async () => {
       try {
-        for (const next of items) await send({ text: next.text, images: next.images, picker: next.picker })
+        for (const next of items) await send({ text: next.text, images: next.images, picker: next.picker, externalContext: next.externalContext ?? null })
       } finally {
         drainingRef.current = false
       }

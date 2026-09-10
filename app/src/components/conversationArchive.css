@@ -497,6 +497,19 @@
 .arc-diagnostics .arc-empty {
   padding: 14px;
 }
+.arc-current-recording {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.arc-current-recording strong {
+  color: var(--text);
+  font-weight: 500;
+}
 .arc-tabs {
   display: flex;
   align-items: center;
@@ -547,6 +560,11 @@
 .arc-conversation {
   max-width: 850px;
 }
+.arc-infinite-timeline { overflow-anchor: none; }
+.arc-virtual-list { position: relative; min-width: 0; overflow-anchor: none; }
+.arc-virtual-row { position: absolute; inset: 0 0 auto; display: flow-root; min-width: 0; overflow-anchor: none; }
+.arc-load-more { min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 14px 0; font-size: 11px; color: var(--text-3); }
+.arc-load-error { padding: 16px 0; color: var(--red); font-size: 12px; line-height: 1.7; }
 .arc-day {
   display: flex;
   align-items: center;

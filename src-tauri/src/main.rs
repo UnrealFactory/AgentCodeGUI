@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crash;
+mod bridge;
 mod engine;
 /// 서브시스템 무력화 스위치 — 유휴 메모리 귀속용 A/B 팔 가르개(★R4, `flags.rs` 헤더).
 mod flags;
@@ -273,6 +274,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![ipc::ipc_call])
         .setup(|app| {
+            bridge::boot(app.handle());
             win::create_main(app.handle())?;
             // ★3.0.3 — UI 스레드 정지 감시(AppHangB1의 증거 수집 · crash.rs).
             crash::arm_ui_watchdog(app.handle());
@@ -302,6 +304,7 @@ fn main() {
                     // 정상 종료다. 여기서부터 브라우저 프로세스가 죽는 건 크래시가 아니다 —
                     // 감시자가 오인하면 **닫아도 다시 뜨는 앱**이 된다.
                     crash::begin_shutdown();
+                    bridge::shutdown();
                     // ★M8-R2 — **트레이 아이콘을 놓아 준다.** TrayIcon은 refcount라
                     // `NIM_DELETE`가 Drop에서만 나가는데 static은 절대 drop되지 않는다
                     // (tray.rs `TRAY` 주석 · 크리틱 M8 §3.3). 안 놓으면 죽은 아이콘이

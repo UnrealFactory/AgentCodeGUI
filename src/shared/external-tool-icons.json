@@ -1,0 +1,22 @@
+[
+  {"id":"tool","ko":"기본 도구","en":"Tool","path":"M14.5 6.5 18 3a6 6 0 0 0-7.6 7.6L3 18a2.1 2.1 0 0 0 3 3l7.4-7.4A6 6 0 0 0 21 6l-3.5 3.5z"},
+  {"id":"code","ko":"코드","en":"Code","path":"m8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18"},
+  {"id":"terminal","ko":"터미널","en":"Terminal","path":"m4 6 6 6-6 6m9 0h7"},
+  {"id":"browser","ko":"브라우저","en":"Browser","path":"M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm-2 5h18M6 6.5h.1M9 6.5h.1"},
+  {"id":"document","ko":"문서","en":"Document","path":"M5 3h9l5 5v13H5zm9 0v6h5"},
+  {"id":"folder","ko":"폴더","en":"Folder","path":"M3 7h7l2 2h9v11H3zM3 7V4h7l2 3"},
+  {"id":"table","ko":"표","en":"Table","path":"M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM3 9h18M9 3v18m6-12v12M3 15h18"},
+  {"id":"database","ko":"데이터베이스","en":"Database","path":"M4 5a8 3 0 1 0 16 0 8 3 0 1 0-16 0m0 0v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"},
+  {"id":"design","ko":"디자인","en":"Design","path":"m12 2 10 10-10 10L2 12zM12 2v20M2 12h20"},
+  {"id":"image","ko":"이미지","en":"Image","path":"M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm-2 14 6-6 4 4 3-3 5 5M6.5 8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0"},
+  {"id":"video","ko":"영상","en":"Video","path":"M5 5h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm11 5 5-3v10l-5-3"},
+  {"id":"audio","ko":"오디오","en":"Audio","path":"M4 14v-2a8 8 0 0 1 16 0v2M4 12H3v7h4v-7zm16 0h1v7h-4v-7z"},
+  {"id":"chart","ko":"차트","en":"Chart","path":"M3 3v18h18M7 17v-5m5 5V7m5 10V4"},
+  {"id":"package","ko":"패키지","en":"Package","path":"m12 3 9 5v9l-9 5-9-5V8zm0 10L3 8m9 5 9-5m-9 5v9M7 5l9 5"},
+  {"id":"cube","ko":"3D","en":"3D","path":"m12 2 9 5v10l-9 5-9-5V7zm0 10L3 7m9 5 9-5m-9 5v10"},
+  {"id":"git","ko":"Git","en":"Git","path":"M4 5a2 2 0 1 0 4 0 2 2 0 1 0-4 0m0 14a2 2 0 1 0 4 0 2 2 0 1 0-4 0M16 5a2 2 0 1 0 4 0 2 2 0 1 0-4 0M6 7v10m12-10a10 10 0 0 1-10 10"},
+  {"id":"cloud","ko":"클라우드","en":"Cloud","path":"M7 19a5 5 0 0 1-1-9 7 7 0 0 1 13-1 5 5 0 0 1-1 10z"},
+  {"id":"device","ko":"기기","en":"Device","path":"M5 3h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8m-4-5v5"},
+  {"id":"game","ko":"게임","en":"Game","path":"M7 7h10c3 0 5 12 2 12l-4-3H9l-4 3C2 19 4 7 7 7zM7 10v5m-2-2.5h4m7-2h.1m2 3h.1"},
+  {"id":"workflow","ko":"워크플로","en":"Workflow","path":"M3 3h6v6H3zm12 12h6v6h-6zM9 6h5a4 4 0 0 1 4 4v5m-3-3 3 3 3-3M6 9v10h5"}
+]
