@@ -9,7 +9,7 @@ use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 const SESSION_FORMAT: &str = "agentcodegui-conversation-session";
-const JOURNAL_FILES: &[&str] = &[
+pub(super) const JOURNAL_FILES: &[&str] = &[
     "config.json",
     "events.jsonl",
     "entries.jsonl",
@@ -142,7 +142,7 @@ pub fn delete_session(root: &Path, chat: &str) -> io::Result<()> {
     }
     Ok(())
 }
-fn marker(dir: &Path) -> io::Result<Value> {
+pub(super) fn marker(dir: &Path) -> io::Result<Value> {
     let value: Value = serde_json::from_slice(&fs::read(dir.join("Chat/format.json"))?)?;
     if value["format"] != SESSION_FORMAT || value["version"] != 2 {
         return Err(invalid(
@@ -171,7 +171,7 @@ fn collect_hashes(value: &Value, hashes: &mut BTreeSet<String>) -> io::Result<()
     }
     Ok(())
 }
-fn referenced_hashes(dir: &Path) -> io::Result<BTreeSet<String>> {
+pub(super) fn referenced_hashes(dir: &Path) -> io::Result<BTreeSet<String>> {
     let mut hashes = BTreeSet::new();
     // Compact headers select file records without loading large command outputs.
     if dir.join("entries.jsonl").exists() {
@@ -202,7 +202,7 @@ fn referenced_hashes(dir: &Path) -> io::Result<BTreeSet<String>> {
     }
     Ok(hashes)
 }
-fn plain_metadata(path: &Path) -> io::Result<fs::Metadata> {
+pub(super) fn plain_metadata(path: &Path) -> io::Result<fs::Metadata> {
     let meta = fs::symlink_metadata(path)?;
     if files::is_link(&meta) || (!meta.is_dir() && !meta.is_file()) {
         return Err(invalid(
@@ -286,7 +286,26 @@ pub fn import(root: &Path, source: &Path) -> io::Result<Value> {
     plain_metadata(&source)?;
     plain_metadata(&source.join("Chat"))?;
     plain_metadata(&source.join("View"))?;
-    let mut format = marker(&source)?;
+    marker(&source)?;
+    let staging = import_staging(root)?;
+    copy_tree(&source.join("Chat"), &staging.path().join("Chat"))?;
+    copy_tree(&source.join("View"), &staging.path().join("View"))?;
+    publish_import(root, staging.path())
+}
+
+pub(super) fn import_staging(root: &Path) -> io::Result<tempfile::TempDir> {
+    fs::create_dir_all(root.join("chats"))?;
+    tempfile::Builder::new().prefix(".import-").tempdir_in(root.join("chats"))
+}
+
+/// Folder and ZIP imports use the same validation and are invisible until commit.
+pub(super) fn publish_import(root: &Path, staging: &Path) -> io::Result<Value> {
+    for name in ["Chat", "View"] {
+        if !plain_metadata(&staging.join(name))?.is_dir() {
+            return Err(invalid("세션에는 Chat과 View 폴더가 있어야 합니다."));
+        }
+    }
+    let mut format = marker(staging)?;
     let original = format["chatId"]
         .as_str()
         .filter(|id| journal::valid_id(id))
@@ -304,16 +323,6 @@ pub fn import(root: &Path, source: &Path) -> io::Result<Value> {
         );
     }
     let destination = session_dir(root, &id)?;
-    // Dot-prefixed staging folders never appear in the session list. Keep failed
-    // staging data for inspection; a later import uses a new unique directory.
-    let staging = root.join("chats").join(format!(
-        ".import-{}-{}",
-        super::now_ms(),
-        std::process::id()
-    ));
-    fs::create_dir(&staging)?;
-    copy_tree(&source.join("Chat"), &staging.join("Chat"))?;
-    copy_tree(&source.join("View"), &staging.join("View"))?;
     journal::recover(&staging.join("Chat"))?;
     for hash in referenced_hashes(&staging.join("Chat"))? {
         let path = files::object_path(&staging.join("View"), &hash)?;
@@ -334,7 +343,7 @@ pub fn import(root: &Path, source: &Path) -> io::Result<Value> {
     format["chatId"] = json!(id);
     format["importedAt"] = json!(super::now_ms());
     crate::write_atomic(&staging.join("Chat/format.json"), &format.to_string())?;
-    fs::rename(&staging, &destination)?;
+    fs::rename(staging, &destination)?;
     Ok(json!({"chatId":id,"path":destination}))
 }
 

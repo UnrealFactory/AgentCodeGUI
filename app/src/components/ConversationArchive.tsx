@@ -19,7 +19,9 @@ import {
 import { t, useLang } from "../lib/i18n";
 import { imageSrc } from "../lib/images";
 import { Markdown } from "./Markdown";
+import { MouseGestureLayer, scrollGestures } from "./mouseGesture";
 import {
+  ArchiveImportButton,
   ArchiveSessionActionDialog,
   ArchiveSessionMenu,
   type ArchiveAction,
@@ -33,6 +35,7 @@ import {
   IconClose,
   IconCode,
   IconCopy,
+  IconDownload,
   IconFile,
   IconFolder,
   IconMessage,
@@ -883,7 +886,7 @@ const EventList = memo(function EventList({
                 "No matching entries in this range. Continue to the next range.",
               )
             : source === "diagnostics"
-              ? t("보관 관련 알림이 없습니다.", "No capture notices recorded.")
+              ? t("기록된 오류 알림이 없습니다.", "No error notifications recorded.")
               : t(
                   "이 항목에 해당하는 기록이 없습니다.",
                   "No records in this category.",
@@ -960,6 +963,7 @@ export default function ConversationArchive({
   const [listError, setListError] = useState("");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
+  const [transfer, setTransfer] = useState<"import" | "export" | null>(null);
   const [notice, setNotice] = useState("");
   const [storageOpen, setStorageOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -972,7 +976,7 @@ export default function ConversationArchive({
     session: ArchiveSession;
     action: ArchiveAction;
   } | null>(null);
-  const dialog = useRef<HTMLDivElement>(null);
+  const [dialog, setDialog] = useState<HTMLDivElement | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -988,8 +992,9 @@ export default function ConversationArchive({
     t("제목 없는 세션", "Untitled session");
 
   useEffect(() => {
+    if (!dialog) return;
     const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.focus();
+    dialog.focus();
     const key = (e: KeyboardEvent): void => {
       if (document.querySelector(".arc-session-menu, .arc-session-action"))
         return;
@@ -999,7 +1004,7 @@ export default function ConversationArchive({
       }
       if (e.key === "Tab") {
         const nodes = Array.from(
-          dialog.current?.querySelectorAll<HTMLElement>(
+          dialog.querySelectorAll<HTMLElement>(
             'button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],summary,[tabindex="0"]',
           ) || [],
         ).filter((n) => n.getClientRects().length);
@@ -1008,7 +1013,7 @@ export default function ConversationArchive({
         if (
           e.shiftKey &&
           (document.activeElement === first ||
-            document.activeElement === dialog.current)
+            document.activeElement === dialog)
         ) {
           e.preventDefault();
           last?.focus();
@@ -1023,7 +1028,7 @@ export default function ConversationArchive({
       document.removeEventListener("keydown", key, true);
       previous?.focus();
     };
-  }, []);
+  }, [dialog]);
   useEffect(() => {
     setSessionMenu(null);
   }, [offset, query, refresh]);
@@ -1131,11 +1136,12 @@ export default function ConversationArchive({
       setActing(false);
     }
   };
-  const importSession = async (): Promise<void> => {
+  const importSession = async (kind: "zip" | "folder"): Promise<void> => {
     setActing(true);
+    setTransfer("import");
     setError("");
     try {
-      const path = await window.api.pickDirectory();
+      const { path } = await archiveCall<{ path: string | null }>("pick-import", { kind });
       if (!path) return;
       await archiveCall("import", { path });
       setSession(null);
@@ -1153,6 +1159,29 @@ export default function ConversationArchive({
       setError(errorText(e));
     } finally {
       setActing(false);
+      setTransfer(null);
+    }
+  };
+  const exportSession = async (): Promise<void> => {
+    if (!session) return;
+    setActing(true);
+    setTransfer("export");
+    setError("");
+    try {
+      const { path } = await archiveCall<{ path: string | null }>("pick-export", { title: title(session) });
+      if (!path) return;
+      const result = await archiveCall<{ path: string; bytes: number }>("export", {
+        chatId: session.chatId, root, path,
+      });
+      setNotice(t(
+        `세션을 내보냈습니다 (${formatArchiveBytes(result.bytes)}): ${result.path}`,
+        `Session exported (${formatArchiveBytes(result.bytes)}): ${result.path}`,
+      ));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setActing(false);
+      setTransfer(null);
     }
   };
   const openSessionFolder = async (): Promise<void> => {
@@ -1179,11 +1208,11 @@ export default function ConversationArchive({
   const focusSession = (id: string): void => {
     requestAnimationFrame(() => {
       const row = [
-        ...(dialog.current?.querySelectorAll<HTMLElement>(".arc-session") ||
+        ...(dialog?.querySelectorAll<HTMLElement>(".arc-session") ||
           []),
       ].find((el) => el.dataset.sessionId === id);
       (
-        row || dialog.current?.querySelector<HTMLElement>(".arc-refresh")
+        row || dialog?.querySelector<HTMLElement>(".arc-refresh")
       )?.focus();
     });
   };
@@ -1225,9 +1254,17 @@ export default function ConversationArchive({
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      <MouseGestureLayer
+        target={dialog}
+        disabled={!!sessionAction}
+        actions={[
+          ...scrollGestures(() => scroll.current),
+          { pattern: "DR", label: t("창 닫기", "Close window"), run: onClose },
+        ]}
+      />
       <div
         className="arc-dialog"
-        ref={dialog}
+        ref={setDialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby="arc-title"
@@ -1252,16 +1289,13 @@ export default function ConversationArchive({
           >
             <IconRefresh size={16} />
           </button>
-          <button
-            className="arc-button arc-import"
+          <ArchiveImportButton
             disabled={acting}
-            onClick={() => {
-              void importSession();
+            importing={transfer === "import"}
+            onImport={(kind) => {
+              void importSession(kind);
             }}
-          >
-            <IconFolder size={15} />
-            {t("세션 가져오기", "Import session")}
-          </button>
+          />
           <button
             className={
               "arc-button arc-storage-toggle" + (storageOpen ? " active" : "")
@@ -1453,23 +1487,12 @@ export default function ConversationArchive({
                 <div className="arc-detail-header">
                   <div className="arc-session-title-row">
                     <h3>{title(session)}</h3>
-                    <span
-                      className={
-                        "arc-session-state" + (enabled ? " recording" : "")
-                      }
-                    >
-                      {enabled ? (
-                        <>
-                          <i />
-                          {t("대화 기록중", "Recording conversation")}
-                        </>
-                      ) : (
-                        <>
-                          <IconCheck size={12} />
-                          {t("보관됨", "Saved")}
-                        </>
-                      )}
-                    </span>
+                    {enabled && (
+                      <span className="arc-session-state recording">
+                        <i />
+                        {t("대화 기록중", "Recording conversation")}
+                      </span>
+                    )}
                   </div>
                   <div className="arc-session-meta">
                     <span
@@ -1499,14 +1522,26 @@ export default function ConversationArchive({
                       {t("세션 폴더", "Session folder")}
                     </button>
                     <button
+                      className="arc-text-button arc-export"
+                      disabled={acting || !!enabled}
+                      title={enabled
+                        ? t("대화 기록을 중지한 뒤 내보낼 수 있습니다.", "Pause recording before exporting.")
+                        : t("대화와 파일 사본을 ZIP으로 내보내기", "Export the conversation and saved files as ZIP")}
+                      onClick={() => { void exportSession(); }}
+                    >
+                      <IconDownload size={12} />
+                      {transfer === "export"
+                        ? t("내보내는 중…", "Exporting…")
+                        : t("세션 내보내기", "Export session")}
+                    </button>
+                    <button
                       className="arc-text-button arc-diagnostics-toggle"
                       aria-expanded={diagnosticsOpen}
                       aria-controls="arc-capture-status"
                       onClick={() => setDiagnosticsOpen((v) => !v)}
                     >
-                      {status?.status.error && <IconAlert size={12} />}
-                      {t("보관 상태", "Capture status")}
-                      <IconChevDown size={11} />
+                      <IconAlert size={12} />
+                      {t("오류 알림", "Error notifications")}
                     </button>
                     {enabled && (
                       <button
@@ -1525,12 +1560,12 @@ export default function ConversationArchive({
                   <section
                     id="arc-capture-status"
                     className="arc-diagnostics scroll"
-                    aria-label={t("보관 상태 상세", "Capture status details")}
+                    aria-label={t("오류 알림 상세", "Error notification details")}
                   >
                     <p className="arc-tab-note">
                       {t(
-                        "보관 과정에서 발생한 알림을 시간순으로 보여줍니다.",
-                        "Notices recorded during capture, in chronological order.",
+                        "보관 중 발생한 오류와 누락 가능성을 시간순으로 보여줍니다.",
+                        "Errors and possible gaps recorded during capture, in chronological order.",
                       )}
                     </p>
                     {status?.status.error && (

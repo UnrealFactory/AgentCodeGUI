@@ -26,6 +26,7 @@
 /// 계정 **쓰기**(최종 파리티 T1 — 로그인·로그아웃·기본·삭제·순서). 읽기는 `system`.
 /// 로그인이 사용자를 최대 5분 기다리므로 **블로킹 스레드**에서 돈다.
 mod accounts;
+mod archive;
 /// `pub`인 이유: 「AgentCodeGUI3으로 열기」의 웜 런치 반쪽(`open_dir`)을 셸의 두 자리가
 /// 부른다 — 두 번째 인스턴스의 인계(`main.rs`)와 「창을 앞으로」 수신부(`win::tray`).
 pub mod app_meta;
@@ -438,6 +439,7 @@ pub async fn ipc_call(app: AppHandle, window: WebviewWindow, channel: String, pa
 }
 
 fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Value) -> Value {
+    if let Some(value) = archive::dispatch(app, window, channel, p) { return value; }
     if channel=="archive:resolve" {
         let a=arg(p,0);
         let chat=a.get("chatId").and_then(Value::as_str).filter(|s|!s.is_empty()).map(str::to_string)

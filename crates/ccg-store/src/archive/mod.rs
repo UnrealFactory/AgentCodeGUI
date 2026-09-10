@@ -6,6 +6,7 @@ mod layout;
 #[cfg(test)]
 mod tests;
 mod timeline;
+mod transfer;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -641,6 +642,21 @@ impl Archive {
         let _map = self.recorders.write().unwrap_or_else(|e| e.into_inner());
         layout::rename_session(&self.root, chat, title)
     }
+    pub fn export_session(&self, chat: &str, path: &std::path::Path) -> io::Result<Value> {
+        self.prepare_view(chat)?;
+        let recorder = self.find(chat);
+        if self.saved_config(chat)?.enabled
+            || recorder.as_ref().is_some_and(|r| {
+                r.enabled.load(Ordering::Acquire) || lock(&r.status).preparing
+            })
+        {
+            return Err(invalid("세션을 내보내려면 대화 기록을 먼저 중지해 주세요."));
+        }
+        if let Some(r) = recorder {
+            r.flush_all()?;
+        }
+        transfer::export_zip(&self.root, chat, path)
+    }
     pub fn delete_session(&self, chat: &str) -> io::Result<()> {
         let mut map = self.recorders.write().unwrap_or_else(|e| e.into_inner());
         layout::deletion_targets(&self.root, chat)?;
@@ -803,6 +819,7 @@ fn dispatch_inner(channel: &str, p: &Value) -> io::Result<Value> {
         "archive:configure"
             | "archive:set-root"
             | "archive:import"
+            | "archive:export"
             | "archive:rename"
             | "archive:delete"
     ) {
@@ -815,7 +832,7 @@ fn dispatch_inner(channel: &str, p: &Value) -> io::Result<Value> {
     let chat = arg.get("chatId").and_then(Value::as_str).unwrap_or("");
     let get_num = |key: &str, default: u64| arg.get(key).and_then(Value::as_u64).unwrap_or(default);
     let get_str = |key: &str| arg.get(key).and_then(Value::as_str).unwrap_or("");
-    if matches!(channel, "archive:rename" | "archive:delete")
+    if matches!(channel, "archive:rename" | "archive:delete" | "archive:export")
         && std::fs::canonicalize(get_str("root"))? != std::fs::canonicalize(&a.root)?
     {
         return Err(invalid(
@@ -843,7 +860,15 @@ fn dispatch_inner(channel: &str, p: &Value) -> io::Result<Value> {
             a.delete_session(chat)?;
             Ok(json!({"ok":true}))
         }
-        "archive:import" => layout::import(&a.root, &PathBuf::from(get_str("path"))),
+        "archive:import" => {
+            let source = PathBuf::from(get_str("path"));
+            if source.is_dir() {
+                layout::import(&a.root, &source)
+            } else {
+                transfer::import_zip(&a.root, &source)
+            }
+        }
+        "archive:export" => a.export_session(chat, &PathBuf::from(get_str("path"))),
         "archive:session-folder" => {
             let dir = layout::session_dir(&a.root, chat)?;
             if !dir.join("Chat/format.json").exists() {

@@ -3367,7 +3367,7 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    z는 뷰어 위 임시 레이어들(ctx-menu 300 · lsp-hover 400)보다 위.
    잉크는 전역 accent 그대로 — 라이트는 오렌지, 다크는 근백색(흰 궤적 선호 — 실물 피드백).
    글로우도 잉크를 따라간다. */
-.mg-layer{ --mg-ink:var(--accent); position:fixed; inset:0; z-index:500; pointer-events:none; transition:opacity .22s ease; }
+.mg-layer{ --mg-ink:var(--accent); position:fixed; inset:0; z-index:9900; pointer-events:none; transition:opacity .22s ease; }
 .mg-layer.out{ opacity:0; }
 .mg-trail{ position:absolute; inset:0; width:100%; height:100%; display:block; }
 .mg-trail polyline{

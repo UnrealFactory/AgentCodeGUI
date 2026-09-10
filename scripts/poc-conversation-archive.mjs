@@ -242,6 +242,8 @@ const launch = () =>
 let app = launch();
 try {
   cdp = await connectMainPage(port);
+  // Keep desktop focus changes from cancelling the injected mouse drags.
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   const evaluate = (expr) =>
     cdp.eval(`(async()=>(${expr}))()`, { awaitPromise: true });
   const until = async (expr, timeout = 20000) => {
@@ -268,6 +270,53 @@ try {
       '!!document.querySelector(".arc-dialog") && document.querySelector(".arc-session-list")?.getAttribute("aria-busy")==="false"',
     );
   };
+  const withArchivePicker = async (channel, selectedPath, action) => {
+    await evaluate(`(()=>{
+      window.__archiveOriginalFetch = window.fetch;
+      window.__archiveTransferCalls = [];
+      window.fetch = (input,options) => {
+        const url = new URL(typeof input==='string' ? input : input.url);
+        if(url.pathname==='/ipc_call' && (url.hostname==='ipc.localhost' || url.protocol==='ipc:')) {
+          const args = JSON.parse(options.body);
+          if(args.channel===${JSON.stringify(channel)}) return Promise.resolve(new Response(JSON.stringify({path:${JSON.stringify(selectedPath)}}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}}));
+          if(['archive:export','archive:import'].includes(args.channel)) window.__archiveTransferCalls.push(args.channel);
+        }
+        return window.__archiveOriginalFetch(input,options);
+      };
+    })()`);
+    try { await action(); }
+    finally {
+      await evaluate('window.fetch = window.__archiveOriginalFetch');
+    }
+  };
+  const gesture = async (selector, pattern) => {
+    let { x, y } = await evaluate(
+      `(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`,
+    );
+    const mouse = (type, buttons) =>
+      cdp.send("Input.dispatchMouseEvent", {
+        type, x, y, button: "right", buttons, clickCount: 1,
+      });
+    await mouse("mousePressed", 2);
+    for (const direction of pattern) {
+      for (let step = 0; step < 6; step++) {
+        x += direction === "R" ? 12 : direction === "L" ? -12 : 0;
+        y += direction === "D" ? 12 : direction === "U" ? -12 : 0;
+        await mouse("mouseMoved", 2);
+        await sleep(16);
+      }
+    }
+    if (pattern) {
+      assert(
+        await evaluate(
+          '!!document.querySelector(".mg-name") && Number(getComputedStyle(document.querySelector(".mg-layer")).zIndex) > Number(getComputedStyle(document.querySelector(".arc-overlay")).zIndex)',
+        ),
+        "Recognized gestures remain visible above the archive",
+      );
+    }
+    await mouse("mouseReleased", 0);
+    await sleep(350);
+  };
   await until('!!document.querySelector(".ma-panel .composer textarea")');
   await evaluate(
     '(()=>{const b=[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="시작하기");if(b)b.click()})()',
@@ -286,7 +335,17 @@ try {
     0,
     "Empty archive opens without a current chat binding",
   );
-  await evaluate('document.querySelector(".arc-close").click()');
+  await evaluate('document.querySelector(".arc-import").click()');
+  await until('!!document.querySelector(".arc-import-menu[open]")');
+  await evaluate('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))');
+  assert(await evaluate('!!document.querySelector(".arc-dialog") && !document.querySelector(".arc-import-menu[open]")'),
+    "Escape dismisses import choices without closing the archive");
+  await gesture(".arc-library-empty", "DR");
+  await until('!document.querySelector(".arc-dialog")');
+  assert(
+    await evaluate('!document.querySelector(".arc-session-menu")'),
+    "Closing an empty archive by gesture does not open a context menu",
+  );
   // A v1 session may have thousands of raw events before its first message.
   // Seed a committed index in the isolated home so the session-wide viewer must
   // cross an empty filtered page automatically without a user clicking Next.
@@ -449,6 +508,18 @@ try {
     'document.querySelector(".arc-detail-scroll")?.textContent.includes("대화와 도구 실행") && document.querySelector(".arc-detail-scroll")?.textContent.includes("생성된 HTML")',
   );
   await screenshot("archive-session-conversation");
+  assert(await evaluate('document.querySelector(".arc-export").disabled'),
+    "Recording must be paused before exporting a consistent session");
+  assert(
+    await evaluate(
+      '(()=>{const s=document.querySelector(".arc-detail-scroll");return s.scrollHeight>s.clientHeight})()',
+    ),
+    "The recorded conversation is tall enough to exercise scrolling",
+  );
+  await gesture(".arc-detail-scroll", "D");
+  await until('(()=>{const s=document.querySelector(".arc-detail-scroll");return s.scrollTop>0 && s.scrollHeight-s.clientHeight-s.scrollTop<2})()');
+  await gesture(".arc-detail-scroll", "U");
+  await until('document.querySelector(".arc-detail-scroll").scrollTop===0');
   assert(
     await evaluate('!document.querySelector(".arc-tabs")'),
     "The reader has one conversation flow with no category tabs",
@@ -479,7 +550,7 @@ try {
     await evaluate(
       '!!document.querySelector(".arc-diagnostics [data-kind=capture-error]") && !document.querySelector(".arc-detail-scroll [data-kind=coverage-gap], .arc-detail-scroll [data-kind=capture-error]")',
     ),
-    "Previously saved capture errors remain accessible only in capture status",
+    "Previously saved capture errors remain accessible only in error notifications",
   );
   await screenshot("archive-capture-status");
   await evaluate('document.querySelector(".arc-diagnostics-toggle").click()');
@@ -613,6 +684,21 @@ try {
   const reloadedTurns = await evaluate(archive("turns"));
   assert.equal(reloadedTurns.items.length, 1);
   assert(reloadedTurns.items[0].title.includes("대화와 도구 실행"));
+  await openLibrary();
+  await withArchivePicker("archive:pick-export", null, async () => {
+    await evaluate('document.querySelector(".arc-export").click()');
+    await until('!document.querySelector(".arc-export").disabled');
+    assert.deepEqual(await evaluate('window.__archiveTransferCalls'), []);
+    assert(await evaluate('!document.querySelector(".arc-banner")'), "Cancelling export is not an error");
+  });
+  const exportedZip = path.join(home, "공유 세션.zip");
+  await withArchivePicker("archive:pick-export", exportedZip, async () => {
+    await evaluate('document.querySelector(".arc-export").click()');
+    await until(`document.querySelector('.arc-storage-notice')?.textContent.includes(${JSON.stringify(exportedZip)}) && !document.querySelector('.arc-export').disabled`);
+  });
+  assert(fs.statSync(exportedZip).size > 0);
+  await screenshot("archive-session-exported");
+  await evaluate('document.querySelector(".arc-close").click()');
   const nextRoot = path.join(home, "alternate-archive");
   const sessionFolder = await evaluate(archive("session-folder"));
   assert.equal(sessionFolder.path, path.join(chatsDir, chat));
@@ -650,16 +736,11 @@ try {
   try {
     assert(!fs.existsSync(work) && !fs.existsSync(originalRoot));
     await openLibrary();
-    await evaluate(
-      `(()=>{window.__archivePickDirectory = window.api.pickDirectory; window.api.pickDirectory = async () => ${JSON.stringify(sharedSession)}; return true})()`,
-    );
-    await evaluate('document.querySelector(".arc-import").click()');
-    await until(
-      '!!document.querySelector(".arc-session") && !document.querySelector(".arc-import").disabled',
-    );
-    await evaluate(
-      "(()=>{window.api.pickDirectory = window.__archivePickDirectory; delete window.__archivePickDirectory; return true})()",
-    );
+    await withArchivePicker("archive:pick-import", sharedSession, async () => {
+      await evaluate('document.querySelector(".arc-import").click()');
+      await evaluate('document.querySelector(".arc-import-folder").click()');
+      await until('!!document.querySelector(".arc-session") && document.querySelector(".arc-import").getAttribute("aria-disabled")==="false"');
+    });
     assert.equal((await evaluate(archive("status"))).config.enabled, false);
     const objectCall = (channel, hash) =>
       `window.__TAURI_INTERNALS__.invoke('ipc_call',{channel:'archive:${channel}',payload:[${JSON.stringify({ chatId: chat, hash, name: "result.html", offset: 0 })}]})`;
@@ -717,7 +798,8 @@ try {
     await until(
       '!document.querySelector(".arc-session-menu") && !!document.querySelector(".arc-dialog")',
     );
-    await openSessionMenu();
+    await gesture(".arc-session", "");
+    await until('!!document.querySelector(".arc-session-menu")');
     await evaluate(
       'document.querySelector(".arc-session-menu .ctx-item").click()',
     );
@@ -743,11 +825,54 @@ try {
       fs.readFileSync(path.join(importedSessionPath, "Chat", "events.jsonl")),
       importedLog,
     );
-    await evaluate('document.querySelector(".arc-close").click()');
+    await gesture(".arc-session", "DR");
+    await until('!document.querySelector(".arc-dialog")');
+    assert(
+      await evaluate('!document.querySelector(".arc-session-menu")'),
+      "A close gesture starting on a session row suppresses its context menu",
+    );
     await openLibrary();
     await until(
       `document.querySelector('.arc-session h3')?.textContent===${JSON.stringify(renamedTitle)}`,
     );
+    const namedZip = path.join(home, "이름 바꾼 세션.zip");
+    await withArchivePicker("archive:pick-export", namedZip, async () => {
+      await evaluate('document.querySelector(".arc-export").click()');
+      await until(`document.querySelector('.arc-storage-notice')?.textContent.includes(${JSON.stringify(namedZip)})`);
+    });
+    const zipRoot = path.join(home, "zip-imported-archive");
+    await evaluate('document.querySelector(".arc-close").click()');
+    await evaluate(rootCall(zipRoot));
+    await openLibrary();
+    try {
+      const importZip = async (file) => {
+        await withArchivePicker("archive:pick-import", file, async () => {
+          await evaluate('document.querySelector(".arc-import").click()');
+          await evaluate('document.querySelector(".arc-import-zip").click()');
+          await until('document.querySelector(".arc-import").getAttribute("aria-disabled")==="false"');
+        });
+      };
+      await importZip(null);
+      assert.deepEqual(await evaluate('window.__archiveTransferCalls'), []);
+      assert(await evaluate('!document.querySelector(".arc-banner")'), "Cancelling ZIP import is not an error");
+      await importZip(namedZip);
+      await until(`document.querySelector('.arc-session h3')?.textContent===${JSON.stringify(renamedTitle)}`);
+      assert.deepEqual(fs.readFileSync(path.join(zipRoot, "chats", chat, "Chat", "events.jsonl")), importedLog);
+      assert.equal((await evaluate(objectCall("object", modified.payload.after.hash))).text, after);
+      assert.equal((await evaluate(archive("status"))).config.enabled, false);
+      await importZip(namedZip);
+      await until('document.querySelectorAll(".arc-session").length===2');
+      await screenshot("archive-session-zip-imported");
+      const corruptZip = path.join(home, "broken.zip");
+      fs.writeFileSync(corruptZip, fs.readFileSync(namedZip).subarray(0, 100));
+      await importZip(corruptZip);
+      await until('!!document.querySelector(".arc-banner")');
+      assert.equal(await evaluate('document.querySelectorAll(".arc-session").length'), 2);
+    } finally {
+      await evaluate('document.querySelector(".arc-close")?.click()');
+      await evaluate(rootCall(portableRoot));
+      await openLibrary();
+    }
     // A stale dialog cannot delete an identically named session in a new root.
     const wrongRoot = await evaluate(
       `window.__TAURI_INTERNALS__.invoke('ipc_call',{channel:'archive:delete',payload:[${JSON.stringify({ chatId: chat, root: sharedSession })}]})`,
@@ -942,8 +1067,10 @@ try {
         checks: [
           "native header toggle",
           "sidebar library entry and empty archive",
+          "visible mouse gestures, scroll to top/bottom and close from empty archive or session row",
+          "ordinary right-click menu preserved and gesture context menu suppressed",
           "one conversation flow with tool actions and grouped file versions",
-          "capture notices hidden from conversation and available in status details",
+          "capture notices hidden from conversation and available in error notifications",
           "all turns in one session across restarts",
           "automatic scan past 4001 raw events before conversation",
           "global session search",
@@ -960,6 +1087,7 @@ try {
           "storage location round trip",
           "v1 migration and self-contained Chat/View session layout",
           "single session folder imported through UI without original workspace or archive",
+          "ZIP export/import, cancellation, preserved names and file bytes, duplicate IDs and corrupt ZIP rejection",
           "session context menu, persisted rename, delete cancellation and confirmed deletion",
           "graceful shutdown and native restart",
           "enabled preference and first post-restart request",

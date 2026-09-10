@@ -70,6 +70,191 @@ fn full_payload(dir: &Path, seq: u64) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
+fn portable_zip_fixture(f: &Fixture) -> (Archive, Vec<(String, Vec<u8>)>) {
+    let root = f.archive();
+    let mut j = journal::Journal::open(&root, "zip-session").unwrap();
+    let source = f.workspace().join("코드 🧪.txt");
+    let view = layout::view_dir(&root, "zip-session").unwrap();
+    let mut objects = Vec::new();
+    for bytes in [b"before\r\n".to_vec(), "after 🧪\n".as_bytes().to_vec(), vec![0, 137, 255, 42]] {
+        fs::write(&source, &bytes).unwrap();
+        objects.push((files::store_file(&view, &source).unwrap().0, bytes));
+    }
+    j.append(&Captured::new("input", &user("모든 요청과 응답을 옮겨줘"))).unwrap();
+    j.append(&Captured::new("tool", &json!({"type":"tool_result","content":"Unicode output 🧪\n".repeat(20_000)}))).unwrap();
+    j.append(&Captured::new("file", &json!({"type":"file-version","path":source,"change":"modified","before":{"hash":objects[0].0},"after":{"hash":objects[1].0}}))).unwrap();
+    j.append(&Captured::new("file", &json!({"type":"file-version","path":source,"change":"deleted","before":{"hash":objects[1].0},"after":null}))).unwrap();
+    j.flush(true).unwrap();
+    drop(j);
+    let chat = journal::chat_dir(&root, "zip-session").unwrap();
+    // The binary baseline is referenced only in the manifest, not the timeline.
+    fs::write(chat.join("files-manifest.jsonl"), format!("{}\n", json!([source,{"hash":objects[2].0,"bytes":4,"modified":0,"link":null}]))).unwrap();
+    fs::write(chat.join("config.json"), json!({"enabled":false,"cwd":f.workspace(),"roots":[],"title":"Original title"}).to_string()).unwrap();
+    layout::rename_session(&root, "zip-session", "공유 세션 🧪").unwrap();
+    (Archive::new(root).unwrap(), objects)
+}
+
+fn zip_contents(path: &Path) -> Vec<(String, Vec<u8>)> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+    (0..zip.len()).map(|i| {
+        let mut file = zip.by_index(i).unwrap();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        (file.name().to_owned(), bytes)
+    }).collect()
+}
+
+fn write_zip(path: &Path, entries: &[(String, Vec<u8>)]) {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, bytes) in entries {
+        if name.ends_with('/') {
+            writer.add_directory(name, options).unwrap();
+        } else {
+            writer.start_file(name, options).unwrap();
+            writer.write_all(bytes).unwrap();
+        }
+    }
+    writer.finish().unwrap();
+}
+
+#[test]
+fn session_zip_round_trip_preserves_history_binary_baseline_name_and_duplicates() {
+    let f = Fixture::new();
+    let (a, objects) = portable_zip_fixture(&f);
+    let chat = journal::chat_dir(&a.root, "zip-session").unwrap();
+    let before = fs::read(chat.join("events.jsonl")).unwrap();
+    let viewer_copy = files::materialize(&a.root, "zip-session", &objects[0].0, "cached.txt").unwrap();
+    fs::write(viewer_copy, "Disposable viewer edit").unwrap();
+    fs::create_dir_all(layout::view_dir(&a.root, "zip-session").unwrap().join("pending")).unwrap();
+    fs::write(layout::view_dir(&a.root, "zip-session").unwrap().join("pending/unfinished.tmp"), "not a saved version").unwrap();
+    let destination = f.0.join("공유 세션.zip");
+    let exported = a.export_session("zip-session", &destination).unwrap();
+    assert_eq!(exported["bytes"].as_u64(), Some(fs::metadata(&destination).unwrap().len()));
+    assert!(zip_contents(&destination).iter().all(|(name, _)| !name.starts_with("View/files/") && !name.starts_with("View/pending/")));
+    fs::rename(&a.root, f.0.join("unavailable-archive")).unwrap();
+    fs::rename(f.workspace(), f.0.join("unavailable-workspace")).unwrap();
+    let imported_root = f.0.join("imported");
+    let imported = transfer::import_zip(&imported_root, &destination).unwrap();
+    assert_eq!(imported["chatId"], "zip-session");
+    let imported_chat = journal::chat_dir(&imported_root, "zip-session").unwrap();
+    assert_eq!(fs::read(imported_chat.join("events.jsonl")).unwrap(), before);
+    assert_eq!(journal::session_page(&imported_root, 0, "").unwrap()["items"][0]["title"], "공유 세션 🧪");
+    assert!(!Archive::new(imported_root.clone()).unwrap().saved_config("zip-session").unwrap().enabled);
+    for (hash, bytes) in objects {
+        let path = files::materialize(&imported_root, "zip-session", &hash, "restored.bin").unwrap();
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+    let duplicate = transfer::import_zip(&imported_root, &destination).unwrap();
+    assert_ne!(duplicate["chatId"], imported["chatId"]);
+    assert_eq!(journal::session_page(&imported_root, 0, "").unwrap()["total"], 2);
+    assert_eq!(fs::read(imported_chat.join("events.jsonl")).unwrap(), before);
+}
+
+#[test]
+fn session_zip_accepts_a_single_enclosing_folder() {
+    let f = Fixture::new();
+    let (a, _) = portable_zip_fixture(&f);
+    let destination = f.0.join("plain.zip");
+    a.export_session("zip-session", &destination).unwrap();
+    let mut contents = vec![("공유 세션/".to_string(), Vec::new())];
+    contents.extend(zip_contents(&destination).into_iter().map(|(name, bytes)| (format!("공유 세션/{name}"), bytes)));
+    let wrapped = f.0.join("wrapped.zip");
+    write_zip(&wrapped, &contents);
+    let root = f.0.join("wrapped-import");
+    assert_eq!(transfer::import_zip(&root, &wrapped).unwrap()["chatId"], "zip-session");
+}
+
+#[test]
+fn session_zip_rejects_recording_and_protects_existing_export_on_failure() {
+    let f = Fixture::new();
+    let root = f.archive();
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("live").unwrap();
+    let mut config = Config { enabled: true, cwd: f.workspace().to_string_lossy().into(), roots: vec![], title: "Live".into() };
+    r.configure(config.clone()).unwrap();
+    r.record("input", &user("Do not stop recording just to export"));
+    let destination = f.0.join("existing.zip");
+    fs::write(&destination, "existing file").unwrap();
+    assert!(a.export_session("live", &destination).is_err());
+    assert!(r.enabled.load(Ordering::Acquire));
+    assert_eq!(fs::read(&destination).unwrap(), b"existing file");
+    config.enabled = false;
+    r.configure(config).unwrap();
+    a.export_session("live", &destination).unwrap();
+    assert!(zip_contents(&destination).iter().any(|(name, bytes)| name == "Chat/events.jsonl" && !bytes.is_empty()));
+    assert!(a.export_session("live", &root.join("unsafe.zip")).is_err());
+    assert!(!root.join("unsafe.zip").exists());
+    a.shutdown();
+}
+
+#[test]
+fn session_zip_export_checks_object_hash_before_replacing_a_file() {
+    let f = Fixture::new();
+    let (a, objects) = portable_zip_fixture(&f);
+    let destination = f.0.join("existing.zip");
+    fs::write(&destination, "keep existing file").unwrap();
+    let object = files::object_path(&layout::view_dir(&a.root, "zip-session").unwrap(), &objects[0].0).unwrap();
+    fs::write(object, "damaged bytes").unwrap();
+    assert!(a.export_session("zip-session", &destination).is_err());
+    assert_eq!(fs::read(&destination).unwrap(), b"keep existing file");
+}
+
+#[test]
+fn session_zip_rejects_missing_or_corrupt_objects_without_publishing_or_leaving_staging() {
+    let f = Fixture::new();
+    let (a, _) = portable_zip_fixture(&f);
+    let destination = f.0.join("source.zip");
+    a.export_session("zip-session", &destination).unwrap();
+    let contents = zip_contents(&destination);
+    let object = contents.iter().position(|(name, _)| name.starts_with("View/objects/") && !name.ends_with('/')).unwrap();
+    for remove in [false, true] {
+        let mut broken = contents.clone();
+        if remove { broken.remove(object); } else { broken[object].1[0] ^= 1; }
+        let zip = f.0.join(format!("bad-{remove}.zip"));
+        write_zip(&zip, &broken);
+        let target = f.0.join(format!("bad-import-{remove}"));
+        assert!(transfer::import_zip(&target, &zip).is_err());
+        assert_eq!(journal::session_page(&target, 0, "").unwrap()["total"], 0);
+        assert_eq!(fs::read_dir(target.join("chats")).unwrap().count(), 0);
+    }
+    let mut wrong_layout: Vec<_> = contents.into_iter().filter(|(name, _)| !name.starts_with("View/")).collect();
+    wrong_layout.push(("View".into(), b"not a directory".to_vec()));
+    let zip = f.0.join("wrong-layout.zip");
+    write_zip(&zip, &wrong_layout);
+    let target = f.0.join("wrong-layout-import");
+    assert!(transfer::import_zip(&target, &zip).is_err());
+    assert_eq!(fs::read_dir(target.join("chats")).unwrap().count(), 0);
+}
+
+#[test]
+fn session_zip_rejects_unsafe_paths_duplicate_aliases_and_symlinks() {
+    let f = Fixture::new();
+    let (a, _) = portable_zip_fixture(&f);
+    let destination = f.0.join("source.zip");
+    a.export_session("zip-session", &destination).unwrap();
+    let contents = zip_contents(&destination);
+    let sentinel = f.0.join("untouched.txt");
+    fs::write(&sentinel, "must remain").unwrap();
+    for (i, name) in ["../../untouched.txt", "/absolute.txt", "C:/absolute.txt", "Chat/../escape.txt", "Chat\\escape.txt", "Chat/events.jsonl:extra", "Chat/NUL", "Chat/entries.idx.", "chat/FORMAT.JSON"].iter().enumerate() {
+        let mut malicious = contents.clone();
+        malicious.push((name.to_string(), b"unexpected".to_vec()));
+        let zip = f.0.join(format!("unsafe-{i}.zip"));
+        write_zip(&zip, &malicious);
+        let target = f.0.join(format!("unsafe-import-{i}"));
+        assert!(transfer::import_zip(&target, &zip).is_err(), "accepted {name}");
+        assert_eq!(journal::session_page(&target, 0, "").unwrap()["total"], 0);
+        assert_eq!(fs::read(&sentinel).unwrap(), b"must remain");
+    }
+    let zip = f.0.join("symlink.zip");
+    let mut writer = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+    writer.add_symlink("Chat/link", "../../untouched.txt", zip::write::SimpleFileOptions::default()).unwrap();
+    writer.finish().unwrap();
+    assert!(transfer::import_zip(&f.0.join("symlink-import"), &zip).is_err());
+    assert_eq!(fs::read(&sentinel).unwrap(), b"must remain");
+}
+
 #[test]
 fn legacy_migration_keeps_every_version_and_import_needs_only_the_session() {
     let f = Fixture::new();

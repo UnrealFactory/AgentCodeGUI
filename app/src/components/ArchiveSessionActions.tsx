@@ -1,9 +1,62 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../lib/i18n";
-import { IconAlert, IconPencil, IconTrash } from "./icons";
+import { IconAlert, IconChevDown, IconFolder, IconPencil, IconTrash } from "./icons";
 
 export type ArchiveAction = "rename" | "delete";
+
+export function ArchiveImportButton({ disabled, importing, onImport }: {
+  disabled: boolean;
+  importing: boolean;
+  onImport: (kind: "zip" | "folder") => void;
+}) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  const close = (): void => { if (menu.current) menu.current.open = false; };
+  useEffect(() => { if (disabled) close(); }, [disabled]);
+  useEffect(() => {
+    const outside = (event: PointerEvent): void => {
+      if (!menu.current?.contains(event.target as Node)) close();
+    };
+    const key = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && menu.current?.open) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close();
+        menu.current.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, []);
+  const choose = (kind: "zip" | "folder"): void => {
+    close();
+    menu.current?.querySelector("summary")?.focus();
+    onImport(kind);
+  };
+  return (
+    <details ref={menu} className="arc-import-menu"
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(); }}>
+      <summary className="arc-button arc-import" aria-disabled={disabled} tabIndex={disabled ? -1 : 0}
+        onClick={(e) => { if (disabled) e.preventDefault(); }}>
+        <IconFolder size={15} />
+        {importing ? t("가져오는 중…", "Importing…") : t("세션 가져오기", "Import session")}
+        <IconChevDown size={12} />
+      </summary>
+      <div className="arc-import-options">
+        <button className="arc-import-zip" disabled={disabled} onClick={() => choose("zip")}>
+          {t("ZIP 파일에서 가져오기", "Import from ZIP")}
+        </button>
+        <button className="arc-import-folder" disabled={disabled} onClick={() => choose("folder")}>
+          {t("폴더에서 가져오기", "Import from folder")}
+        </button>
+      </div>
+    </details>
+  );
+}
 
 export function ArchiveSessionMenu({
   title,

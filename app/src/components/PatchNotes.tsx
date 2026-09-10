@@ -152,6 +152,28 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  '3.2.1': {
+    ko: {
+      eyebrow: 'UPDATE',
+      lead: '대화 기록소의 세션을 ZIP 하나로 옮길 수 있습니다. 기록소의 마우스 제스처와 오류 알림 표시도 개선했습니다.',
+      notes: [
+        { tag: '이동', name: '세션 ZIP 내보내기·가져오기', desc: '기록을 중지한 뒤 세션 폴더 옆의 세션 내보내기를 누르면 대화 원문, 세션 이름과 파일 사본을 ZIP 하나로 저장합니다. 세션 가져오기에서 ZIP 파일이나 기존 세션 폴더를 선택할 수 있습니다.' },
+        { tag: '검증', name: '기존 기록을 지키는 ZIP 가져오기', desc: '파일 사본의 손상이나 누락, 잘못된 압축 경로를 검사하고 같은 세션 ID가 있어도 별도 세션으로 가져옵니다. 내보내기가 실패하면 기존 ZIP을 유지하고, 가져오기가 실패하면 임시 파일을 정리합니다.' },
+        { tag: '제스처', name: '기록소에서도 닫기와 스크롤', desc: '우클릭 드래그로 ↓→를 그리면 기록소를 닫고, ↑/↓로 대화 맨 위·아래로 이동합니다. 제스처 궤적과 안내가 기록소 위에 보이도록 수정했으며, 일반 우클릭의 세션 메뉴도 그대로 사용할 수 있습니다.' },
+        { tag: '표시', name: '오류 알림과 기록 표시 정리', desc: '보관 상태를 오류 알림으로 바꾸고, 저장 오류와 누락 가능성을 확인하는 영역임을 명확히 했습니다. 아이콘을 다른 버튼처럼 글자 앞에 맞추고 보관됨 표시는 제거했습니다. 기록 중인 세션에만 대화 기록중을 표시합니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'UPDATE',
+      lead: 'Transfer an archived session as a single ZIP file. Mouse gestures and error notifications in the conversation archive have also been improved.',
+      notes: [
+        { tag: 'Transfer', name: 'Export and import session ZIP files', desc: 'Pause recording and choose Export session next to Session folder to save the original conversation, session name, and file snapshots in one ZIP. Import session now offers both ZIP files and existing session folders.' },
+        { tag: 'Validation', name: 'ZIP imports preserve existing records', desc: 'Import checks for damaged or missing snapshots and unsafe archive paths, and creates a separate session when IDs collide. Failed exports preserve the existing ZIP, while failed imports clean up temporary files.' },
+        { tag: 'Gestures', name: 'Close and scroll in the archive', desc: 'Hold the right mouse button and draw ↓→ to close the archive, or ↑/↓ to move to the top or bottom of the conversation. Gesture trails and labels now appear above the archive. A regular right-click still opens the session menu.' },
+        { tag: 'Display', name: 'Clearer error and recording indicators', desc: 'Capture status is now called Error notifications, with clearer descriptions of storage errors and possible gaps. Its icon appears before the label, matching the other buttons. The Saved badge has been removed; only sessions currently recording show Recording conversation.' }
+      ]
+    }
+  },
   '3.2.0': {
     ko: {
       eyebrow: 'FEATURE UPDATE',
