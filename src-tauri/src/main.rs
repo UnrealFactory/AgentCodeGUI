@@ -3,6 +3,7 @@
 
 mod crash;
 mod bridge;
+mod subscriptions;
 mod engine;
 /// 서브시스템 무력화 스위치 — 유휴 메모리 귀속용 A/B 팔 가르개(★R4, `flags.rs` 헤더).
 mod flags;
@@ -305,6 +306,7 @@ fn main() {
                     // 감시자가 오인하면 **닫아도 다시 뜨는 앱**이 된다.
                     crash::begin_shutdown();
                     bridge::shutdown();
+                    subscriptions::shutdown();
                     // ★M8-R2 — **트레이 아이콘을 놓아 준다.** TrayIcon은 refcount라
                     // `NIM_DELETE`가 Drop에서만 나가는데 static은 절대 drop되지 않는다
                     // (tray.rs `TRAY` 주석 · 크리틱 M8 §3.3). 안 놓으면 죽은 아이콘이

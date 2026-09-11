@@ -90,10 +90,34 @@ mod imp {
             ok
         }
     }
+
+    /// 한 번의 보조 작업이 끝날 때 남은 자손까지 정리하는 잡입니다.
+    pub struct ProcessScope(HANDLE);
+    unsafe impl Send for ProcessScope {}
+    impl Drop for ProcessScope {
+        fn drop(&mut self) { unsafe { CloseHandle(self.0); } }
+    }
+    pub fn scoped(pid: u32) -> Option<ProcessScope> {
+        unsafe {
+            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if handle.is_null() { return None }
+            let scope = ProcessScope(handle);
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if SetInformationJobObject(handle, JobObjectExtendedLimitInformation, &info as *const _ as *const _, std::mem::size_of_val(&info) as u32) == 0 { return None }
+            let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+            if process.is_null() { return None }
+            let ok = AssignProcessToJobObject(handle, process) != 0;
+            CloseHandle(process);
+            ok.then_some(scope)
+        }
+    }
 }
 
 #[cfg(not(windows))]
 mod imp {
+    pub struct ProcessScope;
+    pub fn scoped(_pid: u32) -> Option<ProcessScope> { None }
     pub fn adopt(_pid: u32) -> bool {
         false
     }
@@ -102,4 +126,4 @@ mod imp {
     }
 }
 
-pub use imp::{adopt, contains};
+pub use imp::{adopt, contains, scoped, ProcessScope};

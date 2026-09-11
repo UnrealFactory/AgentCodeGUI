@@ -135,6 +135,42 @@ pub fn parse_auth(raw: Option<&str>) -> Option<CodexIdentity> {
     None
 }
 
+/// 로그인 당시 확인된 구독 기간입니다. 갱신·취소 여부와 토큰의 `exp`는 별개입니다.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionPeriod {
+    pub ends_at: i64,
+    pub checked_at: Option<i64>,
+}
+
+/// 표시용 정보만 읽습니다. 설정을 열 때 토큰 갱신·폴더 생성·네트워크 요청은 하지 않습니다.
+pub fn subscription_period(email: &str) -> Option<SubscriptionPeriod> {
+    let raw = read_file_or_null(&account_dir(email).join("auth.json"))?;
+    parse_subscription_period(&raw, email)
+}
+
+fn parse_subscription_period(raw: &str, email: &str) -> Option<SubscriptionPeriod> {
+    let j: Value = serde_json::from_str(raw).ok()?;
+    let token = j.get("tokens")?.get("id_token")?.as_str()?;
+    let payload: Value = serde_json::from_slice(&b64url_decode(token.split('.').nth(1)?)?).ok()?;
+    // 폴더 내용이 다른 계정으로 바뀌었어도 그 날짜를 현재 행에 붙이지 않습니다.
+    if payload.get("email")?.as_str()? != email {
+        return None;
+    }
+    let auth = payload.get("https://api.openai.com/auth")?;
+    if auth.get("chatgpt_plan_type").and_then(Value::as_str) == Some("free") {
+        return None;
+    }
+    let date = |key: &str| -> Option<i64> {
+        let ms = crate::js::date_parse(auth.get(key)?.as_str()?)?;
+        (ms > 0.0 && ms <= 8_640_000_000_000_000.0).then_some((ms / 1000.0) as i64)
+    };
+    Some(SubscriptionPeriod {
+        ends_at: date("chatgpt_subscription_active_until")?,
+        checked_at: date("chatgpt_subscription_last_checked"),
+    })
+}
+
 /// base64url → 바이트. 표준 알파벳 디코더(ccg-store)는 그대로 쓰고 문자만 바꾼다.
 fn b64url_decode(s: &str) -> Option<Vec<u8>> {
     let std: String = s.chars().map(|c| match c {
@@ -569,6 +605,62 @@ mod tests {
         assert_eq!(parse_auth(Some(r#"{"OPENAI_API_KEY":"sk-x"}"#)), Some(CodexIdentity::default()));
         assert_eq!(parse_auth(Some("{}")), None);
         assert_eq!(parse_auth(Some("nope")), None);
+    }
+
+    fn subscription_auth(email: &str, claims: Value) -> String {
+        let payload = json!({ "email": email, "exp": 2_000_000_000, "https://api.openai.com/auth": claims });
+        let token = ccg_store::safe_storage::b64_encode(payload.to_string().as_bytes())
+            .replace('+', "-").replace('/', "_").replace('=', "");
+        json!({ "tokens": { "id_token": format!("h.{token}.s"), "access_token": "private" } }).to_string()
+    }
+
+    #[test]
+    fn subscription_period_uses_billing_claims_not_token_expiry() {
+        let raw = subscription_auth("billing@example.com", json!({
+            "chatgpt_plan_type": "pro",
+            "chatgpt_subscription_active_until": "2026-10-06T18:11:11+09:00",
+            "chatgpt_subscription_last_checked": "2026-09-06T09:13:18.360250+00:00"
+        }));
+        let period = parse_subscription_period(&raw, "billing@example.com").unwrap();
+        assert_eq!(period.ends_at, (crate::js::date_parse("2026-10-06T09:11:11Z").unwrap() / 1000.0) as i64);
+        assert_eq!(period.checked_at, Some((crate::js::date_parse("2026-09-06T09:13:18Z").unwrap() / 1000.0) as i64));
+        let display = serde_json::to_value(period).unwrap();
+        assert_eq!(display.as_object().unwrap().len(), 2, "원본 토큰·신원·추정 취소 상태는 화면에 보내지 않습니다");
+        assert!(parse_subscription_period(&raw, "another@example.com").is_none());
+        assert!(parse_subscription_period(&subscription_auth("billing@example.com", json!({})), "billing@example.com").is_none());
+    }
+
+    #[test]
+    fn subscription_period_missing_invalid_and_free_are_unknown() {
+        for claims in [
+            json!({ "chatgpt_subscription_active_until": null }),
+            json!({ "chatgpt_subscription_active_until": "not a date" }),
+            json!({ "chatgpt_subscription_active_until": "2026-99-99T09:11:11Z" }),
+            json!({ "chatgpt_plan_type": "free", "chatgpt_subscription_active_until": "2026-10-06T09:11:11Z" }),
+        ] {
+            assert!(parse_subscription_period(&subscription_auth("billing@example.com", claims), "billing@example.com").is_none());
+        }
+        assert!(parse_subscription_period("not json", "billing@example.com").is_none());
+        assert!(parse_subscription_period(r#"{"OPENAI_API_KEY":"private"}"#, "billing@example.com").is_none());
+        let raw = subscription_auth("billing@example.com", json!({ "chatgpt_subscription_active_until": "2020-01-01T00:00:00Z" }));
+        let old = parse_subscription_period(&raw, "billing@example.com").unwrap();
+        assert_eq!(old.checked_at, None);
+        assert_eq!(old.ends_at, 1_577_836_800, "지난 기간을 임의로 한 달 뒤로 늘리지 않습니다");
+    }
+
+    #[test]
+    fn subscription_period_read_does_not_materialize_or_write_credentials() {
+        let _h = temp_home("cx-subscription");
+        let email = "billing@example.com";
+        let dir = account_dir(email);
+        assert!(subscription_period(email).is_none());
+        assert!(!dir.exists());
+        std::fs::create_dir_all(&dir).unwrap();
+        let raw = subscription_auth(email, json!({ "chatgpt_subscription_active_until": "2026-10-06T09:11:11Z" }));
+        std::fs::write(dir.join("auth.json"), &raw).unwrap();
+        assert!(subscription_period(email).is_some());
+        assert_eq!(std::fs::read_to_string(dir.join("auth.json")).unwrap(), raw);
+        assert!(!store_path().exists());
     }
 
     #[test]

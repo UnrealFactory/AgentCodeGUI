@@ -831,6 +831,8 @@ export interface AccountInfo {
 export interface CodexAccountInfo {
   email: string
   plan: string | null // 'plus' · 'pro' · 'free' 등 (id_token의 chatgpt_plan_type)
+  /** 로그인 정보에 남아 있는 구독 기간(unix 초). 자동 갱신·취소 상태는 제공되지 않습니다. */
+  subscriptionPeriod?: { endsAt: number; checkedAt: number | null } | null
   /** ★R28 ACCT §4 — Anthropic과 같은 규약: **목록 맨 위**가 곧 기본(파생값). */
   isDefault: boolean
 }

@@ -16,7 +16,7 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         ch::PICK_DIRECTORY => pick_directory(app),
         "engine-environment:pick-path" => pick_engine_environment_path(app, arg(p, 0)),
 
-        // ── 계정 (읽기 전용 — 토큰 복호 없이 표시용 메타만) ─────────────────
+        // ── 계정 (읽기 전용 — 표시용 메타만 전달, 토큰 원문은 셸 안에 유지) ─────
         ch::AUTH_LIST_ACCOUNTS => list_claude_accounts(),
         ch::CODEX_LIST_ACCOUNTS => list_codex_accounts(),
 
@@ -274,6 +274,7 @@ pub(super) fn list_codex_accounts() -> Value {
             Some(json!({
                 "email": email,
                 "plan": a.get("plan").and_then(Value::as_str),
+                "subscriptionPeriod": ccg_auth::codex::subscription_period(email),
                 "isDefault": Some(email) == default_email
             }))
         })

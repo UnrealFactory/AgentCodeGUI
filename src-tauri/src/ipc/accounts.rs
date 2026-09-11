@@ -100,6 +100,7 @@ pub fn dispatch(app: &AppHandle, channel: &str, p: &Value) -> Option<Value> {
         // 해지 **없이** 목록에서만 뺀다. 해지까지 하는 문은 `auth:logout`이다.
         ch::AUTH_REMOVE_ACCOUNT => {
             claude::remove_account(arg(p, 0).as_str().unwrap_or(""));
+            crate::subscriptions::forget("claude", arg(p, 0).as_str().unwrap_or(""));
             super::system::list_claude_accounts()
         }
         ch::AUTH_REORDER_ACCOUNTS => {
@@ -605,6 +606,7 @@ fn logout(email: &str) -> Value {
     }
     // 스토어 제거 + 폴더 삭제 + 건강 장부 청소(전부 `ccg_auth::claude::remove_account`).
     claude::remove_account(email);
+    crate::subscriptions::forget("claude", email);
     super::system::list_claude_accounts()
 }
 
@@ -702,6 +704,7 @@ fn codex_logout(email: &str) -> Value {
     }
     // 등록 제거 + 폴더 정리(정션 해제 포함) — 전부 `ccg_auth::codex::remove_account`.
     ccg_auth::codex::remove_account(email);
+    crate::subscriptions::forget("codex", email);
     super::system::list_codex_accounts()
 }
 

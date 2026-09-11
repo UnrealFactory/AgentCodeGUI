@@ -3493,6 +3493,16 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .sc2.acct .em{ display:flex; align-items:center; min-width:0; }
 .sc2.acct .em .emt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sc2.acct .em .set-badge{ flex:0 0 auto; }
+.acct-subscription{ display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px; margin-top:5px; font-size:11px; line-height:1.5; color:var(--text-3); }
+.acct-subscription-link{ padding:0; color:var(--text-3); font:inherit; text-align:left; }
+.acct-subscription-link:hover, .acct-subscription-link:focus-visible{ color:var(--accent-2); text-decoration:underline; }
+.acct-subscription [role="alert"]{ flex-basis:100%; color:var(--amber); }
+.acct-subscription-actions{ display:flex; flex-wrap:wrap; gap:3px 10px; flex-basis:100%; }
+.acct-subscription-cancels{ color:var(--amber); }
+.acct-subscription-checked{ font-size:10px; color:var(--text-4); }
+.acct-subscription-help{ flex-basis:100%; overflow-wrap:anywhere; color:var(--text-3); }
+.sc2.acct > .acct-subscription{ flex-basis:100%; margin-top:0; padding-top:9px; border-top:1px solid var(--line); }
+.sc2.acct > .acct-subscription .acct-subscription-actions{ flex-basis:auto; margin-left:auto; }
 .ava2{ width:40px; height:40px; border-radius:99px; display:grid; place-items:center; font-size:14px; font-weight:700; color:#fff; flex:0 0 auto; box-shadow:0 5px 14px -5px rgba(0,0,0,.5); }
 /* 초기화 시각 열(.lr)·"n% 남음" 값 칸만큼 넓힌 폭. margin-left:auto — 게이지 블록을
    오른쪽(삭제 버튼 쪽)으로 바짝 붙인다(2026-09-01 사용자: "5시간 이런 거 다 »로 땡겨줘") */

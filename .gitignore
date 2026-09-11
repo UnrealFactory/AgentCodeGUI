@@ -35,6 +35,7 @@ promo/
 # dev 격리 홈 (CCG_HOME) — flags 스윕 등 벤치 홈 변형 전부
 .devhome/
 .dev-home/
+.dev-subscriptions/
 .bench-home*/
 # ★크리틱·PoC가 레포 안에 만든 격리 홈. 2026-08-26에 10MB짜리
 # `.crit-home-m10r6b-r28h1halt-off/`가 루트에 남아 있었고 그 안에 `accounts.json`이

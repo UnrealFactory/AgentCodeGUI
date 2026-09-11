@@ -11,6 +11,7 @@ import type {
 import { FileBadge } from './fileType'
 import { EngineEnvironmentCard } from './EngineEnvironmentCard'
 import { CodexResetCredits } from './CodexResetCredits'
+import { AccountSubscription } from './AccountSubscription'
 import { CodexContextCard } from './CodexContextCard'
 import { TranslationSettingsView } from './TranslationSettingsView'
 import { ExternalToolsSettingsView } from './ExternalToolsSettingsView'
@@ -644,6 +645,7 @@ function AccountView(): React.ReactElement {
                   {busy === a.email ? t('삭제 중…', 'Deleting…') : t('삭제', 'Delete')}
                 </button>
               </div>
+              <AccountSubscription provider="claude" email={a.email} />
             </div>
             )
           })}
@@ -704,6 +706,11 @@ function AccountView(): React.ReactElement {
                   {busy === 'cx:' + a.email ? t('삭제 중…', 'Deleting…') : t('삭제', 'Delete')}
                 </button>
               </div>
+              <AccountSubscription
+                provider="codex"
+                email={a.email}
+                period={(cxUsage[a.email]?.planType ?? a.plan) === 'free' ? null : a.subscriptionPeriod}
+              />
             </div>
             )
           })}

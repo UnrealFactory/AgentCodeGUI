@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agentcodegui"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -409,7 +409,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-auth"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "ccg-store",
  "native-tls",
@@ -423,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-engine"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "chrono",
  "serde",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-fs"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "ccg-store",
  "serde",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-lsp"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "ccg-fs",
  "ccg-store",
@@ -456,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "ccg-store"
-version = "3.2.2"
+version = "3.2.3"
 dependencies = [
  "aes-gcm",
  "ignore",
