@@ -295,16 +295,16 @@ input,textarea{ font-family:inherit; }
 
 /* ---- 자동 숨김(설정 › Display) — 오버레이 방식(B). 왼쪽 칼럼을 흐름에서 빼(position:absolute)
    본문(.chat/.multi)이 폭을 가득 쓰고, 사이드바만 본문 위로 transform 슬라이드해 들고난다.
-   본문은 제자리(리플로우 없음)라 멀미가 없다. 대신 사이드바 뒤엔 창 벽지가 아니라 본문이 깔려
-   벽지 비침은 못 낸다 — 그래서 메뉴·팝오버와 같은 프로스트 유리 recipe(강한 backdrop blur로 뒤
-   본문을 갈아냄)로 유리감을 낸다. 포털된 .ctx-menu·.sconfirm은 body 소속이라 이 transform의
+   본문은 제자리(리플로우 없음)다. 움직이는 큰 면의 배경 블러는 뒤 대화가 갱신될 때도
+   합성 비용을 더하므로 짙은 배경으로 가독성을 유지하고 transform만 움직인다.
+   포털된 .ctx-menu·.sconfirm은 body 소속이라 이 transform의
    containing block/스태킹 함정(위 주석)에 안 걸린다 — 일반·멀티 공용. */
 .lcol.autohide{
   position:absolute; left:0; top:0; bottom:0; z-index:60; overflow:visible;
-  background:rgba(28,28,28,.72); border-right:1px solid rgba(255,255,255,.10);
-  -webkit-backdrop-filter:blur(32px) saturate(1.25); backdrop-filter:blur(32px) saturate(1.25);
+  background:rgba(28,28,28,.97); border-right:1px solid rgba(255,255,255,.10);
+  -webkit-backdrop-filter:none; backdrop-filter:none;
   transform:translateX(-101%);
-  /* 3.0.3: 레이어를 상주시킨다 — 숨김/펼침마다 블러 서피스와 래스터를 새로 만들지 않게 */
+  /* 슬라이드 레이어를 재사용해 펼칠 때마다 래스터를 다시 준비하지 않는다. */
   will-change:transform;
   transition:transform .26s cubic-bezier(.2,.8,.2,1);
 }
@@ -2155,6 +2155,10 @@ button.wb-prow{ width:100%; text-align:left; }
   box-shadow:0 26px 70px -16px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
   outline:none; animation:rise .18s cubic-bezier(.2,.8,.2,1) both;
 }
+/* 질문은 모든 엔진·패널에서 같은 타이포와 여백을 쓴다. 좁거나 낮은 패널에서는
+   글자를 줄이지 않고 카드 폭과 내부 스크롤로 맞춘다. */
+.qcard.qcard-question{ max-height:100%; min-width:0; overflow-x:hidden; }
+.qcard-question .qbt, .qcard-question .ql, .qcard-question .qd{ overflow-wrap:anywhere; }
 .qhead{ display:flex; align-items:center; gap:8px; margin-bottom:12px; }
 .qhead > svg{ color:var(--text-3); flex:0 0 auto; }
 .qhl{ font-size:11.5px; font-weight:600; color:var(--text-4); }
@@ -4383,10 +4387,10 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 .ma-p-empty-ic{ display:grid; place-items:center; color:var(--text-2); }
 .ma-p-empty-text{ font-size:12.5px; color:var(--text-4); }
 
-/* ── 패널 스코프 승인/질문 카드 — 좁은 그리드 패널용 컴팩트 서식 ──────────────
-   .ma-panel(position:relative) 덕에 .q-overlay가 물어본 패널만 덮는다. 3열 그리드의
-   패널은 ~400px 폭이라 전체 화면용 카드(580px, 큰 타이포)가 안 들어가므로 여기서
-   줄인다. .ma-grid 스코프 — 크게 보기 카드 안에선 본채팅 크기 카드로 돌아온다. */
+/* ── 패널 스코프 승인/질문 카드 ───────────────────────────────────────────
+   .ma-panel(position:relative) 덕에 .q-overlay가 물어본 패널만 덮는다.
+   좁은 그리드는 바깥 여백을 줄이며, 승인·폴백 확인에만 컴팩트 서식을 적용한다.
+   질문은 창·패널 배치와 관계없이 같은 크기로 읽고 답한다. */
 .ma-grid .ma-panel .q-overlay{ padding:12px; border-radius:13px; }
 /* 내려둔 질문 알약 — 워크플로/btw 알약과 같은 선반(컴포저·WorkBar 위 84px).
    10px는 패널에 컴포저가 없던 시절의 값 — 지금은 컴포저 한복판에 앉는다
@@ -4394,8 +4398,8 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
    알약 y 821-857 vs 컴포저 811-867). */
 .ma-grid .ma-panel .q-mini{ bottom:84px; max-width:calc(100% - 20px); font-size:11.5px; gap:7px; padding:5px 6px 5px 12px; }
 .ma-grid .ma-panel .q-mini .qmt{ overflow:hidden; text-overflow:ellipsis; }
-/* 질문/승인 카드 (qcard 공용) */
-.ma-grid .ma-panel .qcard{ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
+/* 승인·폴백 확인 카드만 축소한다. 질문은 본채팅 카드 서식을 유지한다. */
+.ma-grid .ma-panel .qcard:not(.qcard-question){ max-height:100%; padding:13px 15px 12px; border-radius:13px; }
 /* 워크플로 알약/카드 — 패널 미니어처: 알약은 컴포저 위, 카드는 패널 전면을 덮는 보드.
    질문 알약과 동시 상주면 한 층 위로(본채팅 96/140 층계의 84/124 축소판) */
 .ma-grid .ma-panel .wf-dock{ bottom:84px; max-width:calc(100% - 20px); gap:6px; }
@@ -4415,17 +4419,17 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
 }
 @keyframes wffade{ from{ opacity:0; } }
 .ma-grid .ma-panel .wf-rail{ width:118px; }
-.ma-grid .ma-panel .qhead{ margin-bottom:8px; }
-.ma-grid .ma-panel .qbt{ font-size:14px; }
-.ma-grid .ma-panel .qopts{ margin-top:10px; gap:5px; }
-.ma-grid .ma-panel .qopt{ padding:9px 32px 9px 11px; border-radius:9px; }
-.ma-grid .ma-panel .qopt .ql{ font-size:12.5px; }
-.ma-grid .ma-panel .qopt .qd{ font-size:11.5px; line-height:1.45; }
-.ma-grid .ma-panel .qopt .qck{ right:10px; }
-.ma-grid .ma-panel .qopt-free input{ font-size:12px; }
-.ma-grid .ma-panel .qfoot{ margin-top:10px; }
-.ma-grid .ma-panel .qhint{ font-size:10.5px; }
-.ma-grid .ma-panel .qgo{ padding:6px 13px; font-size:12px; border-radius:8px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qhead{ margin-bottom:8px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qbt{ font-size:14px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopts{ margin-top:10px; gap:5px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopt{ padding:9px 32px 9px 11px; border-radius:9px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopt .ql{ font-size:12.5px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopt .qd{ font-size:11.5px; line-height:1.45; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopt .qck{ right:10px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qopt-free input{ font-size:12px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qfoot{ margin-top:10px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qhint{ font-size:10.5px; }
+.ma-grid .ma-panel .qcard:not(.qcard-question) .qgo{ padding:6px 13px; font-size:12px; border-radius:8px; }
 /* 승인 파츠 */
 .ma-grid .ma-panel .qtool{ font-size:10px; padding:2px 8px; }
 .ma-grid .ma-panel .qsum{ margin-top:9px; font-size:11.5px; padding:8px 10px; border-radius:8px; max-height:110px; }
@@ -4693,21 +4697,21 @@ body.rzm-resizing, body.rzm-resizing *{ user-select:none !important; }
   animation:wfrise .18s cubic-bezier(.2,.8,.2,1) both;
 }
 .ma-grid.n1 .ma-panel .wf-rail{ width:150px; }
-/* 질문/승인 카드 — 같은 이유의 되돌림(2026-09-01 사용자: 워크플로 카드와 함께 통일).
-   그리드 컴팩트 서식(4136-4182)을 본채팅 기본값으로 전부 복원한다 */
+/* 승인·폴백 확인 카드의 그리드 축소를 전폭에서 복원한다.
+   질문 카드는 모든 배치에서 이미 본채팅 서식을 쓴다. */
 .ma-grid.n1 .ma-panel .q-overlay{ padding:40px; border-radius:0; }
-.ma-grid.n1 .ma-panel .qcard{ max-height:88vh; padding:20px 24px 18px; border-radius:18px; }
-.ma-grid.n1 .ma-panel .qhead{ margin-bottom:12px; }
-.ma-grid.n1 .ma-panel .qbt{ font-size:17px; }
-.ma-grid.n1 .ma-panel .qopts{ margin-top:15px; gap:6px; }
-.ma-grid.n1 .ma-panel .qopt{ padding:12px 40px 12px 14px; border-radius:11px; }
-.ma-grid.n1 .ma-panel .qopt .ql{ font-size:14.5px; }
-.ma-grid.n1 .ma-panel .qopt .qd{ font-size:12.5px; line-height:1.5; }
-.ma-grid.n1 .ma-panel .qopt .qck{ right:13px; }
-.ma-grid.n1 .ma-panel .qopt-free input{ font-size:13.5px; }
-.ma-grid.n1 .ma-panel .qfoot{ margin-top:13px; }
-.ma-grid.n1 .ma-panel .qhint{ font-size:11px; }
-.ma-grid.n1 .ma-panel .qgo{ padding:8px 16px; font-size:12.5px; border-radius:9px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question){ max-height:88vh; padding:20px 24px 18px; border-radius:18px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qhead{ margin-bottom:12px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qbt{ font-size:17px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopts{ margin-top:15px; gap:6px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopt{ padding:12px 40px 12px 14px; border-radius:11px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopt .ql{ font-size:14.5px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopt .qd{ font-size:12.5px; line-height:1.5; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopt .qck{ right:13px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qopt-free input{ font-size:13.5px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qfoot{ margin-top:13px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qhint{ font-size:11px; }
+.ma-grid.n1 .ma-panel .qcard:not(.qcard-question) .qgo{ padding:8px 16px; font-size:12.5px; border-radius:9px; }
 .ma-grid.n1 .ma-panel .qtool{ font-size:11px; padding:3px 10px; }
 .ma-grid.n1 .ma-panel .qsum{ margin-top:12px; font-size:13px; padding:11px 13px; border-radius:10px; max-height:200px; }
 /* 본채팅과 같은 화살표 비킴·바닥 여백 — 질문 알약이 스크롤러 바로 위(96px)에 앉으므로 */

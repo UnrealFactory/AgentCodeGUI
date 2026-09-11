@@ -231,6 +231,7 @@ export const Explorer = memo(function Explorer({
     let alive = true
     discoverGitRepos(cwd)
       .then(async (list) => {
+        if (!alive) return
         const sts = await Promise.all(list.map((r) => window.api.git.status(r.root).catch(() => null)))
         if (!alive) return
         // .git 폴더가 있어도 진짜 저장소가 아니면(status 실패/repo:false) 조용히 제외

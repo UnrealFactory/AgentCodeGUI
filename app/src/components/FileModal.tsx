@@ -2279,8 +2279,11 @@ function HtmlPreview({ cwd, filePath, onBridgeKey }: { cwd: string; filePath: st
   useEffect(() => {
     if (!url) return
     let alive = true
-    const iv = setInterval(() => {
-      fetch(url, { method: 'HEAD' })
+    const abort = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = (): void => {
+      if (!alive) return
+      fetch(url, { method: 'HEAD', signal: abort.signal })
         .then((r) => {
           if (!alive) return
           const m = r.headers.get('last-modified') || ''
@@ -2288,10 +2291,13 @@ function HtmlPreview({ cwd, filePath, onBridgeKey }: { cwd: string; filePath: st
           lastMod.current = m
         })
         .catch(() => {})
-    }, 1500)
+        .finally(() => { if (alive) timer = setTimeout(tick, 1500) })
+    }
+    timer = setTimeout(tick, 1500)
     return () => {
       alive = false
-      clearInterval(iv)
+      clearTimeout(timer)
+      abort.abort()
     }
   }, [url])
   if (!url)
@@ -3172,8 +3178,10 @@ export function FileModal({
     let alive = true
     let warm = 0
     let errs = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
     const startedAt = Date.now()
     const tick = (): void => {
+      if (!alive) return
       window.api.lsp
         .status(cwd, effPath)
         .then((st) => {
@@ -3183,19 +3191,20 @@ export function FileModal({
           // 워밍은 길 수 있어 창은 그대로 넓게(≈8분) 두되, 횟수가 아니라 **경과 시간**으로 센다
           // (백오프가 초반 호출 수를 늘리므로 옛 `tries < 1200`은 창을 좁혔을 것이다).
           if ((st === 'starting' || st === 'installing') && Date.now() - startedAt < LSP_WARMUP_WINDOW_MS)
-            setTimeout(tick, WARMUP_POLL_MS[warm++] ?? LSP_POLL_STEADY_MS)
+            timer = setTimeout(tick, WARMUP_POLL_MS[warm++] ?? LSP_POLL_STEADY_MS)
           // 'error'에서 폴링을 멈추면 서버가 쿨다운(30초) 뒤 되살아나도 이 파일은 영영
           // lsp=off — 파일을 닫았다 열어야만 복구됐다. 느슨하게(3초) 계속 물어 다음
           // ensure가 재스폰하면 자동으로 starting→ready 경로에 다시 올라탄다.
           // (에러 재시도는 워밍 백오프와 **다른 시계**를 쓴다 — 섞으면 한 번 error를 본
           //  파일이 워밍 예산을 다 태워 재시도를 못 하게 된다.)
-          else if (st === 'error' && errs++ < 160) setTimeout(tick, 3000)
+          else if (st === 'error' && errs++ < 160) timer = setTimeout(tick, 3000)
         })
         .catch(() => alive && setLspStatus('error'))
     }
     tick()
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [effPath, cwd, isImg, ovContent, lspEpoch])
 
@@ -3265,12 +3274,14 @@ export function FileModal({
     let rearmed = false // ★LSPIDLE R3 — 이 사슬에서 status 폴링을 이미 깨웠는가
     let lastSig = '' // 마지막으로 받은 토큰의 지문 — 개선 감시(아래) 비교 기준
     let stable = 0 // 같은 결과가 연속으로 온 횟수 — 2번이면 확정으로 보고 폴링 종료
+    let timer: ReturnType<typeof setTimeout> | undefined
     const sig = (d: number[]): string => {
       let h = 0
       for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) | 0
       return d.length + ':' + h
     }
     const fetchTokens = (): void => {
+      if (!alive) return
       window.api.lsp
         .semanticTokens(cwd, effPath)
         .then((t) => {
@@ -3288,7 +3299,7 @@ export function FileModal({
               rearmed = true
               setLspEpoch((n) => n + 1)
             }
-            if (tries++ < 75) setTimeout(fetchTokens, 800)
+            if (tries++ < 75) timer = setTimeout(fetchTokens, 800)
             return
           }
           if (t && t.data.length) {
@@ -3302,8 +3313,8 @@ export function FileModal({
             // 토큰은 한 번 왔다고 최종이 아니다 — Roslyn(형제 프로젝트 컴파일 완료)·clangd
             // (백그라운드 인덱싱)는 시간이 지나며 분류가 좋아진다. 두 번 연속 같은 결과가
             // 나올 때까지 이어 물어 마지막 개선을 줍는다(보통 1~2번 만에 끝난다).
-            if (stable < 2 && tries++ < 90) setTimeout(fetchTokens, stable ? 2500 : 1200)
-          } else if (t && !lastSig && tries++ < 75) setTimeout(fetchTokens, 800)
+            if (stable < 2 && tries++ < 90) timer = setTimeout(fetchTokens, stable ? 2500 : 1200)
+          } else if (t && !lastSig && tries++ < 75) timer = setTimeout(fetchTokens, 800)
           // 빈 토큰이 재시도 한도까지 이어짐(컴파일 DB 밖 파일 등 — 서버가 이 문서에 끝내
           // 토큰을 안 줌) 또는 토큰 미지원 서버 — 분석칩을 내리고 hljs 색으로 확정한다.
           // 안 그러면 "심볼 분석 중" 배지가 영영 남는다. (이미 색이 있는데 빈 응답이 오면
@@ -3315,6 +3326,7 @@ export function FileModal({
     fetchTokens()
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [effPath, cwd, lspStatus, res, semEpoch])
 
@@ -3361,7 +3373,9 @@ export function FileModal({
       return
     }
     let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     const tick = (): void => {
+      if (!alive) return
       lspProjectStatusEx(cwd)
         .then((s) => {
           if (!alive) return
@@ -3371,13 +3385,13 @@ export function FileModal({
           setLspErr(s.error?.trim() || null)
         })
         .catch(() => {})
+        .finally(() => { if (alive) timer = setTimeout(tick, analyzing ? 800 : 3000) })
     }
     tick()
     // 죽은 뒤에는 급할 게 없다 — 재스폰 쿨다운이 30초라 3초 간격이면 충분하다.
-    const iv = setInterval(tick, analyzing ? 800 : 3000)
     return () => {
       alive = false
-      clearInterval(iv)
+      clearTimeout(timer)
     }
   }, [wantProjectStatus, analyzing, cwd])
 

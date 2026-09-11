@@ -21,6 +21,7 @@ import { imageSrc } from "../lib/images";
 import { loadArchivePage } from "../lib/archivePaging";
 import { ArchivePayloadCache } from "../lib/archiveReader";
 import { ArchiveVirtualList } from "./ArchiveVirtualList";
+import { HoverTip } from "./HoverTip";
 import { Markdown } from "./Markdown";
 import { MouseGestureLayer, scrollGestures } from "./mouseGesture";
 import {
@@ -633,17 +634,13 @@ const EventCard = memo(function EventCard({
             {isUser ? <IconUser size={15} /> : <IconBot size={16} />}
           </span>
           <b>{who}</b>
-          <time title={date(entry.at)}>{clock(entry.at)}</time>
+          <HoverTip text={date(entry.at)} className="arc-tooltip"><time>{clock(entry.at)}</time></HoverTip>
           <div className="arc-message-actions">
             {value && (
+              <HoverTip text={raw ? t("메시지 보기", "View message") : t("저장 원문 보기", "View raw record")} className="arc-tooltip">
               <button
                 className={"arc-icon" + (raw ? " active" : "")}
                 aria-label={
-                  raw
-                    ? t("메시지 보기", "View message")
-                    : t("저장 원문 보기", "View raw record")
-                }
-                title={
                   raw
                     ? t("메시지 보기", "View message")
                     : t("저장 원문 보기", "View raw record")
@@ -653,16 +650,13 @@ const EventCard = memo(function EventCard({
               >
                 <IconCode size={14} />
               </button>
+              </HoverTip>
             )}
+            <HoverTip text={copied ? t("복사됨", "Copied") : t("메시지 복사", "Copy message")} className="arc-tooltip">
             <button
               className={"arc-icon" + (copied ? " copied" : "")}
               disabled={!page || loading}
               aria-label={
-                copied
-                  ? t("복사됨", "Copied")
-                  : t("메시지 복사", "Copy message")
-              }
-              title={
                 copied
                   ? t("복사됨", "Copied")
                   : t("메시지 복사", "Copy message")
@@ -673,6 +667,7 @@ const EventCard = memo(function EventCard({
             >
               {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             </button>
+            </HoverTip>
           </div>
         </div>
         <div className={"arc-message-content" + (raw ? " raw" : "")}>
@@ -740,7 +735,7 @@ const EventCard = memo(function EventCard({
               : t("시작", "Started")}
           </span>
         )}
-        <time title={date(entry.at)}>{clock(entry.at)}</time>
+        <HoverTip text={date(entry.at)} className="arc-tooltip"><time>{clock(entry.at)}</time></HoverTip>
         <IconChevDown size={12} />
       </button>
       {open && (
@@ -1428,7 +1423,7 @@ export default function ConversationArchive({
           <div className="arc-storage-panel">
             <div>
               <span>{t("보관 폴더", "Archive folder")}</span>
-              <code title={root}>{root || t("읽는 중…", "Loading…")}</code>
+              <HoverTip text={root} className="arc-tooltip"><code>{root || t("읽는 중…", "Loading…")}</code></HoverTip>
             </div>
             <button
               className="arc-button"
@@ -1528,17 +1523,17 @@ export default function ConversationArchive({
                     onClick={() => setSession(s)}
                   >
                     <h3>{title(s)}</h3>
-                    <p title={s.cwd}>
+                    <HoverTip text={s.cwd} className="arc-tooltip"><p>
                       <IconFolder size={12} />
                       <span>
                         {folderName(s.cwd) ||
                           t("작업 폴더 없음", "No workspace")}
                       </span>
-                    </p>
+                    </p></HoverTip>
                     <div className="arc-session-top">
-                      <time title={date(s.updatedAt)}>
+                      <HoverTip text={date(s.updatedAt)} className="arc-tooltip"><time>
                         {shortDate(s.updatedAt)}
-                      </time>
+                      </time></HoverTip>
                       {s.enabled && (
                         <span className="arc-session-recording">
                           <i />
@@ -1597,21 +1592,19 @@ export default function ConversationArchive({
                     )}
                   </div>
                   <div className="arc-session-meta">
-                    <span
-                      title={`${date(session.startedAt)} — ${date(session.updatedAt)}`}
-                    >
+                    <HoverTip text={`${date(session.startedAt)} — ${date(session.updatedAt)}`} className="arc-tooltip"><span>
                       <IconClock size={12} />
                       {date(session.startedAt)} —{" "}
                       {new Date(session.startedAt).toDateString() ===
                       new Date(session.updatedAt).toDateString()
                         ? clock(session.updatedAt)
                         : date(session.updatedAt)}
-                    </span>
-                    <span title={session.cwd}>
+                    </span></HoverTip>
+                    <HoverTip text={session.cwd} className="arc-tooltip"><span>
                       <IconFolder size={12} />
                       {folderName(session.cwd) ||
                         t("작업 폴더 없음", "No workspace")}
-                    </span>
+                    </span></HoverTip>
                     <span>{formatArchiveBytes(session.bytes)}</span>
                     <button
                       className="arc-text-button arc-session-folder"
@@ -1623,12 +1616,13 @@ export default function ConversationArchive({
                       <IconFolder size={12} />
                       {t("세션 폴더", "Session folder")}
                     </button>
+                    <HoverTip text={enabled
+                      ? t("대화 기록을 중지한 뒤 내보낼 수 있습니다.", "Pause recording before exporting.")
+                      : t("대화와 파일 사본을 ZIP으로 내보내기", "Export the conversation and saved files as ZIP")} className="arc-tooltip">
+                    <span className="arc-export-tip" tabIndex={enabled ? 0 : undefined}>
                     <button
                       className="arc-text-button arc-export"
                       disabled={acting || !!enabled}
-                      title={enabled
-                        ? t("대화 기록을 중지한 뒤 내보낼 수 있습니다.", "Pause recording before exporting.")
-                        : t("대화와 파일 사본을 ZIP으로 내보내기", "Export the conversation and saved files as ZIP")}
                       onClick={() => { void exportSession(); }}
                     >
                       <IconDownload size={12} />
@@ -1636,6 +1630,8 @@ export default function ConversationArchive({
                         ? t("내보내는 중…", "Exporting…")
                         : t("세션 내보내기", "Export session")}
                     </button>
+                    </span>
+                    </HoverTip>
                     <button
                       className="arc-text-button arc-diagnostics-toggle"
                       aria-expanded={diagnosticsOpen}

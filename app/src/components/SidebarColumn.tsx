@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 // Hover belongs to this column. Keeping it out of App avoids rendering the chat,
 // account picker and explorer whenever the pointer crosses the reveal boundary.
@@ -11,8 +11,14 @@ export function SidebarColumn({ autohide, trigger, dragging, width, columnRef, c
   children: ReactNode
 }) {
   const [revealed, setRevealed] = useState(false)
+  const revealedRef = useRef(false)
   useEffect(() => {
-    if (!autohide) { setRevealed(false); return }
+    const reveal = (next: boolean): void => {
+      if (revealedRef.current === next) return
+      revealedRef.current = next
+      setRevealed(next)
+    }
+    if (!autohide) { reveal(false); return }
     const column = columnRef.current
     if (!column) return
     // Read once, then track actual width changes (including the narrow-window
@@ -25,8 +31,8 @@ export function SidebarColumn({ autohide, trigger, dragging, width, columnRef, c
     let leaveTimer: ReturnType<typeof setTimeout> | undefined
     const onMove = (e: MouseEvent): void => {
       clearTimeout(leaveTimer)
-      if (e.clientX <= trigger) setRevealed(true)
-      else if (!dragging && e.clientX > panelWidth + 8) setRevealed(false)
+      if (e.clientX <= trigger) reveal(true)
+      else if (!dragging && e.clientX > panelWidth + 8) reveal(false)
     }
     const onLeave = (e: MouseEvent): void => {
       if (dragging) return
@@ -34,12 +40,12 @@ export function SidebarColumn({ autohide, trigger, dragging, width, columnRef, c
       const el = document.elementFromPoint(e.clientX, e.clientY)
       if (el?.closest('.titlebar, .sb-top, .fxh, .chat-head, .ma-head')) return
       clearTimeout(leaveTimer)
-      leaveTimer = setTimeout(() => setRevealed(false), 300)
+      leaveTimer = setTimeout(() => reveal(false), 300)
     }
     const onBlur = (): void => {
       if (dragging) return
       clearTimeout(leaveTimer)
-      setRevealed(false)
+      reveal(false)
     }
     window.addEventListener('mousemove', onMove, { passive: true })
     document.documentElement.addEventListener('mouseleave', onLeave)

@@ -69,7 +69,10 @@ function Preview(){const [state,dispatch]=useReducer(reducer,initialSessionState
  return <div style={{position:'fixed',inset:0,zIndex:65,background:'#101010',display:'flex',flexDirection:'column',padding:24}}><div>질문 카드 확인용 샘플 <button style={{float:'right'}} onClick={()=>window.qaTest.close()}>닫기</button></div><div className='ma-panel' style={{flex:1,marginTop:18}}><div className='ma-p-body'><div className='chat-scroll scroll'><div className='thread'>{state.messages.map(m=><MessageView key={m.id} item={m}/>)}</div></div></div><QuestionModal question={state.pendingQuestion} onAnswer={answer} onDismiss={dismiss}/></div></div>
 }
 root.render(<Preview/>);
-`},bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',alias:{'@shared':path.join(repo,'src/shared')},define:{'import.meta.glob':'__previewGlob','process.env.NODE_ENV':'"production"'},banner:{js:'var __previewGlob=()=>({});'},logLevel:'silent'});
+`},bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',alias:{'@shared':path.join(repo,'src/shared')},loader:{'.css':'empty'},plugins:[{name:'vite-raw',setup(b){
+ b.onResolve({filter:/\?raw$/},a=>({path:path.resolve(a.resolveDir,a.path.slice(0,-4)),namespace:'raw'}));
+ b.onLoad({filter:/.*/,namespace:'raw'},a=>({contents:fs.readFileSync(a.path,'utf8'),loader:'text'}));
+}}],define:{'import.meta.glob':'__previewGlob','process.env.NODE_ENV':'"production"'},banner:{js:'var __previewGlob=()=>({});'},logLevel:'silent'});
 const env={...process.env,CCG_HOME:home,CCG_NO_NET:'0',CCG_NO_BOOT_ENGINE_UPDATE:'1',CCG_CODEX_BIN:path.join(home,'fake-codex.cmd'),CCG_CDP_PORT:String(port),CCG_ENGINE_LOG:path.join(home,'wire.jsonl')};delete env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS;
 const output=fs.openSync(path.join(home,'native.log'),'a');
 const launched=spawn(path.join(repo,'target/debug/agentcodegui.exe'),[],{windowsHide:true,detached:true,env,stdio:['ignore',output,output]});launched.unref();fs.closeSync(output);

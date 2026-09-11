@@ -7,6 +7,20 @@ import type { GitRepoInfo } from '@shared/protocol'
 // 경로 정규화 — 포워드 슬래시·꼬리 슬래시 제거. 비교는 소문자(윈도우 대소문자 무시).
 const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
 const keyOf = (cwd: string): string => `git.extra:${norm(cwd).toLowerCase()}`
+// Rapid sidebar switches can mount several explorers before a slow discovery
+// finishes. Share only the pending scan; a later refresh still reads fresh data.
+const discoveries = new Map<string, Promise<GitRepoInfo[]>>()
+
+function discoverPending(cwd: string): Promise<GitRepoInfo[]> {
+  const key = norm(cwd).toLowerCase()
+  const pending = discoveries.get(key)
+  if (pending) return pending
+  const request = window.api.git.repos(cwd).finally(() => {
+    if (discoveries.get(key) === request) discoveries.delete(key)
+  })
+  discoveries.set(key, request)
+  return request
+}
 
 export function gitExtras(cwd: string): string[] {
   return getPref<string[]>(keyOf(cwd), [])
@@ -33,7 +47,7 @@ export function removeGitExtra(cwd: string, root: string): void {
 /** 자동 발견 + 수동 추적 합치기 — 탐색기 스트립과 Git 카드가 같은 목록을 본다.
  *  더 이상 저장소가 아닌 수동 항목은 소비자의 status(repo:false) 필터가 걸러낸다. */
 export async function discoverGitRepos(cwd: string): Promise<GitRepoInfo[]> {
-  const auto = await window.api.git.repos(cwd).catch(() => [] as GitRepoInfo[])
+  const auto = await discoverPending(cwd).catch(() => [] as GitRepoInfo[])
   const seen = new Set(auto.map((r) => norm(r.root).toLowerCase()))
   const base = norm(cwd)
   const out = [...auto]

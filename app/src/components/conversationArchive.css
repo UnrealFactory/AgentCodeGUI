@@ -11,6 +11,11 @@
   font: 400 13px/1.5 var(--font-sans);
   -webkit-app-region: no-drag;
 }
+.hover-tip.arc-tooltip {
+  z-index: 9840;
+  max-width: min(360px, calc(100vw - 16px));
+  overflow-wrap: anywhere;
+}
 .arc-dialog {
   width: min(1480px, 95vw);
   height: min(1000px, 91vh);
@@ -476,6 +481,12 @@
 }
 .arc-session-meta > button + button {
   margin-left: 0;
+}
+.arc-session-meta > .arc-export-tip + button {
+  margin-left: 0;
+}
+.arc-export-tip > button:disabled {
+  pointer-events: none;
 }
 .arc-diagnostics-toggle {
   display: inline-flex;

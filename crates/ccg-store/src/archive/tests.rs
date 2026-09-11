@@ -545,6 +545,36 @@ fn until(mut f: impl FnMut() -> bool) {
     }
 }
 
+// Run explicitly to compare the same recorded workload before/after changes.
+#[test]
+#[ignore = "archive file I/O benchmark"]
+fn benchmark_repeated_tool_file_checks() {
+    let f = Fixture::new();
+    let work = f.workspace();
+    let root = f.archive();
+    let paths: Vec<_> = (0..24).map(|n| work.join(format!("file-{n}.bin"))).collect();
+    for (n, path) in paths.iter().enumerate() {
+        fs::write(path, vec![n as u8; 1024 * 1024]).unwrap();
+    }
+    let a = Archive::new(root.clone()).unwrap();
+    let r = a.recorder("bench-files").unwrap();
+    r.configure(Config { enabled: true, cwd: work.to_string_lossy().into(), roots: vec![], title: "bench".into() }).unwrap();
+    r.flush_all().unwrap();
+    for path in &paths {
+        r.record("protocol-in", &json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"read","name":"Read","input":{"file_path":path}}]}}));
+    }
+    r.flush_all().unwrap();
+    let manifest = journal::chat_dir(&root, "bench-files").unwrap().join("files-manifest.jsonl");
+    let before = fs::metadata(&manifest).unwrap().len();
+    let started = Instant::now();
+    for n in 0..12 {
+        r.record("ui", &json!({"type":"tool-end","id":format!("read-{n}")}));
+        r.flush_all().unwrap();
+    }
+    eprintln!("ARCHIVE_BENCH files={} bytes={} rounds=12 elapsed_ms={} manifest_growth={}", paths.len(), paths.len()*1024*1024, started.elapsed().as_millis(), fs::metadata(&manifest).unwrap().len()-before);
+    r.shutdown();
+}
+
 #[test]
 fn library_groups_all_turns_and_restarts_into_one_logical_session() {
     let f = Fixture::new();
@@ -1512,6 +1542,7 @@ fn filesystem_events_detect_same_size_writes_with_preserved_mtime() {
         ..Default::default()
     })
     .unwrap();
+    r.record("request", &json!({"path":source}));
     r.record("input", &user("same mtime"));
     r.flush_all().unwrap();
     fs::write(&source, "BBBB").unwrap();
@@ -1521,6 +1552,7 @@ fn filesystem_events_detect_same_size_writes_with_preserved_mtime() {
         .unwrap()
         .set_times(std::fs::FileTimes::new().set_modified(mtime))
         .unwrap();
+    r.record("ui", &json!({"type":"tool-end","id":"preserved-mtime"}));
     let dir = journal::chat_dir(&root, "mtime").unwrap();
     until(|| {
         r.flush().unwrap();

@@ -2,7 +2,7 @@ import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type
 import { createPortal } from 'react-dom'
 
 // The same tooltip styling as .has-tip, portaled out of scroll/clipping containers.
-export function HoverTip({ text, children }: { text: string; children: ReactElement<HTMLAttributes<HTMLElement>> }) {
+export function HoverTip({ text, children, className = '' }: { text: string; children: ReactElement<HTMLAttributes<HTMLElement>>; className?: string }) {
   const id = useId()
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const tip = useRef<HTMLDivElement>(null)
@@ -47,6 +47,6 @@ export function HoverTip({ text, children }: { text: string; children: ReactElem
       onFocus: e => { children.props.onFocus?.(e); show(e.currentTarget, 0) },
       onBlur: e => { children.props.onBlur?.(e); hide() }
     })}
-    {anchor && createPortal(<div ref={tip} id={id} role="tooltip" className="hover-tip" style={pos}>{text}</div>, document.body)}
+    {anchor && createPortal(<div ref={tip} id={id} role="tooltip" className={'hover-tip' + (className ? ` ${className}` : '')} style={pos}>{text}</div>, document.body)}
   </>
 }

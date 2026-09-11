@@ -4876,7 +4876,7 @@ function QuestionDialog({
     // backdrop click does NOT dismiss it (too easy to lose the prompt by accident).
     // 건너뛰기는 내려두기(⌄·Esc) 뒤 알약의 ✕ — PoC 문법대로 헤더에는 접기만 남긴다.
     <div className="q-overlay">
-      <div className={'qcard scroll' + (dialog ? ' qcard-dialog' : '')} ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-busy={submitting}>
+      <div className={'qcard scroll' + (dialog ? ' qcard-dialog' : ' qcard-question')} ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-busy={submitting}>
         <div className="qhead">
           <IconMascot size={17} />
           <span className="qhl">

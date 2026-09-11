@@ -15,6 +15,59 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 pub type Sink = Arc<dyn Fn(Captured) + Send + Sync>;
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+
+    #[test]
+    fn target_checks_preserve_unwatched_files_and_recover_after_lost_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("archive");
+        let work = temp.path().join("workspace");
+        fs::create_dir_all(work.join("generated")).unwrap();
+        fs::write(work.join(".gitignore"), "generated/\n").unwrap();
+        let watched = work.join("source.txt");
+        let ignored = work.join("generated/output.txt");
+        let external = temp.path().join("attachment.txt");
+        for path in [&watched, &ignored, &external] { fs::write(path, "AAAA").unwrap(); }
+        drop(super::super::journal::Journal::open(&root, "targets").unwrap());
+        let signals = Arc::new(Signals {
+            work: Mutex::new(Work::default()), wake: Condvar::new(),
+            stopping: AtomicBool::new(false), finished: AtomicBool::new(false),
+            watch_complete: AtomicBool::new(true),
+        });
+        let mut tracker = Tracker::open(root, "targets".into(), vec![work], Arc::new(|_| {}), Arc::new(Mutex::new(Status::default())), signals.clone()).unwrap();
+        for path in [&watched, &ignored, &external] { tracker.capture(path, false, "tool-or-attachment").unwrap(); }
+        tracker.save().unwrap();
+        let manifest_len = tracker.manifest.get_ref().metadata().unwrap().len();
+        tracker.capture(&watched, false, "inventory-target").unwrap();
+        tracker.save().unwrap();
+        assert_eq!(tracker.manifest.get_ref().metadata().unwrap().len(), manifest_len,
+            "unchanged watched targets must not produce another snapshot/manifest row");
+        let rewrite = |path: &Path, text: &str| {
+            let mtime = fs::metadata(path).unwrap().modified().unwrap();
+            fs::write(path, text).unwrap();
+            OpenOptions::new().write(true).open(path).unwrap().set_times(fs::FileTimes::new().set_modified(mtime)).unwrap();
+        };
+        for path in [&watched, &ignored, &external] { rewrite(path, "BBBB"); }
+        // Watch notifications force content reads; ignored/external targets do
+        // not receive those notifications and must still be read at tool end.
+        tracker.capture(&watched, false, "filesystem").unwrap();
+        tracker.retry_targets();
+        for path in [&watched, &ignored, &external] {
+            let hash = tracker.versions[&map_key(path)].hash.as_ref().unwrap();
+            assert_eq!(fs::read(object_path(&tracker.store_root, hash).unwrap()).unwrap(), b"BBBB");
+        }
+        rewrite(&watched, "CCCC");
+        signals.watch_complete.store(false, Ordering::Release);
+        tracker.retry_targets();
+        let hash = tracker.versions[&map_key(&watched)].hash.as_ref().unwrap();
+        assert_eq!(fs::read(object_path(&tracker.store_root, hash).unwrap()).unwrap(), b"CCCC",
+            "a lost notification must restore full target checks even with unchanged metadata");
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Version {
@@ -224,6 +277,8 @@ struct Signals {
     wake: Condvar,
     stopping: AtomicBool,
     finished: AtomicBool,
+    // Once native events are lost, keep conservative target checks for this run.
+    watch_complete: AtomicBool,
 }
 impl Signals {
     fn touch(&self, path: PathBuf, why: &str) {
@@ -237,6 +292,7 @@ impl Signals {
         } else {
             w.rescan = true;
             w.overflow = true;
+            self.watch_complete.store(false, Ordering::Release);
         }
         self.wake.notify_one();
     }
@@ -277,21 +333,23 @@ impl Monitor {
             wake: Condvar::new(),
             stopping: AtomicBool::new(false),
             finished: AtomicBool::new(false),
+            watch_complete: AtomicBool::new(true),
         });
         let s = signals.clone();
         let mut watch_policy = Policy::new(root.clone(), dirs.clone());
         let mut watcher=notify::recommended_watcher(move|result:notify::Result<notify::Event>|{
             match result {
-                Ok(event)=>{if matches!(event.kind,EventKind::Access(_)){return}
+                Ok(event)=>{if event.need_rescan(){s.watch_complete.store(false,Ordering::Release);let mut w=lock(&s.work);w.rescan=true;w.overflow=true;s.wake.notify_one();}
+                    if matches!(event.kind,EventKind::Access(_)){return}
                     // Cached ignore matchers reject ignored build traffic before it
                     // fills the bounded queue or causes a false coverage-gap notice.
                     if event.paths.iter().any(|p|p.file_name().is_some_and(|n|n==".gitignore")){watch_policy.refresh();}
                     let directory=matches!(event.kind,EventKind::Create(notify::event::CreateKind::Folder)|EventKind::Remove(notify::event::RemoveKind::Folder));
                     let paths:Vec<_>=event.paths.into_iter().filter(|p|watch_policy.automatic(p,directory)).collect();if paths.is_empty(){return}
-                    {let mut w=lock(&s.work);if w.notices.len()<4096{w.notices.push(json!({"type":"filesystem-event","kind":format!("{:?}",event.kind),"paths":paths,"observedAt":now_ms()}));}else{w.rescan=true;w.overflow=true;}}
+                    {let mut w=lock(&s.work);if w.notices.len()<4096{w.notices.push(json!({"type":"filesystem-event","kind":format!("{:?}",event.kind),"paths":paths,"observedAt":now_ms()}));}else{w.rescan=true;w.overflow=true;s.watch_complete.store(false,Ordering::Release);}}
                     for p in paths{s.touch(p,"filesystem");}
                 }
-                Err(_)=>{let mut w=lock(&s.work);w.rescan=true;w.overflow=true;s.wake.notify_one();}
+                Err(_)=>{s.watch_complete.store(false,Ordering::Release);let mut w=lock(&s.work);w.rescan=true;w.overflow=true;s.wake.notify_one();}
             }
         }).map_err(|e|io::Error::other(e.to_string()))?;
         for dir in &dirs {
@@ -773,8 +831,14 @@ impl Tracker {
             return Ok(());
         }
         let before = self.versions.get(&map_path).cloned();
-        // Notifications force a content check even when a program preserves mtime.
-        if matches!(why, "inventory" | "baseline" | "tool-or-attachment")
+        // Tool completion used to hash/copy every previously referenced file,
+        // even if unchanged. Native notifications already force content checks
+        // for automatically watched paths (including writes preserving mtime).
+        // Ignored/external targets and degraded watchers still need full checks.
+        let watched_target = why == "inventory-target"
+            && self.signals.watch_complete.load(Ordering::Acquire)
+            && self.policy.automatic(&map_path, false);
+        if (matches!(why, "inventory" | "baseline" | "tool-or-attachment") || watched_target)
             && !force
             && before.as_ref().is_some_and(|b| {
                 b.bytes == meta.len()
