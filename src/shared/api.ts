@@ -108,6 +108,8 @@ export interface WindowApi {
     cancelLogin(): Promise<void>
     /** 로그인 OAuth URL 수신 (브라우저가 안 열릴 때 폴백 링크용) */
     onLoginUrl(cb: (url: string) => void): () => void
+    /** BUG-0013 — 웹 구독 확인이 끝나 셸이 그 계정의 구독 종류(플랜 라벨)를 되싱크했다 — 목록을 다시 가져올 신호 */
+    onAccountRefreshed(cb: (email: string) => void): () => void
     /** 등록 계정 목록 — **맨 위 계정**이 isDefault:true (★R28 ACCT §4: 기본은 파생값) */
     listAccounts(): Promise<AccountInfo[]>
     /** ★R28 ACCT §4 — 「맨 위로 이동」과 **동치**. 이름은 2.6.2 채널 호환으로만 남았다 */
@@ -136,6 +138,10 @@ export interface WindowApi {
     /** 등록 계정별 한도(rateLimits) 일괄 조회 — planType은 표시 플랜으로도 우선 사용 */
     accountsUsage(fresh?: boolean): Promise<CodexAccountUsage[]>
     consumeResetCredit(email: string, idempotencyKey: string): Promise<CodexResetCreditResult>
+    /** BUG-0013 — 계정 토큰을 새로 받은 뒤 한도·플랜을 다시 조회(구독 변경 직후) */
+    refreshAccount(email: string): Promise<CodexAccountUsage>
+    /** 웹 구독 확인이 끝나 셸이 그 계정을 되싱크했다 — 목록·한도를 다시 가져올 신호 */
+    onAccountRefreshed(cb: (email: string) => void): () => void
   }
   /** 두 엔진 CLI 공통 자동 업데이트 — 인자 있으면 설정, 항상 현재 값을 반환 (설정 → Engine → 공통) */
   engineAutoUpdate(enabled?: boolean): Promise<boolean>

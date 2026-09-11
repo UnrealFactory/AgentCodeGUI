@@ -851,6 +851,8 @@ export interface CodexAccountUsage {
     availableCount: number
     credits: CodexResetCredit[] | null
   } | null
+  /** `codex-auth:refresh-account` 응답에만 실린다 — 계정 폴더의 토큰이 실제로 새로 발급됐는가 (BUG-0013) */
+  tokenRefreshed?: boolean
 }
 
 export interface CodexResetCredit {
@@ -1286,6 +1288,7 @@ export const IPC = {
   authLogout: 'auth:logout', // (email) 그 계정 토큰 해지 + 등록 제거 — 새 목록 반환
   authLoginCancel: 'auth:login-cancel', // 진행 중인 로그인 프로세스 중단
   authLoginUrl: 'auth:login-url', // main→renderer: 로그인 OAuth URL (브라우저가 안 열릴 때 폴백 링크)
+  authAccountRefreshed: 'auth:account-refreshed', // main→renderer: (email) 웹 구독 확인 뒤 스토어 구독 종류를 되싱크했다 (BUG-0013)
   authListAccounts: 'auth:list-accounts', // 등록 계정 목록 + 기본 계정 표시
   authSetDefaultAccount: 'auth:set-default-account', // (email) 새 채팅의 기본 계정 지정 — 새 목록 반환
   authRemoveAccount: 'auth:remove-account', // 등록 목록에서 계정 제거(토큰 해지 없이 — 해지는 logout)
@@ -1299,6 +1302,8 @@ export const IPC = {
   codexLoginCancel: 'codex-auth:login-cancel',
   codexAccountsUsage: 'codex-auth:accounts-usage', // 등록 계정별 한도(rateLimits) 일괄 조회
   codexResetCreditConsume: 'codex-auth:reset-credit-consume',
+  codexRefreshAccount: 'codex-auth:refresh-account', // (email) 토큰 재발급 후 한도·플랜 재조회 → CodexAccountUsage (BUG-0013)
+  codexAccountRefreshed: 'codex-auth:account-refreshed', // main→renderer: (email) 웹 구독 확인 뒤 그 계정의 토큰·한도를 되싱크했다
   codexReorderAccounts: 'codex-auth:reorder-accounts', // (emails) 계정 표시 순서 변경(꾹-드래그) — 새 목록
   codexContextGet: 'codex:context-get',
   codexContextSave: 'codex:context-save',

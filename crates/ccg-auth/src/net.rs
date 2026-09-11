@@ -590,6 +590,27 @@ pub fn fetch_account_usage(email: &str) -> Result<AccountUsage, NetError> {
     Ok(usage::parse_account_usage(email, &v))
 }
 
+/// BUG-0013(클로드 축) — 구독 종류의 서버 진실(`GET /api/oauth/profile`,
+/// [`usage::parse_profile_subscription`]). 401·403이면 [`fetch_account_usage`]와 같은
+/// 규칙으로 1회 교환 후 재시도한다. `Ok(None)`은 응답은 왔는데 종류를 못 읽었다는 뜻이다
+/// (호출부가 아는 값을 유지한다). 429는 여기서 자지 않는다 — 구독 되싱크는 급하지 않다.
+pub fn fetch_account_subscription(email: &str) -> Result<Option<String>, NetError> {
+    let token = access_token(email)?;
+    let mut resp = send(&usage::profile_request(&token))?;
+    if resp.status == 401 || resp.status == 403 {
+        if let Ok(fresh) = force_refresh(email, &token) {
+            if fresh != token {
+                resp = send(&usage::profile_request(&fresh))?;
+            }
+        }
+    }
+    if !(200..300).contains(&resp.status) {
+        return Err(NetError::Status(resp.status));
+    }
+    let v: Value = serde_json::from_str(&resp.body).map_err(|_| NetError::BadBody)?;
+    Ok(usage::parse_profile_subscription(&v))
+}
+
 /// 429의 대기 시간 — **`Retry-After` 헤더가 먼저다**(2.6.2가 읽는 그 값:
 /// `parseInt(res.headers.get('retry-after'))` → 초). 없으면 본문의 `retry_after`(3.0이
 /// 관찰한 형태), 그것도 없으면 기본값. 어느 쪽이든 상한([`usage::RETRY_AFTER_MAX_MS`])

@@ -24,6 +24,7 @@ import {
   primeUsageFromDisk,
   putAccounts,
   putCodexAccounts,
+  refreshCodexAccount,
   refreshCodexUsage,
   refreshUsage,
   updateAccounts,
@@ -424,6 +425,19 @@ function AccountView(): React.ReactElement {
     })
   }, [])
   useEffect(() => window.api.auth.onLoginUrl(setLoginUrl), [])
+  // BUG-0013 — 웹 구독 확인이 끝나면 셸이 그 Codex 계정의 토큰·한도를 되싱크한다(subscriptions.rs).
+  // 목록(스토어 플랜)과 한도 행을 다시 가져와 카드의 플랜·초기화권이 「구독 중」과 같은 시점을 보게 한다.
+  useEffect(
+    () =>
+      window.api.codexAuth.onAccountRefreshed(() => {
+        void ensureCodexAccounts(true).then((list) => {
+          if (list.length) void refreshCodexUsage()
+        })
+      }),
+    []
+  )
+  // 클로드 축은 토큰이 불투명이라 한도는 늘 서버 값이고, 되싱크 대상은 스토어의 구독 종류(플랜 라벨)뿐이다.
+  useEffect(() => window.api.auth.onAccountRefreshed(() => void ensureAccounts(true)), [])
   // 스토어에 앉히는 두 문 — 배열을 그대로 놓거나(`put`), 최신 값을 재료로 갱신하거나
   // (`update`, 드래그 재정렬이 쓰는 함수형 갱신). 이름을 옛 setState와 같게 두면
   // 아래 코드가 통째로 그대로 산다.
@@ -695,8 +709,21 @@ function AccountView(): React.ReactElement {
                   {/* ★R28 ACCT §4 — Anthropic과 같은 규칙(맨 위 = 기본, 파생값) */}
                   {/* 「기본 · 맨 위」 배지는 뗐다 — 맨 위 행이라는 사실 자체가 이미 보인다(2026-09-01 사용자) */}
                 </div>
-                {/* 플랜은 rateLimits의 planType이 최신(구독 변경 즉시 반영) — 도착 전엔 id_token 값 */}
-                <div className="meta">{chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)}</div>
+                {/* 플랜은 rateLimits의 planType이 최신 — 도착 전엔 스토어(id_token) 값. BUG-0013: 조회가
+                    실패한 행(planType null)은 옛 스토어 값을 현재처럼 보이지 않게 「확인 불가」로 가른다 —
+                    구독을 바꾼 직후 옛 토큰이 거부되는 그 창에서 「Free」가 확정처럼 보였다. */}
+                <div className="meta">
+                  {cxUsage[a.email] != null && cxUsage[a.email].planType == null && !acct.cxLoading ? (
+                    <>
+                      {t('ChatGPT 플랜 · 확인 불가', 'ChatGPT plan · unavailable')}{' '}
+                      <button className="set-chipbtn" disabled={busy != null} onClick={() => void refreshCodexAccount(a.email)}>
+                        {t('다시 확인', 'Retry')}
+                      </button>
+                    </>
+                  ) : (
+                    chatgptPlan(cxUsage[a.email]?.planType ?? a.plan)
+                  )}
+                </div>
                 <CodexResetCredits email={a.email} disabled={busy != null} />
               </div>
               <CodexLimits u={cxUsage[a.email]} />

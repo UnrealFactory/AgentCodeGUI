@@ -163,6 +163,19 @@ fn worker(app: AppHandle) {
             if save(&job.key, &r).is_err() { queue().lock().unwrap().errors.insert(job.key.clone(), "saveFailed".into()); }
         } else if registered(&job.key) && r.identity.is_empty() { let _ = save(&job.key, &r); }
         else if !registered(&job.key) { let _ = remove_profile(&job.key); }
+        // BUG-0013 — 웹은 새 구독을 바로 보지만 앱의 플랜·초기화권은 옛 CLI 토큰을 따른다.
+        // 확인이 성공한 Codex 계정은 토큰을 새로 받고 한도를 다시 물은 뒤 렌더러에 알린다.
+        if r.error.is_none() && registered(&job.key) {
+            if job.key.provider == "codex" {
+                let _ = crate::engine::codex_limit::refresh_account(&job.key.email);
+                let _ = app.emit("codex-auth:account-refreshed", job.key.email.clone());
+            } else if let Ok(Some(sub)) = ccg_auth::net::fetch_account_subscription(&job.key.email) {
+                // 클로드 토큰은 불투명이라 재발급이 필요 없다(한도는 늘 서버 값). 로그인 때 굳은
+                // 스토어의 구독 종류(플랜 라벨)만 프로필의 현재값으로 되싱크한다.
+                ccg_auth::claude::resync_subscription(&job.key.email, &sub);
+                let _ = app.emit("auth:account-refreshed", job.key.email.clone());
+            }
+        }
         queue().lock().unwrap().active = None;
         notify(&app);
     }

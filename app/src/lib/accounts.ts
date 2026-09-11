@@ -321,6 +321,27 @@ export function refreshCodexUsage(fresh = false): Promise<Record<string, CodexAc
 }
 
 /**
+ * BUG-0013 — 한 계정의 토큰을 새로 받고 한도·플랜을 다시 묻는다(구독 변경 직후·초기화권/플랜 새로고침).
+ * 응답 행을 스토어에 앉히고, 셸이 스토어의 표시 플랜(`plan`)도 되싱크했으므로 목록을 강제로 다시 뜬다.
+ * 실패해도 던지지 않는다 — 있던 행은 그대로 두고 로딩 표식만 내린다.
+ */
+export function refreshCodexAccount(email: string): Promise<CodexAccountUsage | undefined> {
+  emit({ cxLoading: true })
+  return window.api.codexAuth
+    .refreshAccount(email)
+    .then((row) => {
+      if (row?.email === email) putCodexUsage(email, row)
+      emit({ cxLoading: false })
+      void ensureCodexAccounts(true)
+      return state.cxUsage[email]
+    })
+    .catch(() => {
+      emit({ cxLoading: false })
+      return state.cxUsage[email]
+    })
+}
+
+/**
  * **첫 페인트** — 디스크에 보존된 마지막 값만 그린다(HTTP 0회). 앱을 켜자마자,
  * 그리고 표면을 열 때마다 이걸 먼저 부르면 게이지가 빈 칸으로 뜨는 순간이 사라진다.
  */

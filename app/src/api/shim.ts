@@ -402,6 +402,7 @@ const api: WindowApi = {
     logout: (email: string) => callStrict(IPC.authLogout, [email]),
     cancelLogin: () => callVoid(IPC.authLoginCancel),
     onLoginUrl: (cb: (url: string) => void) => subscribe(IPC.authLoginUrl, cb),
+    onAccountRefreshed: (cb: (email: string) => void) => subscribe(IPC.authAccountRefreshed, cb),
     listAccounts: () => call(IPC.authListAccounts, [], []),
     setDefaultAccount: (email: string) => callStrict(IPC.authSetDefaultAccount, [email]),
     removeAccount: (email: string) => callStrict(IPC.authRemoveAccount, [email]),
@@ -422,7 +423,9 @@ const api: WindowApi = {
     cancelLogin: () => callVoid(IPC.codexLoginCancel),
     reorderAccounts: (emails: string[]) => callStrict(IPC.codexReorderAccounts, [emails]),
     accountsUsage: (fresh?: boolean) => call(IPC.codexAccountsUsage, [fresh], []),
-    consumeResetCredit: (email: string, idempotencyKey: string) => callStrict(IPC.codexResetCreditConsume, [email, idempotencyKey])
+    consumeResetCredit: (email: string, idempotencyKey: string) => callStrict(IPC.codexResetCreditConsume, [email, idempotencyKey]),
+    refreshAccount: (email: string) => callStrict(IPC.codexRefreshAccount, [email]),
+    onAccountRefreshed: (cb: (email: string) => void) => subscribe(IPC.codexAccountRefreshed, cb)
   },
   engineAutoUpdate: (enabled?: boolean) => call(IPC.engineAutoUpdate, [enabled], true),
   codexContext: {

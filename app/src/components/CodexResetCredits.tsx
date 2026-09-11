@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { refreshCodexUsage, useAccounts } from '../lib/accounts'
+import { refreshCodexAccount, useAccounts } from '../lib/accounts'
 import { consumeCodexReset, pendingCodexReset } from '../lib/codexResetCredits'
 import { isEn, t } from '../lib/i18n'
 import { IconClose, IconRefresh } from './icons'
@@ -94,7 +94,7 @@ export function CodexResetCredits({ email, disabled = false }: { email: string; 
           <div className="cx-reset-heading"><IconRefresh size={20} /><h2 id={titleId}>{t('Codex 초기화권', 'Codex resets')}</h2></div>
           <div className="cx-reset-account">{email}</div>
           <div className="cx-reset-balance"><span>{t('사용 가능', 'Available')}</span><strong>{count != null ? t(`${count}개`, String(count)) : '—'}</strong>
-            <button className="set-chipbtn" disabled={cxLoading || busy} onClick={() => void refreshCodexUsage(true)}>
+            <button className="set-chipbtn" disabled={cxLoading || busy} onClick={() => void refreshCodexAccount(email)}>
               <IconRefresh size={12} /> {cxLoading ? t('조회 중…', 'Loading…') : t('새로고침', 'Refresh')}
             </button>
           </div>

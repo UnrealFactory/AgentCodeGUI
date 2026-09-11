@@ -63,6 +63,43 @@ pub fn usage_request(access_token: &str) -> HttpRequest {
     }
 }
 
+/// BUG-0013(클로드 축) — 구독 종류의 **서버 진실** `GET /api/oauth/profile`. 스토어의
+/// `subscriptionType`은 로그인 때 `auth status`가 준 값이라 웹에서 구독을 바꿔도 그대로다.
+/// 클로드 토큰은 불투명(opaque)이라 재발급이 필요 없고, 이 응답은 언제나 현재 구독을 말한다
+/// (실측 2026-09-11: `account.has_claude_max:true` · `organization.organization_type:"claude_max"`).
+pub const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
+
+pub fn profile_request(access_token: &str) -> HttpRequest {
+    HttpRequest {
+        method: "GET",
+        url: PROFILE_URL.into(),
+        headers: vec![
+            ("Authorization".into(), format!("Bearer {access_token}")),
+            ("anthropic-beta".into(), OAUTH_BETA.into()),
+        ],
+        body: None,
+        timeout_ms: 5_000,
+    }
+}
+
+/// 프로필 응답 → 스토어 `subscriptionType` 어휘(`max` · `pro` · …). 계정 플래그가 먼저고,
+/// 없으면 조직 종류의 `claude_` 접두를 뗀다. 둘 다 없으면 None — 모르는 응답으로 아는 값을
+/// 덮지 않는다.
+pub fn parse_profile_subscription(v: &Value) -> Option<String> {
+    let flag = |k: &str| v.get("account").and_then(|a| a.get(k)).and_then(Value::as_bool) == Some(true);
+    if flag("has_claude_max") {
+        return Some("max".into());
+    }
+    if flag("has_claude_pro") {
+        return Some("pro".into());
+    }
+    v.get("organization")
+        .and_then(|o| o.get("organization_type"))
+        .and_then(Value::as_str)
+        .map(|t| t.strip_prefix("claude_").unwrap_or(t).to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// 리프레시 토큰 교환 — 2.6.2는 두 엔드포인트를 **순서대로** 시도한다(앞이 4xx면 다음).
 pub fn refresh_requests(refresh_token: &str) -> Vec<HttpRequest> {
     OAUTH_TOKEN_URLS
@@ -487,6 +524,25 @@ mod tests {
         assert_eq!(b["grant_type"], json!("refresh_token"));
         assert_eq!(b["refresh_token"], json!("r-1"));
         assert_eq!(b["client_id"], json!(OAUTH_CLIENT_ID));
+    }
+
+    /// BUG-0013(클로드 축) — 프로필 응답의 실측 모양(2026-09-11, Max 계정)과 폴백 규칙.
+    #[test]
+    fn profile_subscription_prefers_account_flags_then_strips_the_org_prefix() {
+        let r = profile_request("tok");
+        assert_eq!(r.url, PROFILE_URL);
+        assert_eq!(r.headers[1], ("anthropic-beta".into(), OAUTH_BETA.into()));
+        let live = json!({
+            "account": { "email": "a@x.com", "has_claude_max": true, "has_claude_pro": false },
+            "organization": { "organization_type": "claude_max", "rate_limit_tier": "default_claude_max_20x", "subscription_status": "active" }
+        });
+        assert_eq!(parse_profile_subscription(&live).as_deref(), Some("max"));
+        assert_eq!(parse_profile_subscription(&json!({ "account": { "has_claude_pro": true } })).as_deref(), Some("pro"));
+        // 플래그가 없으면 조직 종류에서 — `claude_` 접두를 뗀다.
+        assert_eq!(parse_profile_subscription(&json!({ "organization": { "organization_type": "claude_team" } })).as_deref(), Some("team"));
+        // 아무것도 모르면 None — 아는 값을 덮지 않는다.
+        assert_eq!(parse_profile_subscription(&json!({})), None);
+        assert_eq!(parse_profile_subscription(&json!({ "organization": { "organization_type": "" } })), None);
     }
 
     /// 실홈 `usage-cache.json`에서 관찰된 모양(5h 0% / 주간 93% / Fable 79%)을 응답으로 되짚는다.

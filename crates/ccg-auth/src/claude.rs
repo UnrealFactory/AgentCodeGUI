@@ -1807,6 +1807,25 @@ pub fn list_accounts() -> Vec<AccountInfo> {
         .collect()
 }
 
+/// BUG-0013(클로드 축) — 구독 변경(Pro→Max 등)을 스토어 `subscriptionType`에 되싱크한다.
+/// 스토어 값은 로그인 때 `auth status`가 준 것이라 그 뒤의 변경을 모른다 — 서버 진실은
+/// [`crate::net::fetch_account_subscription`]이 가져오고 여기는 **다를 때만** 쓴다.
+/// 등록되지 않은 계정·저장 실패는 false.
+pub fn resync_subscription(email: &str, subscription_type: &str) -> bool {
+    let same = read_store_quiet()
+        .accounts
+        .iter()
+        .find(|a| email_of(a) == Some(email))
+        .map(|a| subscription_of(a) == Some(subscription_type));
+    match same {
+        Some(false) => update_account_record(email, |m| {
+            m.insert("subscriptionType".into(), json!(subscription_type));
+        })
+        .is_ok(),
+        _ => false,
+    }
+}
+
 /// 「맨 위로 이동」 — 옛 `auth:set-default-account`와 **동치**로 정리된 자리(§4).
 /// 이름을 남겨 둔 이유는 채널 하나가 아직 이 함수를 부르기 때문이다(`ipc/accounts.rs`).
 /// 목록에 없는 이메일이면 아무것도 안 한다(2.6.2와 같은 조용한 무시).
@@ -2471,6 +2490,18 @@ mod tests {
         let mut accounts = f.accounts.clone();
         accounts.push(json!({ "email": email, "subscriptionType": sub, "credEnc": enc }));
         write_store_file(&accounts, f.default_email.as_deref()).expect("스토어 저장");
+    }
+
+    /// BUG-0013(클로드 축) — 구독 되싱크는 **다를 때만** 쓰고, 미등록 계정은 거절한다.
+    #[test]
+    fn resync_subscription_rewrites_only_a_changed_plan() {
+        let _h = temp_home("claude-resync-sub");
+        seed("a@b.c", "pro", "tok-a", 9.0e15);
+        assert!(resync_subscription("a@b.c", "max"));
+        assert_eq!(list_accounts()[0].subscription_type.as_deref(), Some("max"));
+        assert!(!resync_subscription("a@b.c", "max"), "같은 값은 쓰지 않는다");
+        assert!(!resync_subscription("ghost@b.c", "max"));
+        assert_eq!(list_accounts().len(), 1);
     }
 
     // ── ★R28 ACCT §4 — 「기본 계정」 파생값 ────────────────────────────────────

@@ -256,6 +256,42 @@ pub fn refresh_accounts_usage() -> Value {
     accounts_usage()
 }
 
+/// BUG-0013 — 구독 변경 직후의 되싱크: **토큰을 새로 받은 뒤** 다시 묻는다.
+///
+/// 플랜·초기화권은 계정 폴더 `auth.json`의 토큰으로 서버에 묻는 값이다. Codex CLI는 그 토큰을
+/// access_token 만료 5분 전·`last_refresh` 8일 경과·401 때만 스스로 갱신하므로(codex-rs
+/// `login/src/auth/manager.rs`), 웹에서 구독을 바꿔도 여기 토큰은 옛 플랜을 문다(실측: 구독
+/// 뒤 90분 동안 「Free · 초기화권 확인 불가」). OAuth refresh를 앱이 직접 하지 않는 이유:
+/// refresh_token 회전을 실행 중인 codex 세션과 맞춰야 한다 — app-server의
+/// `account/read {refreshToken:true}`는 codex 자신이 갱신·저장하므로 그 부담이 없다
+/// (0.154.0 실측 응답 `{account:{type,email,planType}}`).
+///
+/// 순서: `account/read`(토큰 갱신) → 폴더의 새 auth.json을 스토어에 되싱크(`sync_account`,
+/// 다음 물질화가 옛 토큰으로 되돌리지 않게) → 캐시 행 폐기 → [`fill_locked`](rateLimits/read
+/// + `resync_plan`). 갱신에 실패해도 조회는 한다 — 옛 토큰으로도 답이 올 수 있고, 실패는 빈
+/// 행(=「못 얻었다」)으로 나간다. `tokenRefreshed`는 폴더의 `last_refresh`가 실제로 전진했는가다.
+/// 부르는 곳: 웹 구독 확인 완료(`subscriptions.rs` worker)와 초기화권 대화상자·플랜 줄의 새로고침.
+pub fn refresh_account(email: &str) -> Value {
+    let gate = account_gate(email);
+    let _guard = gate.lock().unwrap_or_else(|e| e.into_inner());
+    let refreshed = instrument(email).is_some_and(|home| {
+        let auth_path = home.join("auth.json");
+        let freshness = || ccg_auth::codex::auth_freshness(std::fs::read_to_string(&auth_path).ok().as_deref());
+        let before = freshness();
+        if rpc(&home, "account/read", json!({ "refreshToken": true })).is_err() {
+            return false;
+        }
+        let after = freshness();
+        ccg_auth::codex::sync_account(email);
+        after > before
+    });
+    cache().lock().unwrap_or_else(|e| e.into_inner()).remove(email);
+    let row = fill_locked(email);
+    let mut out = usage_row(email, &row);
+    out["tokenRefreshed"] = json!(refreshed);
+    out
+}
+
 /// 캐시가 아직 쓸 만한가 — 성공값과 실패값의 창이 다르다(위 두 상수).
 fn fresh_row(email: &str) -> Option<Value> {
     let g = cache().lock().unwrap_or_else(|e| e.into_inner());
@@ -532,6 +568,115 @@ mod tests {
         assert_eq!(rows[0]["planType"], Value::Null);
         // 실홈으로 새지 않았다 — 계정 폴더를 물질화하지도 않았다(`instrument`의 규약).
         assert!(!h.dir.join("codex").join("accounts").exists());
+    }
+
+    /// BUG-0013 — 토큰 재발급 경로의 문. 창구가 없으면(실행본 없음·미등록) 갱신은 거짓이고
+    /// 행은 빈 행(=「못 얻었다」)이다 — 실홈으로 새지도, 계정 폴더를 물질화하지도 않는다.
+    #[test]
+    fn refresh_account_without_an_instrument_reports_no_refresh_and_an_empty_row() {
+        let h = ccg_store::testhome::take("codex-limit-refresh");
+        let _b = no_codex_here();
+        let v = refresh_account("ghost@openai.com");
+        assert_eq!(v["email"], "ghost@openai.com");
+        assert_eq!(v["tokenRefreshed"], false);
+        assert_eq!(v["windows"], json!([]));
+        assert_eq!(v["planType"], Value::Null);
+        assert_eq!(v["rateLimitResetCredits"], Value::Null);
+        assert!(!h.dir.join("codex").join("accounts").exists());
+    }
+
+    /// BUG-0013 — 재발급 경로의 **행복한 길**을 가짜 app-server로 끝까지 밟는다: `account/read`가
+    /// 계정 폴더의 auth.json을 새 토큰(pro)으로 바꾸면 → 스토어(authEnc)가 따라오고 → 캐시를
+    /// 버린 뒤 `rateLimits/read`가 새 플랜을 답하고 → 스토어 `plan`이 free→pro로 되싱크된다.
+    /// 가짜는 `.cmd` → node 스크립트다(실행본 스폰 경로 `command_for`를 그대로 지난다).
+    #[test]
+    fn refresh_account_rotates_the_token_resyncs_the_store_and_reads_the_new_plan() {
+        if std::process::Command::new("node").arg("--version").output().map(|o| !o.status.success()).unwrap_or(true) {
+            eprintln!("skip: node not on PATH — the fake app-server needs it");
+            return;
+        }
+        let h = ccg_store::testhome::take("codex-limit-refresh-happy");
+        let id_token = |plan: &str| {
+            let payload = json!({ "email": "p@openai.com", "https://api.openai.com/auth": { "chatgpt_plan_type": plan } }).to_string();
+            let b64 = ccg_store::safe_storage::b64_encode(payload.as_bytes()).replace('+', "-").replace('/', "_").replace('=', "");
+            format!("h.{b64}.s")
+        };
+        // 가짜 app-server — 프로세스 하나가 initialize + 요청 하나를 받는다(`rpc`의 규약).
+        let fake = h.dir.join("fake-codex");
+        std::fs::create_dir_all(&fake).unwrap();
+        let script = r#"
+import fs from 'node:fs'
+import readline from 'node:readline'
+const home = process.env.CODEX_HOME
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\n')
+readline.createInterface({ input: process.stdin }).on('line', (l) => {
+  let v; try { v = JSON.parse(l) } catch { return }
+  if (v.id == null) return
+  if (v.method === 'initialize') return out({ id: v.id, result: {} })
+  if (v.method === 'account/read') {
+    if (v.params && v.params.refreshToken) {
+      const p = home + '/auth.json'
+      const a = JSON.parse(fs.readFileSync(p, 'utf8'))
+      a.tokens.id_token = '__NEW_ID_TOKEN__'
+      a.tokens.access_token = 'at-new'
+      a.last_refresh = '2026-09-11T07:00:00.000Z'
+      fs.writeFileSync(p, JSON.stringify(a))
+    }
+    return out({ id: v.id, result: { account: { type: 'chatgpt', email: 'p@openai.com', planType: 'pro' }, requiresOpenaiAuth: true } })
+  }
+  if (v.method === 'account/rateLimits/read') {
+    return out({ id: v.id, result: {
+      rateLimits: { planType: 'pro', primary: { usedPercent: 3, windowDurationMins: 10080, resetsAt: 1789711224 }, secondary: null },
+      rateLimitResetCredits: { availableCount: 0, credits: [] } } })
+  }
+  out({ id: v.id, error: { code: -32601, message: 'unsupported' } })
+})
+"#
+        .replace("__NEW_ID_TOKEN__", &id_token("pro"));
+        std::fs::write(fake.join("fake-app-server.mjs"), script).unwrap();
+        let bin = if cfg!(windows) {
+            let p = fake.join("codex.cmd");
+            std::fs::write(&p, "@echo off\r\nnode \"%~dp0fake-app-server.mjs\"\r\n").unwrap();
+            p
+        } else {
+            let p = fake.join("codex");
+            std::fs::write(&p, "#!/bin/sh\nexec node \"$(dirname \"$0\")/fake-app-server.mjs\"\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            p
+        };
+        let _b = EnvGuard::set("CCG_CODEX_BIN", &bin);
+
+        // 로그인 당시 토큰은 free — 스토어 plan도 free로 편입된다(BUG-0013의 출발 상태).
+        let seed = h.dir.join("seed-auth");
+        std::fs::create_dir_all(&seed).unwrap();
+        std::fs::write(
+            seed.join("auth.json"),
+            json!({ "tokens": { "id_token": id_token("free"), "access_token": "at" }, "last_refresh": "2026-09-11T06:00:00.000Z" }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(ccg_auth::codex::import_account_from_dir(&seed).as_deref(), Some("p@openai.com"));
+        assert_eq!(ccg_auth::codex::read_store_file().accounts[0]["plan"], "free");
+
+        let v = refresh_account("p@openai.com");
+        assert_eq!(v["tokenRefreshed"], true, "{v}");
+        assert_eq!(v["planType"], "pro");
+        assert_eq!(v["windows"].as_array().map(Vec::len), Some(1));
+        assert_eq!(v["rateLimitResetCredits"]["availableCount"], 0);
+        // 스토어 plan이 되싱크됐다 — 목록(`codex-auth:list-accounts`)이 다음부터 pro를 낸다.
+        assert_eq!(ccg_auth::codex::read_store_file().accounts[0]["plan"], "pro");
+        // 스토어 authEnc도 새 토큰이다 — 폴더를 지우고 다시 물질화해도 07:00 토큰이 나온다.
+        let dir = ccg_auth::codex::account_dir("p@openai.com");
+        std::fs::remove_file(dir.join("auth.json")).unwrap();
+        let dir = ccg_auth::codex::account_run_dir("p@openai.com").unwrap();
+        let raw = std::fs::read_to_string(dir.join("auth.json")).unwrap();
+        assert!(raw.contains("2026-09-11T07:00:00.000Z"), "{raw}");
+        assert_eq!(ccg_auth::codex::parse_auth(Some(&raw)).and_then(|i| i.plan).as_deref(), Some("pro"));
+        // 캐시에는 새 행이 앉아 있다 — 다음 목록 조회는 프로세스 없이 이 값을 낸다.
+        assert_eq!(accounts_usage()[0]["planType"], "pro");
     }
 
     /// 물어볼 계정 고르기 — 정체성 값이 먼저, 빈 문자열은 미지정과 같다.

@@ -152,6 +152,31 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  // 3.2.4 — BUG-0013/BUG-0014(2026-09-11 사용자 제보): ChatGPT를 Pro로 새로 구독하고 웹 연결까지 했는데 카드는
+  //   「ChatGPT Free 플랜 · 초기화권 · 확인 불가」 + 「구독 중」. 플랜·초기화권은 계정 폴더의 CLI 토큰으로 묻는 값이고
+  //   Codex CLI는 토큰을 8일·401 때만 갱신한다 → app-server `account/read {refreshToken:true}`로 재발급 후 재조회
+  //   (codex_limit::refresh_account · subscriptions.rs worker · 초기화권 창 새로고침). 조회 실패 행은 「확인 불가」로.
+  //   Claude는 토큰이 불투명이라 라벨(subscriptionType)만 로그인 때 값으로 굳어 있었다 → /api/oauth/profile로 되싱크.
+  '3.2.4': {
+    ko: {
+      eyebrow: 'SUBSCRIPTION SYNC',
+      lead: 'ChatGPT 구독을 바꾼 뒤에도 카드에 옛 플랜과 「초기화권 · 확인 불가」가 남던 문제를 고쳤습니다. 웹 구독을 확인하면 플랜·한도·초기화권을 현재 값으로 다시 맞춥니다.',
+      notes: [
+        { tag: '구독', name: 'ChatGPT 플랜과 초기화권을 새 구독으로 갱신', desc: '설정 → Account에서 웹 연결이나 새로고침으로 구독을 확인하면 Codex 로그인 토큰을 새로 받아 플랜, 한도, 초기화권을 다시 조회합니다. 초기화권 창의 새로고침도 같은 방식으로 최신 값을 가져옵니다.' },
+        { tag: '표시', name: '조회 실패를 옛 플랜과 구분', desc: '한도 조회가 실패하면 로그인 때 저장한 플랜 대신 「ChatGPT 플랜 · 확인 불가」와 다시 확인 버튼을 표시합니다. 실패가 확정된 값처럼 보이지 않습니다.' },
+        { tag: 'Claude', name: 'Claude 플랜 이름도 현재 구독으로', desc: 'Claude 계정의 웹 구독을 확인하면 Anthropic 프로필에서 현재 구독 종류를 읽어 계정 카드의 플랜 이름을 갱신합니다. 한도 게이지는 이전과 같이 항상 서버 값을 보여줍니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'SUBSCRIPTION SYNC',
+      lead: 'Fixed account cards that kept showing the old ChatGPT plan and "Resets · unavailable" after a subscription change. Checking the web subscription now brings the plan, limits, and resets back in line with the current values.',
+      notes: [
+        { tag: 'Subscription', name: 'ChatGPT plan and resets follow the new subscription', desc: 'Connecting or refreshing a web account in Settings → Account now renews the Codex sign-in token and re-reads the plan, limits, and resets. Refresh in the resets dialog uses the same path to fetch current values.' },
+        { tag: 'Display', name: 'Failed checks are no longer shown as the old plan', desc: 'When a limits check fails, the card shows "ChatGPT plan · unavailable" with a Retry button instead of the plan saved at sign-in, so a failure never looks like a confirmed value.' },
+        { tag: 'Claude', name: 'Claude plan name reflects the current subscription', desc: 'Checking a Claude web subscription reads the current subscription type from the Anthropic profile and updates the plan name on the account card. Limit gauges continue to show live server values.' }
+      ]
+    }
+  },
   '3.2.3': {
     ko: {
       eyebrow: 'SUBSCRIPTION SETTINGS',

@@ -76,6 +76,9 @@ pub mod ch {
     /// 같으므로 자리도 같다 — 저기 두면 창 컨트롤·스토어 저장이 그 시간 동안 굶는다.
     pub const CODEX_ACCOUNTS_USAGE: &str = "codex-auth:accounts-usage";
     pub const CODEX_RESET_CREDIT_CONSUME: &str = "codex-auth:reset-credit-consume";
+    /// BUG-0013 — 계정 하나의 토큰 재발급 + 한도 재조회(`codex-auth:refresh-account(email)` →
+    /// `CodexAccountUsage`). 구독을 바꾼 직후 플랜·초기화권을 되싱크하는 문이다(app-server 두 왕복).
+    pub const CODEX_REFRESH_ACCOUNT: &str = "codex-auth:refresh-account";
     /// ★M5 — AI 커밋 메시지(`git:ai-message({cwd,files,account?,model?,effort?})`).
     /// `ipc/git.rs`가 아니라 여기 있는 이유: 저 모듈은 `ccg_fs::git`의 얇은 변환기이고
     /// 이 채널만 **엔진 프로세스를 스폰**한다(최대 90초). 성격이 다르면 자리도 다르다.
@@ -105,6 +108,7 @@ pub fn owns(channel: &str) -> bool {
             | "codex:tooling-set-enabled"
             | ch::CODEX_ACCOUNTS_USAGE
             | ch::CODEX_RESET_CREDIT_CONSUME
+            | ch::CODEX_REFRESH_ACCOUNT
             | ch::GIT_AI_MESSAGE
             | ch::TRANSLATE_TEXT
     ) || misc::owns(channel)
@@ -165,6 +169,9 @@ pub fn dispatch(app: &AppHandle, window: &WebviewWindow, channel: &str, p: &Valu
             super::arg(p, 0).as_str().unwrap_or(""),
             super::arg(p, 1).as_str().unwrap_or(""),
         ),
+        ch::CODEX_REFRESH_ACCOUNT => {
+            crate::engine::codex_limit::refresh_account(super::arg(p, 0).as_str().unwrap_or(""))
+        }
 
         // ★M5 — diff를 읽고 엔진을 1턴 돌린다(최대 90초 · 블로킹 팔).
         ch::GIT_AI_MESSAGE => aimsg::ai_message(super::arg(p, 0)),
