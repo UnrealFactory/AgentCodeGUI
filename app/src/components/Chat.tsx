@@ -1681,7 +1681,9 @@ export function ChatHeader({
   )
 }
 
-// Chat text selection actions, shown after a drag or by right-clicking a selection.
+// Chat text selection actions. Appears only when the user right-clicks a non-empty
+// selection inside the chat thread — never on a plain drag — anchored at the cursor
+// like a context menu.
 export function SelectionToolbar({
   scrollRef,
   onElaborate,
@@ -1728,6 +1730,7 @@ export function SelectionToolbar({
       if (barRef.current?.contains(e.target as Node)) return
       setPos(null)
     }
+    // 드래그(선택)만으로는 뜨지 않고, 선택 위에서 우클릭할 때만 — 마우스 커서 위치에 띄운다
     const onContextMenu = (e: MouseEvent): void => {
       if (barRef.current?.contains(e.target as Node)) return
       if ([...document.querySelectorAll('.set-dialog-overlay, .fv-overlay, .set-overlay')].some(el => el.getClientRects().length > 0)) return
@@ -1736,9 +1739,6 @@ export function SelectionToolbar({
       e.preventDefault()
       setPos({ x: e.clientX, y: e.clientY, text })
       setCopied(false)
-    }
-    const onMouseUp = (e: MouseEvent): void => {
-      if (e.button === 0) onContextMenu(e)
     }
     const onSelectionChange = (): void => { if (!readSel()) setPos(null) }
     // 스크롤하면 선택이 화면에서 벗어날 수 있으니, 선택이 사라지면 내린다
@@ -1749,14 +1749,12 @@ export function SelectionToolbar({
 
     document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('contextmenu', onContextMenu)
-    document.addEventListener('mouseup', onMouseUp)
     document.addEventListener('selectionchange', onSelectionChange)
     container.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('mousedown', onMouseDown)
       document.removeEventListener('contextmenu', onContextMenu)
-      document.removeEventListener('mouseup', onMouseUp)
       document.removeEventListener('selectionchange', onSelectionChange)
       container.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onKey)

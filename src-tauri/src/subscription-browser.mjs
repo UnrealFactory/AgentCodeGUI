@@ -37,8 +37,13 @@ export function codexSubscription(body, accountId) {
   if (e.has_active_subscription === false) return snapshot('none')
   if (date(e.cancels_at)) return snapshot('cancels', e.cancels_at)
   if (e.scheduled_plan_change) return snapshot('scheduled', e.renews_at)
-  if (row.last_active_subscription?.will_renew === true && date(e.renews_at)) return snapshot('renews', e.renews_at)
-  // `expires_at` can include grace time and is not the billing period end.
+  const willRenew = row.last_active_subscription?.will_renew
+  if (willRenew === true && date(e.renews_at)) return snapshot('renews', e.renews_at)
+  // A cancelled plan keeps `has_active_subscription: true` with `cancels_at: null` until the
+  // period ends (observed 2026-09: Pro cancelled on the web). `will_renew: false` is the only
+  // signal, and `renews_at` is the last day of access shown on the billing page.
+  // `expires_at` adds grace time (7 days observed) and is not the billing period end.
+  if (willRenew === false && e.has_active_subscription) return snapshot('cancels', e.renews_at)
   return snapshot(e.has_active_subscription ? 'active' : 'unknown')
 }
 

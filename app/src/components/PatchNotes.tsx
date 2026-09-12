@@ -152,11 +152,34 @@ const RELEASES: Record<string, LocalizedRelease> = {
   //   지난 창 제외 + net.rs NetError::RateLimited(긴 Retry-After는 자지 않고 그 길이로 격리 · 상한 1시간) + acct_switch
   //   note_hold + 렌더러 lib/usageWindow.ts(windowRolled·nextReset) + accounts.ts scheduleRolledRefresh(리셋 시각 타이머 ·
   //   지난 창은 즉시, 계정당 1분) + Settings LimRow 「초기화됨 · 새 값 확인 중」·useNowSec·정렬 키 + Chat picker 줄·소진 숨김.
+  // 3.2.5 — 2026-09-12 제보 둘: ① 채팅 선택 툴바(복사·더 자세히·번역)가 드래그만 해도 떠서 거슬림 → SelectionToolbar의
+  //   왼쪽 버튼 mouseup 경로 제거, contextmenu에서만 띄운다(파일 뷰어 툴바는 원래 우클릭 전용). ② 웹에서 해지한 ChatGPT Pro
+  //   (10/11까지 이용)가 카드에 「구독 중」·날짜 없음: accounts/check 실측 — 해지돼도 has_active_subscription:true·cancels_at:null이고
+  //   신호는 last_active_subscription.will_renew:false뿐. renews_at(10-11)=청구 페이지의 이용 종료일, expires_at(10-18)=7일 유예
+  //   포함 → subscription-browser.mjs: will_renew false → cancels·renews_at (테스트 갱신 — 옛 단언이 active를 굳히고 있었다).
   // 3.2.4 — BUG-0013/BUG-0014(2026-09-11 사용자 제보): ChatGPT를 Pro로 새로 구독하고 웹 연결까지 했는데 카드는
   //   「ChatGPT Free 플랜 · 초기화권 · 확인 불가」 + 「구독 중」. 플랜·초기화권은 계정 폴더의 CLI 토큰으로 묻는 값이고
   //   Codex CLI는 토큰을 8일·401 때만 갱신한다 → app-server `account/read {refreshToken:true}`로 재발급 후 재조회
   //   (codex_limit::refresh_account · subscriptions.rs worker · 초기화권 창 새로고침). 조회 실패 행은 「확인 불가」로.
   //   Claude는 토큰이 불투명이라 라벨(subscriptionType)만 로그인 때 값으로 굳어 있었다 → /api/oauth/profile로 되싱크.
+  '3.2.5': {
+    ko: {
+      eyebrow: 'SELECTION & SUBSCRIPTION',
+      lead: '채팅에서 글을 드래그할 때마다 뜨던 선택 툴바를 우클릭 전용으로 바꾸고, 해지된 ChatGPT 구독이 「구독 중」으로만 표시되던 문제를 고쳤습니다.',
+      notes: [
+        { tag: '채팅', name: '선택 툴바는 우클릭에서만', desc: '채팅 본문에서 글을 드래그해도 복사·더 자세히·번역 툴바가 바로 뜨지 않습니다. 선택한 글 위에서 우클릭하면 커서 위치에 툴바가 열립니다. Esc, 다른 곳 클릭, 스크롤로 닫히는 동작은 그대로입니다.' },
+        { tag: '구독', name: '해지된 ChatGPT 구독의 종료일 표시', desc: '웹에서 해지해 남은 기간만 이용할 수 있는 ChatGPT 계정이 날짜 없이 「구독 중」으로 표시되던 문제를 고쳤습니다. 이제 「취소 예정」과 이용 종료일을 표시하며, 유예 기간이 더해진 만료일은 쓰지 않습니다. 설정 → Account에서 새로고침을 누르면 반영됩니다.' }
+      ]
+    },
+    en: {
+      eyebrow: 'SELECTION & SUBSCRIPTION',
+      lead: 'The chat selection toolbar now opens only on right-click instead of after every drag, and cancelled ChatGPT subscriptions no longer show as simply "Subscribed".',
+      notes: [
+        { tag: 'Chat', name: 'Selection toolbar on right-click only', desc: 'Dragging text in the chat thread no longer pops up the Copy, Tell me more, and Translate toolbar. Right-click the selected text to open it at the cursor. Esc, clicking elsewhere, and scrolling still dismiss it.' },
+        { tag: 'Subscription', name: 'End date for cancelled ChatGPT subscriptions', desc: 'A ChatGPT account cancelled on the web, with access until the end of the period, showed "Subscribed" with no date. It now shows "Cancellation scheduled" with the last day of access, and never uses the expiry that includes grace time. Press Refresh in Settings → Account to update.' }
+      ]
+    }
+  },
   '3.2.4': {
     ko: {
       eyebrow: 'SUBSCRIPTION SYNC',

@@ -21,7 +21,12 @@ test('ChatGPT requires the explicit account and uses renewal instead of grace ex
   assert.deepEqual(codexSubscription({ accounts: { registered: row } }, 'registered'), { kind: 'renews', date: '2026-10-06T09:11:11Z' })
   assert.equal(codexSubscription({ accounts: { default: row, someoneElse: row } }, 'registered'), null)
   assert.deepEqual(codexSubscription({ accounts: { registered: { ...row, entitlement: { ...row.entitlement, cancels_at: '2026-10-06T09:11:11Z' } } } }, 'registered'), { kind: 'cancels', date: '2026-10-06T09:11:11Z' })
-  assert.equal(codexSubscription({ accounts: { registered: { ...row, last_active_subscription: { will_renew: false } } } }, 'registered').kind, 'active')
+  // Cancelled on the web: `cancels_at` stays null and `expires_at` carries grace time; `renews_at` is the last day.
+  const cancelled = { ...row, entitlement: { ...row.entitlement, cancels_at: null, renews_at: '2026-10-11T04:33:49+00:00', expires_at: '2026-10-18T04:33:49+00:00' }, last_active_subscription: { will_renew: false } }
+  assert.deepEqual(codexSubscription({ accounts: { registered: cancelled } }, 'registered'), { kind: 'cancels', date: '2026-10-11T04:33:49+00:00' })
+  assert.deepEqual(codexSubscription({ accounts: { registered: { ...cancelled, entitlement: { ...cancelled.entitlement, renews_at: null } } } }, 'registered'), { kind: 'cancels', date: null })
+  assert.equal(codexSubscription({ accounts: { registered: { ...row, last_active_subscription: null } } }, 'registered').kind, 'active')
+  assert.equal(codexSubscription({ accounts: { registered: { ...cancelled, entitlement: { ...cancelled.entitlement, has_active_subscription: false } } } }, 'registered').kind, 'none')
 })
 test('cancelled or unbound requests never launch a browser', async () => {
   const c = new AbortController(); c.abort()
